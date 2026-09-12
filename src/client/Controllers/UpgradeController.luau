@@ -1,0 +1,130 @@
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Shared = ReplicatedStorage.Shared
+local UpgradeConfig = require(Shared.Config.UpgradeConfig)
+local FormatUtil = require(Shared.Utility.FormatUtil)
+local Remotes = require(Shared.Utility.Remotes)
+
+local UI = require(script.Parent.Parent.UI.UI)
+local Controllers = require(script.Parent)
+
+local player = Players.LocalPlayer
+
+local UpgradeController = {}
+
+local menu
+local cards: { [string]: any } = {}
+local busy = false
+
+local function buildCard(def, parent: Instance, order: number)
+	local card = UI.Panel({ Size = UDim2.fromOffset(300, 190), BackgroundColor3 = UI.Colors.PanelLight, LayoutOrder = order }, parent)
+	local icon = UI.Frame({ Size = UDim2.fromOffset(48, 48), Position = UDim2.fromOffset(14, 14), BackgroundColor3 = UI.Colors.Green }, card)
+	UI.Corner(icon, 10)
+	UI.Label({ Text = def.Icon, TextSize = 18 }, icon)
+	UI.Label({ Text = def.Name, TextSize = 22, Size = UDim2.new(1, -80, 0, 30), Position = UDim2.fromOffset(72, 12), TextXAlignment = Enum.TextXAlignment.Left }, card)
+	local levelLabel = UI.Label({ Text = "Lv. 1 -> Lv. 2", TextSize = 16, TextColor3 = UI.Colors.TextDim, Font = UI.FontBody, Size = UDim2.new(1, -80, 0, 22), Position = UDim2.fromOffset(72, 40), TextXAlignment = Enum.TextXAlignment.Left }, card)
+	local desc = UI.Label({ Text = def.Description, TextSize = 15, Font = UI.FontBody, TextColor3 = UI.Colors.TextDim, Size = UDim2.new(1, -28, 0, 20), Position = UDim2.fromOffset(14, 70), TextXAlignment = Enum.TextXAlignment.Left }, card)
+	local statLabel = UI.Label({ Text = "1.00x -> 1.20x", TextSize = 22, TextColor3 = UI.Colors.Cyan, Size = UDim2.new(1, -28, 0, 30), Position = UDim2.fromOffset(14, 92) }, card)
+	local priceLabel = UI.Label({ Text = "$150", TextSize = 24, TextColor3 = UI.Colors.Cash, Size = UDim2.new(0.45, 0, 0, 40), Position = UDim2.fromOffset(14, 136), TextXAlignment = Enum.TextXAlignment.Left }, card)
+	local button = UI.Button({ Text = "UPGRADE", Color = UI.Colors.Green, Size = UDim2.new(0.5, -14, 0, 44), Position = UDim2.new(0.5, 0, 1, -58), TextSize = 20 }, card)
+
+	local entry = { Card = card, Level = levelLabel, Stat = statLabel, Price = priceLabel, Button = button, Def = def, Desc = desc }
+	button.Activated:Connect(function()
+		UpgradeController.Buy(def.Key, entry)
+	end)
+	return entry
+end
+
+local function refreshCard(entry)
+	local def = entry.Def
+	local level = player:GetAttribute(def.Attribute) or 1
+	local max = UpgradeConfig.GetMaxLevel(def.Key)
+	local current = UpgradeConfig.GetValue(def.Key, level)
+	if level >= max then
+		entry.Level.Text = string.format("Lv. %d (MAX)", level)
+		entry.Stat.Text = def.Format(current)
+		entry.Price.Text = ""
+		UI.SetButtonEnabled(entry.Button, false, "MAXED")
+		return
+	end
+	local nextValue = UpgradeConfig.GetValue(def.Key, level + 1)
+	local cost = UpgradeConfig.GetNextCost(def.Key, level) or 0
+	entry.Level.Text = string.format("Lv. %d -> Lv. %d", level, level + 1)
+	entry.Stat.Text = string.format("%s -> %s", def.Format(current), def.Format(nextValue))
+	entry.Price.Text = FormatUtil.CashExact(cost)
+	local cash = player:GetAttribute("RoomCash") or 0
+	UI.SetButtonEnabled(entry.Button, true)
+	entry.Button.Text = "UPGRADE"
+	entry.Button.BackgroundColor3 = cash >= cost and UI.Colors.Green or UI.Colors.Locked
+end
+
+local function refreshAll()
+	for _, entry in pairs(cards) do
+		refreshCard(entry)
+	end
+end
+
+function UpgradeController.Init()
+	menu = UI.Menu("Upgrades", "UPGRADES", UDim2.fromOffset(660, 500))
+	local scroll = UI.New("ScrollingFrame", {
+		BackgroundTransparency = 1,
+		Size = UDim2.fromScale(1, 1),
+		CanvasSize = UDim2.new(),
+		AutomaticCanvasSize = Enum.AutomaticSize.Y,
+		ScrollBarThickness = 6,
+		BorderSizePixel = 0,
+	}, menu.Content)
+	local grid = UI.GridLayout(scroll, UDim2.fromOffset(300, 190), 12)
+	grid.HorizontalAlignment = Enum.HorizontalAlignment.Center
+
+	for i, def in ipairs(UpgradeConfig.List) do
+		cards[def.Key] = buildCard(def, scroll, i)
+	end
+
+	for _, def in ipairs(UpgradeConfig.List) do
+		player:GetAttributeChangedSignal(def.Attribute):Connect(refreshAll)
+	end
+	player:GetAttributeChangedSignal("RoomCash"):Connect(function()
+		if menu.IsOpen() then
+			refreshAll()
+		end
+	end)
+	menu.OnOpen(refreshAll)
+end
+
+function UpgradeController.Open()
+	if not player:GetAttribute("InMatch") then
+		Controllers.NotificationController.Show("Info", "Upgrades are available inside rooms.")
+		return
+	end
+	menu.Open()
+end
+
+function UpgradeController.Buy(key: string, entry)
+	if busy then
+		return
+	end
+	busy = true
+	local ok, message = Remotes.Function("RequestUpgrade"):InvokeServer(key)
+	busy = false
+	if ok then
+		UI.Flash(entry.Card, UI.Colors.GreenDark, 0.5)
+		Controllers.AudioController.Play("UpgradePurchase")
+		Controllers.NotificationController.Show("Success", message or "Upgraded!")
+	else
+		UI.Shake(entry.Card, 6, 0.3)
+		UI.Flash(entry.Card, UI.Colors.Red, 0.5)
+		Controllers.AudioController.Play("UpgradeDenied")
+		if message and message ~= "MAXED" then
+			Controllers.NotificationController.Show("Error", message, 2.5)
+		end
+	end
+	refreshAll()
+end
+
+function UpgradeController.IsOpen(): boolean
+	return menu.IsOpen()
+end
+
+return UpgradeController
