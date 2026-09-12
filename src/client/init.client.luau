@@ -32,6 +32,7 @@ local order = {
 	"HUDController",
 	"ClutterVisualController",
 	"SearchController",
+	"RummageController",
 	"UpgradeController",
 	"ShopController",
 	"CollectionController",

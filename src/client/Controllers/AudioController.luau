@@ -11,9 +11,27 @@ local AudioController = {}
 
 local sfxGroup: SoundGroup
 local musicGroup: SoundGroup
-local sounds: { [string]: Sound } = {}
+local templates: { [string]: Sound } = {}
+local loops: { [string]: Sound } = {}
 local currentMusic: Sound? = nil
 local currentMusicKey: string? = nil
+local rng = Random.new()
+
+local function resolveId(id: any): string?
+	if type(id) == "number" then
+		return id ~= 0 and ("rbxassetid://" .. id) or nil
+	elseif type(id) == "string" and id ~= "" then
+		return id
+	end
+	return nil
+end
+
+local function resolvePitch(pitch: any): number
+	if type(pitch) == "table" then
+		return rng:NextNumber(pitch[1], pitch[2])
+	end
+	return tonumber(pitch) or 1
+end
 
 local function sfxEnabled(): boolean
 	return player:GetAttribute("Setting_SFX") ~= false
@@ -37,14 +55,17 @@ function AudioController.Init()
 	musicGroup.Parent = SoundService
 
 	for key, def in pairs(AudioConfig.SFX) do
-		if def.Id and def.Id ~= 0 then
+		local id = resolveId(def.Id)
+		if id then
 			local s = Instance.new("Sound")
 			s.Name = key
-			s.SoundId = "rbxassetid://" .. def.Id
+			s.SoundId = id
 			s.Volume = def.Volume or 0.5
+			s.Looped = def.Looped == true
 			s.SoundGroup = sfxGroup
+			s:SetAttribute("Pitch", type(def.Pitch) == "table" and 0 or (def.Pitch or 1))
 			s.Parent = SoundService
-			sounds[key] = s
+			templates[key] = s
 		end
 	end
 
@@ -55,29 +76,78 @@ function AudioController.Init()
 	UI.SetClickSound(AudioController.Play)
 end
 
+local function spawnSound(key: string, parent: Instance): Sound?
+	local template = templates[key]
+	if not template or not sfxEnabled() then
+		return nil
+	end
+	local def = AudioConfig.SFX[key]
+	local clone = template:Clone()
+	clone.PlaybackSpeed = resolvePitch(def.Pitch)
+	clone.Parent = parent
+	return clone
+end
+
 function AudioController.Play(key: string)
-	local s = sounds[key]
-	if s and sfxEnabled() then
-		local clone = s:Clone()
-		clone.Parent = SoundService
-		clone:Play()
-		clone.Ended:Once(function()
-			clone:Destroy()
+	local s = spawnSound(key, SoundService)
+	if s then
+		s:Play()
+		s.Ended:Once(function()
+			s:Destroy()
+		end)
+		task.delay(6, function()
+			if s.Parent then
+				s:Destroy()
+			end
 		end)
 	end
 end
 
 function AudioController.PlayAt(key: string, position: Vector3)
-	local s = sounds[key]
-	if s and sfxEnabled() then
-		local anchor = Instance.new("Attachment")
-		anchor.WorldPosition = position
-		anchor.Parent = workspace.Terrain
-		local clone = s:Clone()
-		clone.Parent = anchor
-		clone:Play()
-		clone.Ended:Once(function()
+	local template = templates[key]
+	if not template or not sfxEnabled() then
+		return
+	end
+	local anchor = Instance.new("Attachment")
+	anchor.WorldPosition = position
+	anchor.Parent = workspace.Terrain
+	local s = spawnSound(key, anchor)
+	if not s then
+		anchor:Destroy()
+		return
+	end
+	s.RollOffMaxDistance = 60
+	s:Play()
+	s.Ended:Once(function()
+		anchor:Destroy()
+	end)
+	task.delay(6, function()
+		if anchor.Parent then
 			anchor:Destroy()
+		end
+	end)
+end
+
+-- Looping sounds (e.g. rummaging while searching). Safe to call repeatedly.
+function AudioController.PlayLoop(key: string)
+	if loops[key] then
+		return
+	end
+	local s = spawnSound(key, SoundService)
+	if not s then
+		return
+	end
+	s.Looped = true
+	s:Play()
+	loops[key] = s
+end
+
+function AudioController.StopLoop(key: string)
+	local s = loops[key]
+	if s then
+		loops[key] = nil
+		UI.Tween(s, { Volume = 0 }, 0.15).Completed:Once(function()
+			s:Destroy()
 		end)
 	end
 end
@@ -96,12 +166,13 @@ function AudioController.SetMusic(key: string?)
 		return
 	end
 	local def = AudioConfig.Music[key]
-	if not def or def.Id == 0 then
+	local id = def and resolveId(def.Id)
+	if not id then
 		return
 	end
 	local s = Instance.new("Sound")
 	s.Name = key
-	s.SoundId = "rbxassetid://" .. def.Id
+	s.SoundId = id
 	s.Volume = def.Volume or 0.3
 	s.Looped = def.Looped ~= false
 	s.SoundGroup = musicGroup

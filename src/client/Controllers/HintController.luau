@@ -59,6 +59,16 @@ function HintController.HighlightRegion(regionId: string, duration: number, supe
 			ghost.Transparency = 0.55
 			ghost.Parent = workspace.CurrentCamera
 			table.insert(activeRegionParts, ghost)
+			task.spawn(function()
+				while ghost.Parent do
+					UI.Tween(ghost, { Transparency = 0.75 }, 0.6)
+					task.wait(0.6)
+					if ghost.Parent then
+						UI.Tween(ghost, { Transparency = 0.45 }, 0.6)
+					end
+					task.wait(0.6)
+				end
+			end)
 
 			local bb = UI.Billboard(ghost, UDim2.fromOffset(240, 50), Vector3.new(0, region.Size.Y / 2 + 2, 0), 200)
 			bb.AlwaysOnTop = true

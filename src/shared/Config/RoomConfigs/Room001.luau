@@ -17,16 +17,23 @@ local Room = {
 	TargetId = "GoldenKey",
 	TargetName = "Golden Key",
 
-	BaseMessUnits = 90000,
+	-- Simulation-tuned: solo median ~75-90 real minutes with an efficient player.
+	BaseMessUnits = 100000,
 
 	TargetDepthMin = 0.65,
 	TargetDepthMax = 0.90,
 
 	MinimumTargetSockets = 30,
 
-	HintMilestones = { 0.25, 0.50, 0.75, 0.90, 0.97 },
+	-- Side / area / region / hot-cold / outline. Earlier than the design draft so a solo
+	-- player has a useful clue by ~40 minutes instead of ~50.
+	HintMilestones = { 0.20, 0.40, 0.60, 0.80, 0.95 },
 
 	LayoutVariants = { 1 },
+
+	-- Multiplies every cluster's ChunkCount for the placeholder builder (visual density only).
+	-- 30 clusters x ~21 avg x 1.6 = ~1,000 anchored, non-collidable props.
+	ChunkDensity = 1.6,
 
 	Size = Vector3.new(90, 26, 70),
 

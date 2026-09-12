@@ -41,11 +41,12 @@ return {
 	-- Progress / checkpoints
 	Checkpoints = { 0.25, 0.50, 0.75, 0.90 },
 
+	-- Tuned by simulation: 4 players finish ~25% faster than solo, not 4x.
 	PartyMessMultiplier = {
 		[1] = 1.00,
-		[2] = 1.65,
-		[3] = 2.30,
-		[4] = 2.95,
+		[2] = 1.50,
+		[3] = 1.90,
+		[4] = 2.30,
 	},
 
 	-- Hot / cold distances (studs to target cluster center)

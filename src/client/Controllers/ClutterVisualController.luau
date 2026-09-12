@@ -1,7 +1,8 @@
 --[[
 	Client-side clutter visuals. Watches every ClutterCluster's replicated VisualStage and
-	animates chunk removal (pop up, fly aside, fade). Also hides ForceHiddenChunks around a
-	revealed target and decorates the revealed target with a subtle sparkle.
+	animates chunk removal: pop up, spin, get sucked toward the searching player's bag, shrink
+	and fade. Also hides ForceHiddenChunks around a revealed target and decorates the revealed
+	target with a sparkle + gold burst.
 ]]
 
 local CollectionService = game:GetService("CollectionService")
@@ -27,6 +28,7 @@ local clusters: { [Model]: ClusterEntry } = {}
 local byId: { [string]: ClusterEntry } = {}
 local volumes: { BasePart } = {}
 local rng = Random.new()
+local ghostFolder: Folder
 
 local function reduceVFX(): boolean
 	return player:GetAttribute("Setting_ReduceVFX") == true
@@ -66,8 +68,25 @@ end
 local function hideInstant(chunk: Instance)
 	for _, p in ipairs(partsOf(chunk)) do
 		p.LocalTransparencyModifier = 1
-		p.CastShadow = false
 	end
+end
+
+-- Who is pulling this pile apart? Prefer the local player if they are searching it, else any
+-- teammate searching it, else nobody (fly up and away).
+local function findPuller(clusterId: string): BasePart?
+	local best = nil
+	for _, p in ipairs(Players:GetPlayers()) do
+		if p:GetAttribute("SearchingCluster") == clusterId then
+			local root = p.Character and p.Character:FindFirstChild("HumanoidRootPart")
+			if root then
+				if p == player then
+					return root
+				end
+				best = best or root
+			end
+		end
+	end
+	return best
 end
 
 local function hideAnimated(entry: ClusterEntry, chunk: Instance)
@@ -80,8 +99,8 @@ local function hideAnimated(entry: ClusterEntry, chunk: Instance)
 		return
 	end
 	local center = entry.Volume and entry.Volume.Position or parts[1].Position
+	local puller = findPuller(entry.Id)
 	for _, p in ipairs(parts) do
-		-- Animate a throwaway clone so the real (server-owned) part stays untouched.
 		local ghost = p:Clone()
 		for _, child in ipairs(ghost:GetChildren()) do
 			child:Destroy()
@@ -90,8 +109,9 @@ local function hideAnimated(entry: ClusterEntry, chunk: Instance)
 		ghost.CanCollide = false
 		ghost.CanQuery = false
 		ghost.CanTouch = false
+		ghost.CastShadow = false
 		ghost.LocalTransparencyModifier = 0
-		ghost.Parent = workspace.CurrentCamera
+		ghost.Parent = ghostFolder
 		p.LocalTransparencyModifier = 1
 
 		local away = (p.Position - center)
@@ -99,14 +119,21 @@ local function hideAnimated(entry: ClusterEntry, chunk: Instance)
 		if away.Magnitude < 0.5 then
 			away = Vector3.new(rng:NextNumber(-1, 1), 0, rng:NextNumber(-1, 1))
 		end
-		away = away.Unit * rng:NextNumber(3, 6)
+		away = away.Unit * rng:NextNumber(1.5, 3.5)
 		local up = Vector3.new(0, rng:NextNumber(2.5, 4.5), 0)
-		local goal = p.CFrame + up + away
-		local spin = CFrame.Angles(rng:NextNumber(-1.5, 1.5), rng:NextNumber(-1.5, 1.5), rng:NextNumber(-1.5, 1.5))
-		local t1 = TweenService:Create(ghost, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { CFrame = goal * spin })
+		local spin = CFrame.Angles(rng:NextNumber(-2, 2), rng:NextNumber(-2, 2), rng:NextNumber(-2, 2))
+		local popGoal = p.CFrame + up + away
+
+		local t1 = TweenService:Create(ghost, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { CFrame = popGoal * spin })
 		t1:Play()
 		t1.Completed:Once(function()
-			local t2 = TweenService:Create(ghost, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { CFrame = goal * spin + Vector3.new(0, -1.5, 0), Transparency = 1, Size = ghost.Size * 0.4 })
+			local goal
+			if puller and puller.Parent then
+				goal = CFrame.new(puller.Position + Vector3.new(0, 1, 0)) * spin
+			else
+				goal = popGoal * spin + Vector3.new(0, -2, 0)
+			end
+			local t2 = TweenService:Create(ghost, TweenInfo.new(0.32, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { CFrame = goal, Transparency = 0.6, Size = ghost.Size * 0.25 })
 			t2:Play()
 			t2.Completed:Once(function()
 				ghost:Destroy()
@@ -119,12 +146,15 @@ end
 
 local function applyStage(entry: ClusterEntry, stage: number, animate: boolean)
 	stage = math.clamp(stage, 0, #entry.Chunks)
+	local delayIndex = 0
 	for i = 1, stage do
 		local chunk = entry.Chunks[i]
 		if chunk and not entry.Hidden[chunk] then
 			entry.Hidden[chunk] = true
 			if animate then
-				task.delay((i % 4) * 0.06, function()
+				local d = delayIndex * 0.07
+				delayIndex += 1
+				task.delay(d, function()
 					hideAnimated(entry, chunk)
 				end)
 			else
@@ -177,7 +207,6 @@ local function register(model: Model)
 	table.insert(entry.Connections, model:GetAttributeChangedSignal("ForceHiddenChunks"):Connect(function()
 		applyForceHidden(entry)
 	end))
-	-- Chunks may stream in slightly after the model.
 	local chunksFolder = model:FindFirstChild("Chunks")
 	if chunksFolder then
 		table.insert(entry.Connections, chunksFolder.ChildAdded:Connect(function()
@@ -215,24 +244,42 @@ local function decorateTarget(model: Instance)
 	local attachment = Instance.new("Attachment")
 	attachment.Parent = primary
 	local sparkle = Instance.new("ParticleEmitter")
-	sparkle.Rate = 6
+	sparkle.Rate = 8
 	sparkle.Lifetime = NumberRange.new(0.6, 1.2)
 	sparkle.Speed = NumberRange.new(0.5, 1.5)
 	sparkle.SpreadAngle = Vector2.new(180, 180)
-	sparkle.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.25), NumberSequenceKeypoint.new(1, 0) })
+	sparkle.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.3), NumberSequenceKeypoint.new(1, 0) })
 	sparkle.Color = ColorSequence.new(Color3.fromRGB(255, 230, 120))
 	sparkle.LightEmission = 1
 	sparkle.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.2), NumberSequenceKeypoint.new(1, 1) })
 	sparkle.Parent = attachment
 	local light = Instance.new("PointLight")
 	light.Color = Color3.fromRGB(255, 220, 120)
-	light.Brightness = 0.8
-	light.Range = 6
+	light.Brightness = 1
+	light.Range = 8
 	light.Parent = primary
 	Controllers.AudioController.PlayAt("TargetReveal", primary.Position)
+	Controllers.FXController.Burst(primary.Position + Vector3.new(0, 1, 0), Color3.fromRGB(255, 210, 60), 24, 0.35)
+
+	-- Gentle hover so the key catches the eye once exposed.
+	if model:IsA("Model") then
+		task.spawn(function()
+			local base = model:GetPivot()
+			local t0 = os.clock()
+			while model.Parent do
+				local t = os.clock() - t0
+				model:PivotTo(base * CFrame.new(0, math.sin(t * 2) * 0.15 + 0.15, 0) * CFrame.Angles(0, t * 0.6, 0))
+				task.wait()
+			end
+		end)
+	end
 end
 
 function ClutterVisualController.Init()
+	ghostFolder = Instance.new("Folder")
+	ghostFolder.Name = "ClutterGhosts"
+	ghostFolder.Parent = workspace.CurrentCamera
+
 	for _, model in ipairs(CollectionService:GetTagged("ClutterCluster")) do
 		if model:IsA("Model") then
 			register(model)
@@ -280,24 +327,30 @@ function ClutterVisualController.GetClusterCenter(id: string): Vector3?
 	return entry and entry.Volume and entry.Volume.Position or nil
 end
 
--- Small tactile shake of a few visible chunks on a search tick.
+-- Tactile shake of a few visible chunks nearest the top of the pile on a search tick.
 function ClutterVisualController.Shake(id: string)
 	local entry = byId[id]
 	if not entry or reduceVFX() then
 		return
 	end
 	local shaken = 0
-	for i = #entry.Chunks, 1, -1 do
+	local visibleTop = {}
+	for i = 1, #entry.Chunks do
 		local chunk = entry.Chunks[i]
 		if not entry.Hidden[chunk] then
-			local parts = partsOf(chunk)
-			local p = parts[1]
+			table.insert(visibleTop, chunk)
+			if #visibleTop >= 6 then
+				break
+			end
+		end
+	end
+	for _, chunk in ipairs(visibleTop) do
+		if rng:NextNumber() < 0.6 then
+			local p = partsOf(chunk)[1]
 			if p then
 				local original = p.CFrame
-				local offset = CFrame.new(rng:NextNumber(-0.15, 0.15), rng:NextNumber(0.05, 0.25), rng:NextNumber(-0.15, 0.15))
-				-- Shaking the real part locally is safe: server never re-sends unchanged CFrames.
-				local t = TweenService:Create(p, TweenInfo.new(0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out, 0, true), { CFrame = original * offset })
-				t:Play()
+				local offset = CFrame.new(rng:NextNumber(-0.2, 0.2), rng:NextNumber(0.1, 0.35), rng:NextNumber(-0.2, 0.2)) * CFrame.Angles(rng:NextNumber(-0.1, 0.1), 0, rng:NextNumber(-0.1, 0.1))
+				TweenService:Create(p, TweenInfo.new(0.09, Enum.EasingStyle.Quad, Enum.EasingDirection.Out, 0, true), { CFrame = original * offset }):Play()
 			end
 			shaken += 1
 			if shaken >= 3 then
