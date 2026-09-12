@@ -105,10 +105,10 @@ local function buildStructure(config, origin: CFrame, parent: Folder)
 	-- Ceiling lights so the enclosed room is bright and readable.
 	for _, x in ipairs({ -halfX * 0.6, 0, halfX * 0.6 }) do
 		for _, z in ipairs({ -halfZ * 0.55, halfZ * 0.55 }) do
-			local lamp = part({ Name = "CeilingLight", Size = Vector3.new(6, 0.4, 6), CFrame = origin * CFrame.new(x, size.Y - 0.2, z), Color = Color3.fromRGB(255, 250, 230), Material = Enum.Material.Neon, CanCollide = false, CanQuery = false }, parent)
+			local lamp = part({ Name = "CeilingLight", Size = Vector3.new(6, 0.4, 6), CFrame = origin * CFrame.new(x, size.Y - 0.2, z), Color = Color3.fromRGB(255, 250, 230), Material = Enum.Material.SmoothPlastic, CanCollide = false, CanQuery = false }, parent)
 			local light = Instance.new("PointLight")
-			light.Brightness = 1.6
-			light.Range = 48
+			light.Brightness = 0.7
+			light.Range = 44
 			light.Color = Color3.fromRGB(255, 245, 225)
 			light.Shadows = false
 			light.Parent = lamp

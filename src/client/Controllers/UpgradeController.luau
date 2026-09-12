@@ -90,7 +90,9 @@ function UpgradeController.Init()
 			refreshAll()
 		end
 	end)
+	player:GetAttributeChangedSignal("InMatch"):Connect(refreshAll)
 	menu.OnOpen(refreshAll)
+	refreshAll()
 end
 
 function UpgradeController.Open()

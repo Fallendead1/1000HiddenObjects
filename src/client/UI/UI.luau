@@ -99,11 +99,13 @@ function UI.Corner(inst: GuiObject, radius: number?): UICorner
 end
 
 function UI.Stroke(inst: GuiObject, color: Color3?, thickness: number?, transparency: number?): UIStroke
+	-- Text labels get a text outline; everything else gets a border.
+	local mode = inst:IsA("TextLabel") and Enum.ApplyStrokeMode.Contextual or Enum.ApplyStrokeMode.Border
 	return UI.New("UIStroke", {
 		Color = color or UI.Colors.Stroke,
 		Thickness = thickness or UIConfig.StrokeThickness,
 		Transparency = transparency or 0,
-		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+		ApplyStrokeMode = mode,
 	}, inst) :: UIStroke
 end
 

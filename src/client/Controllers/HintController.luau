@@ -113,7 +113,7 @@ local function updateOutline()
 end
 
 function HintController.Init()
-	banner = UI.Panel({ Size = UDim2.fromOffset(520, 56), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 140), Visible = false, BackgroundTransparency = 0.05 }, UI.Layers.Overlay)
+	banner = UI.Panel({ Size = UDim2.fromOffset(520, 56), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 140), Visible = false, BackgroundTransparency = 0.05 }, UI.Layers.HUD)
 	banner.BackgroundColor3 = UI.Colors.PanelDark
 	UI.Stroke(banner, UI.Colors.Cyan, 2)
 	bannerLabel = UI.Label({ Text = "", TextSize = 20, TextColor3 = UI.Colors.Cyan, Size = UDim2.new(1, -20, 1, 0), Position = UDim2.fromOffset(10, 0) }, banner)
