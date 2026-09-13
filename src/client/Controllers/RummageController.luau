@@ -2,7 +2,11 @@
 	Procedural rummaging animation. No animation assets required: while a player is searching
 	(replicated IsSearching attribute) their arms reach forward and alternate digging motions
 	and the torso leans in. Works for R15 and R6, for the local player and teammates.
-	Also drives the local rummage loop sound.
+
+	The pose is layered onto each joint's Transform right after the Animator writes it
+	(PreSimulation), so it blends with walk/idle animations. C0 is never touched: with
+	Roblox's avatar joint upgrade, Motor6D.C0 is read-only and joints may be
+	AnimationConstraints instead of Motor6Ds; both expose a writable Transform.
 ]]
 
 local Players = game:GetService("Players")
@@ -14,80 +18,90 @@ local player = Players.LocalPlayer
 
 local RummageController = {}
 
-type Tracked = {
-	Player: Player,
-	Character: Model,
-	Joints: { { Motor: Motor6D, Base: CFrame, Kind: string } },
-	Weight: number,
-	Phase: number,
-}
+type Joint = { Instance: Instance, Kind: string, Base: CFrame?, Written: CFrame? }
+type Tracked = { Player: Player, Character: Model, Joints: { Joint }, Weight: number, Phase: number }
 
 local tracked: { [Player]: Tracked } = {}
 
-local function collectJoints(character: Model)
-	local joints = {}
-	local function add(motor: Instance?, kind: string)
-		if motor and motor:IsA("Motor6D") then
-			table.insert(joints, { Motor = motor, Base = motor.C0, Kind = kind })
+local R15 = { RightShoulder = "R", LeftShoulder = "L", Waist = "Waist" }
+local R6 = { ["Right Shoulder"] = "R6R", ["Left Shoulder"] = "R6L" }
+
+local function isActiveJoint(inst: Instance): boolean
+	if inst:IsA("AnimationConstraint") then
+		return inst.Enabled
+	end
+	if inst:IsA("Motor6D") then
+		return inst.Enabled
+	end
+	return false
+end
+
+-- Prefer an enabled AnimationConstraint (joint upgrade), else an enabled Motor6D.
+local function collectJoints(character: Model): { Joint }
+	local found: { [string]: Instance } = {}
+	for _, d in ipairs(character:GetDescendants()) do
+		local kind = R15[d.Name] or R6[d.Name]
+		if kind and isActiveJoint(d) then
+			local existing = found[kind]
+			if not existing or (d:IsA("AnimationConstraint") and not existing:IsA("AnimationConstraint")) then
+				found[kind] = d
+			end
 		end
 	end
-	local rua = character:FindFirstChild("RightUpperArm")
-	local lua = character:FindFirstChild("LeftUpperArm")
-	local ut = character:FindFirstChild("UpperTorso")
-	if rua then
-		add(rua:FindFirstChild("RightShoulder"), "R")
-		add(lua and lua:FindFirstChild("LeftShoulder"), "L")
-		add(ut and ut:FindFirstChild("Waist"), "Waist")
-	else
-		local torso = character:FindFirstChild("Torso")
-		if torso then
-			add(torso:FindFirstChild("Right Shoulder"), "R6R")
-			add(torso:FindFirstChild("Left Shoulder"), "R6L")
-		end
+	local joints = {}
+	for kind, inst in pairs(found) do
+		table.insert(joints, { Instance = inst, Kind = kind })
 	end
 	return joints
 end
 
 local function track(p: Player, character: Model)
-	task.defer(function()
-		if not character.Parent then
-			return
-		end
-		tracked[p] = { Player = p, Character = character, Joints = collectJoints(character), Weight = 0, Phase = math.random() * 10 }
-	end)
+	tracked[p] = { Player = p, Character = character, Joints = {}, Weight = 0, Phase = math.random() * 10 }
 end
 
 local function untrack(p: Player)
-	local t = tracked[p]
-	if t then
-		for _, j in ipairs(t.Joints) do
-			if j.Motor.Parent then
-				j.Motor.C0 = j.Base
-			end
-		end
-		tracked[p] = nil
-	end
+	tracked[p] = nil
 end
 
-local function pose(t: Tracked, now: number)
-	local w = t.Weight
+local function offsetFor(kind: string, ph: number): CFrame
+	if kind == "R" then
+		return CFrame.Angles(math.rad(70 + math.sin(ph) * 25), 0, math.rad(-15))
+	elseif kind == "L" then
+		return CFrame.Angles(math.rad(70 + math.sin(ph + math.pi) * 25), 0, math.rad(15))
+	elseif kind == "Waist" then
+		return CFrame.Angles(math.rad(-14 + math.sin(ph * 0.5) * 3), 0, 0)
+	elseif kind == "R6R" then
+		return CFrame.Angles(0, 0, math.rad(80 + math.sin(ph) * 25))
+	elseif kind == "R6L" then
+		return CFrame.Angles(0, 0, math.rad(-80 - math.sin(ph + math.pi) * 25))
+	end
+	return CFrame.identity
+end
+
+local function nearlyEqual(a: CFrame, b: CFrame): boolean
+	return (a.Position - b.Position).Magnitude < 1e-4 and a.LookVector:Dot(b.LookVector) > 0.99999 and a.UpVector:Dot(b.UpVector) > 0.99999
+end
+
+local function applyPose(t: Tracked, now: number)
 	local ph = now * 9 + t.Phase
 	for _, j in ipairs(t.Joints) do
-		local offset
-		if j.Kind == "R" then
-			offset = CFrame.Angles(math.rad(-70 + math.sin(ph) * 25), 0, math.rad(-15))
-		elseif j.Kind == "L" then
-			offset = CFrame.Angles(math.rad(-70 + math.sin(ph + math.pi) * 25), 0, math.rad(15))
-		elseif j.Kind == "Waist" then
-			offset = CFrame.Angles(math.rad(-14 + math.sin(ph * 0.5) * 3), 0, 0)
-		elseif j.Kind == "R6R" then
-			offset = CFrame.Angles(0, 0, math.rad(80 + math.sin(ph) * 25))
-		elseif j.Kind == "R6L" then
-			offset = CFrame.Angles(0, 0, math.rad(-80 - math.sin(ph + math.pi) * 25))
-		else
-			offset = CFrame.new()
+		local joint = j.Instance :: any
+		if joint.Parent then
+			local current: CFrame = joint.Transform
+			-- If nothing overwrote our last write (no animation on this joint), reuse the
+			-- stored base so the offset never accumulates frame over frame.
+			local base = (j.Written and nearlyEqual(current, j.Written) and j.Base) or current
+			if t.Weight <= 0.001 then
+				if j.Written then
+					joint.Transform = base
+					j.Written, j.Base = nil, nil
+				end
+			else
+				local written = base * CFrame.identity:Lerp(offsetFor(j.Kind, ph), t.Weight)
+				joint.Transform = written
+				j.Base, j.Written = base, written
+			end
 		end
-		j.Motor.C0 = j.Base:Lerp(j.Base * offset, w)
 	end
 end
 
@@ -111,7 +125,7 @@ function RummageController.Init()
 end
 
 function RummageController.Start()
-	RunService.Heartbeat:Connect(function(dt)
+	RunService.PreSimulation:Connect(function(dt)
 		local now = os.clock()
 		for p, t in pairs(tracked) do
 			if not t.Character.Parent then
@@ -125,17 +139,17 @@ function RummageController.Start()
 					continue
 				end
 			end
-			local searching = p:GetAttribute("IsSearching") == true
-			local target = searching and 1 or 0
-			if t.Weight ~= target then
-				t.Weight = target > t.Weight and math.min(target, t.Weight + dt * 6) or math.max(target, t.Weight - dt * 5)
-				pose(t, now)
-			elseif searching then
-				pose(t, now)
+			local target = p:GetAttribute("IsSearching") == true and 1 or 0
+			if target > t.Weight then
+				t.Weight = math.min(1, t.Weight + dt * 6)
+			elseif target < t.Weight then
+				t.Weight = math.max(0, t.Weight - dt * 5)
 			end
+			-- At zero weight this restores the last base once, then no-ops.
+			applyPose(t, now)
 		end
-		local me = tracked[player]
-		if me and player:GetAttribute("IsSearching") then
+
+		if player:GetAttribute("IsSearching") and tracked[player] then
 			Controllers.AudioController.PlayLoop("SearchLoop")
 		else
 			Controllers.AudioController.StopLoop("SearchLoop")
