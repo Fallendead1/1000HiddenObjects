@@ -544,6 +544,27 @@ end
 
 -- ===== Target =====
 
+local function verticalHalfExtent(part: BasePart): number
+	local cf, size = part.CFrame, part.Size
+	return (math.abs(cf.RightVector.Y) * size.X + math.abs(cf.UpVector.Y) * size.Y + math.abs(cf.LookVector.Y) * size.Z) / 2
+end
+
+-- Top of the floor/furniture directly under a point, rugs included (they are decor, so a
+-- raycast would miss them).
+local function surfaceBelow(point: Vector3): number
+	local best = match.Runtime.FloorY
+	for _, part in ipairs(match.Runtime.StructureParts) do
+		local lp = part.CFrame:PointToObjectSpace(point)
+		if math.abs(lp.X) <= part.Size.X / 2 and math.abs(lp.Z) <= part.Size.Z / 2 then
+			local top = part.Position.Y + verticalHalfExtent(part)
+			if top <= point.Y + 0.05 and top > best then
+				best = top
+			end
+		end
+	end
+	return best
+end
+
 function MatchService.RevealTarget()
 	if not match or match.TargetRevealed then
 		return
@@ -553,8 +574,20 @@ function MatchService.RevealTarget()
 	local model = TargetBuilder.Get(match.Config.TargetId)
 	model.Name = "HiddenTarget"
 	if model.PrimaryPart then
-		-- Lying flat on the surface it was buried on.
-		model:PivotTo(CFrame.new(socket.Position - Vector3.new(0, 0.15, 0)) * CFrame.Angles(math.rad(90), match.Rng:NextNumber(0, math.pi * 2), 0))
+		-- Target models are authored standing in the XY plane. Spin around the world's vertical
+		-- axis first, then lay it down, so it always lies flat with a random heading.
+		local yaw = match.Rng:NextNumber(0, math.pi * 2)
+		model:PivotTo(CFrame.new(socket.Position) * CFrame.Angles(0, yaw, 0) * CFrame.Angles(math.rad(90), 0, 0))
+		-- Rest its lowest point on the real surface, whatever the model's shape.
+		local lowest = math.huge
+		for _, d in ipairs(model:GetDescendants()) do
+			if d:IsA("BasePart") then
+				lowest = math.min(lowest, d.Position.Y - verticalHalfExtent(d))
+			end
+		end
+		if lowest < math.huge then
+			model:PivotTo(model:GetPivot() + Vector3.new(0, surfaceBelow(socket.Position) + 0.02 - lowest, 0))
+		end
 	end
 	model:SetAttribute("IsTarget", true)
 	CollectionService:AddTag(model, "HiddenTarget")
