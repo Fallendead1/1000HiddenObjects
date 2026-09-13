@@ -20,7 +20,6 @@ local TargetData = require(Shared.Data.TargetData)
 local Services = require(script.Parent)
 local Builders = script.Parent.Parent.Builders
 local TargetBuilder = require(Builders.TargetBuilder)
-local PlaceholderLobbyBuilder = require(Builders.PlaceholderLobbyBuilder)
 local RoomValidator = require(script.Parent.Parent.RoomValidator)
 
 local MatchService = {}
@@ -28,7 +27,7 @@ local MatchService = {}
 local serverRole = "Combined"
 local match = nil
 local stateConfig: Configuration
-local lobbyModel: Model? = nil
+local lobbyModel: Instance? = nil
 local lobbySpawn: BasePart? = nil
 
 local function now(): number
@@ -201,12 +200,19 @@ end
 
 function MatchService.Start(role: string)
 	if role == "Combined" or role == "Lobby" then
-		lobbyModel = PlaceholderLobbyBuilder.Build(CFrame.new(0, 0, 0))
-		lobbyModel.Parent = workspace
-		lobbySpawn = lobbyModel:FindFirstChild("LobbySpawn") :: BasePart
-		local zone = lobbyModel:FindFirstChild("QueueZone")
-		if zone then
-			Services.QueueService.SetZone(zone :: BasePart)
+		-- Workspace.Lobby is authored in Studio and is the only lobby; nothing is generated.
+		lobbyModel = workspace:FindFirstChild("Lobby")
+		if lobbyModel then
+			local tagged = CollectionService:GetTagged("LobbySpawn")
+			for _, inst in ipairs(tagged) do
+				if inst:IsA("BasePart") and inst:IsDescendantOf(lobbyModel) then
+					lobbySpawn = inst
+				end
+			end
+			lobbySpawn = lobbySpawn or lobbyModel:FindFirstChild("LobbySpawn", true) :: BasePart?
+			Services.QueueService.DiscoverZones(lobbyModel)
+		else
+			warn("[MatchService] Workspace.Lobby not found - matchmaking circles disabled (DEV panel can still start rooms).")
 		end
 	end
 	if role == "Match" then
@@ -314,7 +320,7 @@ function MatchService.StartFromTeleport()
 		ResumePercent = tonumber(data.ResumePercent) or 0,
 		Seed = tonumber(data.Seed) or Random.new():NextInteger(1, 2 ^ 30),
 		MatchId = tostring(data.MatchId or "local"),
-	}, CFrame.new(0, 0, 0))
+	}, CFrame.new(GameConfig.CombinedRoomOffset))
 end
 
 function MatchService.BeginMatch(params: LaunchParams, origin: CFrame): boolean
@@ -572,7 +578,8 @@ function MatchService.CompleteMatch(finder: Player)
 		Services.DataService.Update(player, function(data)
 			local contribution = player:GetAttribute("ContributionMess") or 0
 			data.TotalMessCleared += contribution
-			if data.HighestRoomCompleted < roomId then
+			-- Collection progress is strictly sequential: only the player's next required room counts.
+			if data.HighestRoomCompleted + 1 == roomId then
 				data.HighestRoomCompleted = roomId
 				data.ObjectsFound = math.max(data.ObjectsFound, roomId)
 				firstClear = true

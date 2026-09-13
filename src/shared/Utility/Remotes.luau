@@ -14,6 +14,7 @@ local Remotes = {
 		"RequestTrashBomb", -- C->S (clusterId)
 		"RequestPurchase", -- C->S (productKey)
 		"ReturnToLobby", -- C->S
+		"SelectRoom", -- C->S (queueId, roomId) queue owner picks the room
 		"UpdateSettings", -- C->S (settingsTable)
 		"TutorialComplete", -- C->S
 		"DiscardCheckpoint", -- C->S

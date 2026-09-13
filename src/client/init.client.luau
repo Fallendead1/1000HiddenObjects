@@ -43,6 +43,7 @@ local order = {
 	"ResultsController",
 	"TutorialController",
 	"LobbyController",
+	"RoomSelectController",
 	"DevPanelController",
 }
 

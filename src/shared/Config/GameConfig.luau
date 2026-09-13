@@ -19,9 +19,12 @@ return {
 	MaxPartySize = 4,
 	QueueCountdown = 10,
 	FullQueueCountdown = 3,
-	QueueRadius = 9,
+	QueueRadius = 8.5,
 	QueuePollInterval = 0.2,
 	MatchWaitForPartySeconds = 20,
+	-- The first player in an empty circle picks the room. After this many seconds without a
+	-- choice the queue auto-selects their highest unlocked room so groups never stall.
+	QueueSelectionTimeout = 25,
 
 	-- Searching
 	SearchDistance = 8,

@@ -1,156 +1,342 @@
 --[[
-	Physical lobby queue. Players inside the QueueZone radius are queued; the first player
-	starts a countdown, a full queue shortens it, walking out leaves. At zero the queue
-	locks, snapshots the party and hands it to the teleport wrapper.
+	Room-aware lobby matchmaking. Every part tagged `QueueZone` inside Workspace.Lobby is an
+	independent queue (Queue01..Queue04 today). One service drives them all.
 
-	States: Empty, Waiting, CountingDown, Locked, Teleporting, Resetting
+	Flow per queue:
+	  Empty -> first player steps in, becomes owner -> Selecting (owner picks a room)
+	        -> CountingDown (others may join the selected room, max 4)
+	        -> Locked -> Teleporting (party + RoomId + MatchId + Seed sent to a fresh match)
+	        -> Resetting -> Empty
+
+	Zone attributes (read by clients): QueueId, State, Count, MaxPlayers, Countdown, RoomId,
+	RoomNumber, RoomName, TargetName, OwnerUserId, OwnerName, SelectionDeadline, ResumePercent.
+	Player attribute: QueueId ("" when not queued).
 ]]
 
 local Players = game:GetService("Players")
+local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage.Shared
 local GameConfig = require(Shared.Config.GameConfig)
 local RoomRegistry = require(Shared.Config.RoomConfigs)
-local FormatUtil = require(Shared.Utility.FormatUtil)
+local Remotes = require(Shared.Utility.Remotes)
+local RateLimiter = require(Shared.Utility.RateLimiter)
 
 local Services = require(script.Parent)
 
 local QueueService = {}
 
-local zone: BasePart? = nil
-local state = "Empty"
-local queued: { Player } = {}
-local countdownEnd = 0
+type Queue = {
+	Id: string,
+	Zone: BasePart,
+	State: string,
+	Players: { Player },
+	Owner: Player?,
+	RoomId: number,
+	CountdownEnd: number,
+	SelectionDeadline: number,
+	Busy: boolean,
+}
+
+local queues: { Queue } = {}
+local byId: { [string]: Queue } = {}
 local serverRole = "Combined"
+local selectLimiter = RateLimiter.new(3, 5)
+local lockedNoticeAt: { [Player]: number } = {}
 
-local function setAttr(name: string, value: any)
-	if zone then
-		zone:SetAttribute(name, value)
-	end
+local function serverNow(): number
+	return workspace:GetServerTimeNow()
 end
 
-local function setState(newState: string)
-	state = newState
-	setAttr("State", newState)
+local function setAttr(q: Queue, name: string, value: any)
+	q.Zone:SetAttribute(name, value)
 end
 
-local function isInside(player: Player): boolean
-	if not zone then
+local function isInside(q: Queue, player: Player): boolean
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not root or not humanoid or humanoid.Health <= 0 then
 		return false
 	end
-	local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
-	if not root then
-		return false
-	end
-	local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
-	if not humanoid or humanoid.Health <= 0 then
-		return false
-	end
-	local radius = zone:GetAttribute("Radius") or GameConfig.QueueRadius
-	local delta = root.Position - zone.Position
-	local flat = Vector3.new(delta.X, 0, delta.Z)
-	return flat.Magnitude <= radius and math.abs(delta.Y) < 12
+	local radius = q.Zone:GetAttribute("Radius") or GameConfig.QueueRadius
+	local delta = root.Position - q.Zone.Position
+	return Vector3.new(delta.X, 0, delta.Z).Magnitude <= radius and math.abs(delta.Y) <= 10
 end
 
--- The room a party will play: the lowest next-required room among the party, capped to
--- the rooms that exist. Players who have finished everything replay the highest room.
-local function resolveRoomId(players: { Player }): number
-	local highestAvailable = RoomRegistry.GetHighestAvailable()
-	local lowestNext = math.huge
-	for _, player in ipairs(players) do
-		local data = Services.DataService.Get(player)
-		local nextRoom = ((data and data.HighestRoomCompleted) or 0) + 1
-		lowestNext = math.min(lowestNext, nextRoom)
-	end
-	if lowestNext == math.huge then
-		lowestNext = 1
-	end
-	return math.clamp(lowestNext, 1, highestAvailable)
+local function highestCompleted(player: Player): number
+	local data = Services.DataService.Get(player)
+	return data and data.HighestRoomCompleted or 0
 end
 
-local function updateDisplay()
-	local count = #queued
-	setAttr("Count", count)
-	local roomId = resolveRoomId(queued)
-	setAttr("RoomId", roomId)
-	if state == "Empty" then
-		setAttr("Countdown", 0)
-		setAttr("Message", "STEP INSIDE TO PLAY")
-	elseif state == "CountingDown" then
-		local remaining = math.max(0, countdownEnd - os.clock())
-		setAttr("Countdown", math.ceil(remaining))
-		local resume = Services.CheckpointService.ResolveResumePercent(queued, roomId)
-		if resume > 0 then
-			setAttr("Message", string.format("RESUME ROOM %s - %d%% CHECKPOINT", FormatUtil.RoomNumber(roomId), math.floor(resume * 100)))
-		else
-			setAttr("Message", string.format("ROOM %s", FormatUtil.RoomNumber(roomId)))
+-- Unlocked = any existing room up to (and including) the player's next required room.
+function QueueService.CanPlayRoom(player: Player, roomId: number): boolean
+	return RoomRegistry.Exists(roomId) and roomId <= highestCompleted(player) + 1
+end
+
+local function defaultRoomFor(player: Player): number
+	local target = math.min(highestCompleted(player) + 1, RoomRegistry.GetHighestAvailable())
+	while target > 1 and not RoomRegistry.Exists(target) do
+		target -= 1
+	end
+	return math.max(1, target)
+end
+
+local function updateDisplay(q: Queue)
+	setAttr(q, "State", q.State)
+	setAttr(q, "Count", #q.Players)
+	setAttr(q, "MaxPlayers", GameConfig.MaxPartySize)
+	setAttr(q, "OwnerUserId", q.Owner and q.Owner.UserId or 0)
+	setAttr(q, "OwnerName", q.Owner and q.Owner.DisplayName or "")
+	setAttr(q, "SelectionDeadline", q.State == "Selecting" and q.SelectionDeadline or 0)
+
+	local config = q.RoomId > 0 and RoomRegistry.Get(q.RoomId) or nil
+	setAttr(q, "RoomId", q.RoomId)
+	setAttr(q, "RoomNumber", config and config.DisplayNumber or "")
+	setAttr(q, "RoomName", config and config.Name or "")
+	setAttr(q, "TargetName", config and config.TargetName or "")
+
+	if q.State == "CountingDown" then
+		setAttr(q, "Countdown", math.max(0, math.ceil(q.CountdownEnd - os.clock())))
+		setAttr(q, "ResumePercent", Services.CheckpointService.ResolveResumePercent(q.Players, q.RoomId))
+	else
+		setAttr(q, "Countdown", 0)
+		if q.State == "Empty" then
+			setAttr(q, "ResumePercent", 0)
 		end
-	elseif state == "Locked" or state == "Teleporting" then
-		setAttr("Countdown", 0)
-		setAttr("Message", "STARTING...")
 	end
 end
 
-local function launch()
-	setState("Locked")
+local function removePlayer(q: Queue, index: number)
+	local player = table.remove(q.Players, index)
+	if player and player.Parent then
+		player:SetAttribute("QueueId", "")
+	end
+	if q.Owner == player then
+		q.Owner = nil
+	end
+	return player
+end
+
+local function reset(q: Queue)
+	for i = #q.Players, 1, -1 do
+		removePlayer(q, i)
+	end
+	q.State = "Empty"
+	q.Owner = nil
+	q.RoomId = 0
+	q.CountdownEnd = 0
+	q.SelectionDeadline = 0
+	q.Busy = false
+	updateDisplay(q)
+end
+
+local function notifyLocked(player: Player, roomId: number)
+	local now = os.clock()
+	if (lockedNoticeAt[player] or 0) > now then
+		return
+	end
+	lockedNoticeAt[player] = now + 5
+	Services.NotificationService.Send(player, "Warning", string.format("Room #%03d is locked for you. Try another circle!", roomId))
+end
+
+local function selectRoom(q: Queue, roomId: number)
+	q.RoomId = roomId
+	q.State = "CountingDown"
+	-- Anyone who joined while the owner was choosing but hasn't unlocked this room drops out.
+	for i = #q.Players, 1, -1 do
+		local player = q.Players[i]
+		if not QueueService.CanPlayRoom(player, roomId) then
+			removePlayer(q, i)
+			notifyLocked(player, roomId)
+		end
+	end
+	local full = #q.Players >= GameConfig.MaxPartySize
+	q.CountdownEnd = os.clock() + (full and GameConfig.FullQueueCountdown or GameConfig.QueueCountdown)
+	updateDisplay(q)
+	Services.AnalyticsService.Log("queue_room_selected", q.Owner or q.Players[1], { QueueId = q.Id, RoomId = roomId })
+end
+
+local function launch(q: Queue)
+	q.Busy = true
+	q.State = "Locked"
+	updateDisplay(q)
+
 	local party = {}
-	for _, player in ipairs(queued) do
-		if player.Parent and isInside(player) then
+	for _, player in ipairs(q.Players) do
+		if player.Parent and isInside(q, player) and not Services.MatchService.IsPlayerInMatch(player) then
 			table.insert(party, player)
 		end
 	end
-	queued = {}
-	updateDisplay()
 	if #party == 0 then
-		setState("Empty")
-		updateDisplay()
+		reset(q)
 		return
 	end
-	for _, player in ipairs(party) do
-		if Services.MatchService.IsPlayerInMatch(player) then
-			setState("Empty")
-			updateDisplay()
-			return
-		end
-	end
 
-	setState("Teleporting")
-	local roomId = resolveRoomId(party)
+	q.State = "Teleporting"
+	setAttr(q, "Count", #party)
+	updateDisplay(q)
+	local roomId = q.RoomId
 	local resume = Services.CheckpointService.ResolveResumePercent(party, roomId)
 	for _, player in ipairs(party) do
-		player:SetAttribute("Queued", false)
 		player:SetAttribute("Teleporting", true)
 	end
-	Services.AnalyticsService.Log("queue_start", party[1], { PartySize = #party, RoomId = roomId })
+	Services.AnalyticsService.Log("queue_start", party[1], { QueueId = q.Id, PartySize = #party, RoomId = roomId })
+	task.wait(0.8)
 
 	local ok = Services.TeleportServiceWrapper.TeleportParty({
 		Players = party,
 		RoomId = roomId,
 		ResumePercent = resume,
+		QueueId = q.Id,
 	})
 	for _, player in ipairs(party) do
-		player:SetAttribute("Teleporting", false)
+		if player.Parent then
+			player:SetAttribute("Teleporting", false)
+			player:SetAttribute("QueueId", "")
+		end
 	end
-	if not ok then
-		-- Failure: players stay in the lobby and may queue again immediately.
-		task.wait(1)
+	q.Players = {}
+	q.Owner = nil
+	q.State = "Resetting"
+	updateDisplay(q)
+	task.wait(ok and 3 or 1.5)
+	reset(q)
+end
+
+local function step(q: Queue)
+	if q.Busy then
+		return
 	end
-	setState("Resetting")
-	task.wait(serverRole == "Combined" and 2 or 4)
-	setState("Empty")
-	updateDisplay()
+
+	-- Drop players who walked out, left, or entered a match.
+	for i = #q.Players, 1, -1 do
+		local player = q.Players[i]
+		if not player.Parent or not isInside(q, player) or Services.MatchService.IsPlayerInMatch(player) then
+			removePlayer(q, i)
+			Services.AnalyticsService.Log("queue_leave", player, { QueueId = q.Id })
+		end
+	end
+
+	-- Add newcomers (never someone already in another queue).
+	for _, player in ipairs(Players:GetPlayers()) do
+		if #q.Players >= GameConfig.MaxPartySize then
+			break
+		end
+		if (player:GetAttribute("QueueId") or "") == ""
+			and player:GetAttribute("DataLoaded")
+			and not player:GetAttribute("Teleporting")
+			and not Services.MatchService.IsPlayerInMatch(player)
+			and isInside(q, player)
+		then
+			if q.RoomId > 0 and not QueueService.CanPlayRoom(player, q.RoomId) then
+				notifyLocked(player, q.RoomId)
+			else
+				table.insert(q.Players, player)
+				player:SetAttribute("QueueId", q.Id)
+				Services.AnalyticsService.Log("queue_join", player, { QueueId = q.Id })
+				if q.State == "CountingDown" and #q.Players >= GameConfig.MaxPartySize then
+					q.CountdownEnd = math.min(q.CountdownEnd, os.clock() + GameConfig.FullQueueCountdown)
+				end
+			end
+		end
+	end
+
+	if #q.Players == 0 then
+		if q.State ~= "Empty" then
+			reset(q)
+		else
+			updateDisplay(q)
+		end
+		return
+	end
+
+	if q.State == "Empty" then
+		q.State = "Selecting"
+		q.Owner = q.Players[1]
+		q.SelectionDeadline = serverNow() + GameConfig.QueueSelectionTimeout
+	end
+
+	if q.State == "Selecting" then
+		if not q.Owner then
+			-- Owner walked out while choosing: the next player in line takes over.
+			q.Owner = q.Players[1]
+			q.SelectionDeadline = serverNow() + GameConfig.QueueSelectionTimeout
+		end
+		if serverNow() >= q.SelectionDeadline then
+			selectRoom(q, defaultRoomFor(q.Owner :: Player))
+		end
+	elseif q.State == "CountingDown" and os.clock() >= q.CountdownEnd then
+		task.spawn(launch, q)
+		return
+	end
+
+	updateDisplay(q)
 end
 
 function QueueService.Init(role: string)
 	serverRole = role
+	Remotes.Event("SelectRoom").OnServerEvent:Connect(function(player, queueId, roomId)
+		if not selectLimiter:Allow(player) or type(queueId) ~= "string" then
+			return
+		end
+		local q = byId[queueId]
+		roomId = tonumber(roomId)
+		if not q or q.Busy or q.State ~= "Selecting" or q.Owner ~= player or not roomId then
+			return
+		end
+		if not QueueService.CanPlayRoom(player, roomId) then
+			Services.NotificationService.Send(player, "Error", "That room is locked.")
+			return
+		end
+		selectRoom(q, roomId)
+	end)
 end
 
-function QueueService.SetZone(part: BasePart)
-	zone = part
-	setAttr("MaxPlayers", GameConfig.MaxPartySize)
-	setState("Empty")
-	updateDisplay()
+-- Registers every QueueZone under the lobby. Zones are data: QueueId + Radius attributes.
+function QueueService.DiscoverZones(lobby: Instance?)
+	if not lobby then
+		return
+	end
+	local found = {}
+	for _, inst in ipairs(CollectionService:GetTagged("QueueZone")) do
+		if inst:IsA("BasePart") and inst:IsDescendantOf(lobby) then
+			found[inst] = true
+		end
+	end
+	for _, inst in ipairs(lobby:GetDescendants()) do
+		if inst:IsA("BasePart") and inst.Name == "QueueZone" then
+			found[inst] = true
+		end
+	end
+	for zone in pairs(found) do
+		local id = zone:GetAttribute("QueueId") or (zone.Parent and zone.Parent.Name) or zone.Name
+		if byId[id] then
+			id = id .. "_" .. #queues + 1
+		end
+		zone:SetAttribute("QueueId", id)
+		zone.CanCollide = false
+		zone.CanTouch = false
+		local q: Queue = {
+			Id = id,
+			Zone = zone,
+			State = "Empty",
+			Players = {},
+			Owner = nil,
+			RoomId = 0,
+			CountdownEnd = 0,
+			SelectionDeadline = 0,
+			Busy = false,
+		}
+		table.insert(queues, q)
+		byId[id] = q
+		updateDisplay(q)
+	end
+	table.sort(queues, function(a, b)
+		return a.Id < b.Id
+	end)
+	print(string.format("[QueueService] %d matchmaking queues registered", #queues))
 end
 
 function QueueService.Start(role: string)
@@ -160,76 +346,30 @@ function QueueService.Start(role: string)
 	task.spawn(function()
 		while true do
 			task.wait(GameConfig.QueuePollInterval)
-			if zone then
-				QueueService.Step()
+			for _, q in ipairs(queues) do
+				local ok, err = pcall(step, q)
+				if not ok then
+					warn("[QueueService]", q.Id, err)
+				end
 			end
 		end
 	end)
 	Players.PlayerRemoving:Connect(function(player)
-		local idx = table.find(queued, player)
-		if idx then
-			table.remove(queued, idx)
+		lockedNoticeAt[player] = nil
+		for _, q in ipairs(queues) do
+			local idx = table.find(q.Players, player)
+			if idx then
+				table.remove(q.Players, idx)
+				if q.Owner == player then
+					q.Owner = nil
+				end
+			end
 		end
 	end)
 end
 
-function QueueService.Step()
-	if state == "Locked" or state == "Teleporting" or state == "Resetting" then
-		return
-	end
-
-	local changed = false
-	-- Remove players who left the circle.
-	for i = #queued, 1, -1 do
-		local player = queued[i]
-		if not player.Parent or not isInside(player) or Services.MatchService.IsPlayerInMatch(player) then
-			table.remove(queued, i)
-			player:SetAttribute("Queued", false)
-			changed = true
-			Services.AnalyticsService.Log("queue_leave", player)
-		end
-	end
-	-- Add players who entered.
-	if #queued < GameConfig.MaxPartySize then
-		for _, player in ipairs(Players:GetPlayers()) do
-			if #queued >= GameConfig.MaxPartySize then
-				break
-			end
-			if not table.find(queued, player) and isInside(player) and not Services.MatchService.IsPlayerInMatch(player) and player:GetAttribute("DataLoaded") then
-				table.insert(queued, player)
-				player:SetAttribute("Queued", true)
-				changed = true
-				Services.AnalyticsService.Log("queue_join", player)
-			end
-		end
-	end
-
-	if #queued == 0 then
-		if state ~= "Empty" then
-			setState("Empty")
-		end
-		updateDisplay()
-		return
-	end
-
-	if state == "Empty" or state == "Waiting" then
-		setState("CountingDown")
-		countdownEnd = os.clock() + GameConfig.QueueCountdown
-	end
-
-	if changed and #queued >= GameConfig.MaxPartySize then
-		countdownEnd = math.min(countdownEnd, os.clock() + GameConfig.FullQueueCountdown)
-	end
-
-	updateDisplay()
-
-	if os.clock() >= countdownEnd then
-		launch()
-	end
-end
-
-function QueueService.GetState(): string
-	return state
+function QueueService.GetQueues(): { Queue }
+	return queues
 end
 
 return QueueService

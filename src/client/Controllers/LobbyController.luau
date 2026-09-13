@@ -1,7 +1,11 @@
 --[[
-	Lobby world GUIs and ambient motion: queue sign + ring/light colours by state, big
-	countdown, collection board, shop stand, leaderboards, future door, rotating key.
-	All geometry is server-built and tagged; this controller only attaches GUIs and animates.
+	Lobby presentation. The lobby itself is authored in Workspace.Lobby; this controller only
+	animates and labels it:
+	  - QueueZone: glowing circle (Visual/GlowDisc, GlowCore, GlowRim, SparklePlane.Sparkles)
+	    coloured + pulsed by queue state, with a floating sign above it, plus a HUD pill while
+	    the local player is queued.
+	  - Optional tagged extras: CollectionBoard, ShopStand, Leaderboard (attr Kind), FutureDoor,
+	    LobbyKeyDeco. Tag any part in the lobby to enable them.
 ]]
 
 local CollectionService = game:GetService("CollectionService")
@@ -9,7 +13,6 @@ local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
-local TweenService = game:GetService("TweenService")
 
 local Shared = ReplicatedStorage.Shared
 local GameConfig = require(Shared.Config.GameConfig)
@@ -22,146 +25,208 @@ local player = Players.LocalPlayer
 
 local LobbyController = {}
 
-local attached: { [Instance]: boolean } = {}
-local queueZone: BasePart? = nil
-local lastCountdown = -1
-
-local StateColors = {
-	Empty = UI.Colors.Green,
-	Waiting = UI.Colors.Green,
-	CountingDown = UI.Colors.Gold,
-	Locked = UI.Colors.Red,
-	Teleporting = UI.Colors.Red,
-	Resetting = UI.Colors.Locked,
+type QueueVisual = {
+	Zone: BasePart,
+	Disc: BasePart?,
+	Core: BasePart?,
+	Light: PointLight?,
+	Sparkles: ParticleEmitter?,
+	Color: Color3,
+	PulseSpeed: number,
 }
 
-local function setQueueColor(color: Color3)
-	if queueZone then
-		TweenService:Create(queueZone, TweenInfo.new(0.3), { Color = color }):Play()
-	end
-	for _, light in ipairs(CollectionService:GetTagged("QueueLight")) do
-		if light:IsA("BasePart") then
-			TweenService:Create(light, TweenInfo.new(0.3), { Color = color }):Play()
-		end
-	end
+local attached: { [Instance]: boolean } = {}
+local visuals: { QueueVisual } = {}
+local queuePill: Frame
+local queuePillLabel: TextLabel
+
+local StateStyle = {
+	Empty = { Color = UI.Colors.Green, Pulse = 1.2 },
+	Selecting = { Color = UI.Colors.Cyan, Pulse = 2 },
+	CountingDown = { Color = UI.Colors.Gold, Pulse = 3 },
+	Locked = { Color = UI.Colors.Orange, Pulse = 6 },
+	Teleporting = { Color = UI.Colors.Orange, Pulse = 6 },
+	Resetting = { Color = UI.Colors.Locked, Pulse = 0.6 },
+}
+
+local function zoneState(zone: BasePart): string
+	return zone:GetAttribute("State") or "Empty"
 end
 
-local function attachQueueSign(zone: BasePart)
-	queueZone = zone
-	local anchor = zone.Parent and zone.Parent:FindFirstChild("QueueSignAnchor") or zone
-	local bb = UI.Billboard(anchor :: BasePart, UDim2.fromOffset(340, 240), Vector3.new(0, 1, 0), 150)
-	bb.Name = "QueueSign"
-	local panel = UI.Panel({ BackgroundTransparency = 0.1 }, bb)
-	UI.Stroke(panel, UI.Colors.Green, 3)
-	local play = UI.Label({ Text = "PLAY", TextSize = 70, TextColor3 = UI.Colors.Green, Size = UDim2.new(1, 0, 0, 78), Position = UDim2.fromOffset(0, 2) }, panel)
-	UI.Label({ Text = "1 - 4 PLAYERS", TextSize = 22, TextColor3 = UI.Colors.TextDim, Size = UDim2.new(1, 0, 0, 26), Position = UDim2.fromOffset(0, 78) }, panel)
-	local status = UI.Label({ Text = "STEP INSIDE TO PLAY", TextSize = 26, Size = UDim2.new(1, -16, 0, 40), Position = UDim2.fromOffset(8, 108) }, panel)
-	local countdown = UI.Label({ Text = "", TextSize = 56, TextColor3 = UI.Colors.Gold, Size = UDim2.new(1, 0, 0, 64), Position = UDim2.fromOffset(0, 150) }, panel)
-	local sub = UI.Label({ Text = "", TextSize = 16, Font = UI.FontBody, TextColor3 = UI.Colors.Cyan, Size = UDim2.new(1, -16, 0, 22), Position = UDim2.fromOffset(8, 214) }, panel)
-	local stroke = panel:FindFirstChildOfClass("UIStroke")
+-- Text for the floating sign above a circle. Returns title, subtitle, count, countdown.
+local function describe(zone: BasePart): (string, string, string, string, Color3)
+	local state = zoneState(zone)
+	local count = zone:GetAttribute("Count") or 0
+	local max = zone:GetAttribute("MaxPlayers") or GameConfig.MaxPartySize
+	local roomNumber = zone:GetAttribute("RoomNumber") or ""
+	local roomName = string.upper(zone:GetAttribute("RoomName") or "")
+	local countText = string.format("%d / %d PLAYERS", count, max)
+	local style = StateStyle[state] or StateStyle.Empty
 
-	local lastCount = 0
-	local function refresh()
-		local state = zone:GetAttribute("State") or "Empty"
-		local count = zone:GetAttribute("Count") or 0
-		local max = zone:GetAttribute("MaxPlayers") or GameConfig.MaxPartySize
+	if state == "Selecting" then
+		local owner = zone:GetAttribute("OwnerUserId") == player.UserId and "YOU ARE" or ((zone:GetAttribute("OwnerName") or "HOST") .. " IS")
+		return "JOINING...", owner .. " CHOOSING A ROOM", countText, "", style.Color
+	elseif state == "CountingDown" then
 		local cd = zone:GetAttribute("Countdown") or 0
-		local msg = zone:GetAttribute("Message") or ""
-		local color = StateColors[state] or UI.Colors.Green
-		if stroke then
-			stroke.Color = color
+		local resume = zone:GetAttribute("ResumePercent") or 0
+		local sub = roomName .. (resume > 0 and string.format("  -  RESUME %d%%", math.floor(resume * 100)) or "")
+		return "ROOM #" .. roomNumber, sub, countText, count >= max and "STARTING..." or ("STARTING IN " .. cd), style.Color
+	elseif state == "Locked" then
+		return "ROOM #" .. roomNumber, roomName, string.format("%d / %d", count, max), "STARTING...", style.Color
+	elseif state == "Teleporting" then
+		return string.format("%d / %d", count, max), "ROOM #" .. roomNumber, "", "TELEPORTING...", style.Color
+	elseif state == "Resetting" then
+		return "PLAY", "NEXT GROUP...", "", "", style.Color
+	end
+	return "PLAY", "STEP INSIDE TO PLAY", "1 - 4 PLAYERS", "", style.Color
+end
+
+local function attachQueueZone(zone: BasePart)
+	local model = zone.Parent
+	local visualFolder = model and model:FindFirstChild("Visual")
+	local disc = visualFolder and visualFolder:FindFirstChild("GlowDisc") :: BasePart?
+	local plane = visualFolder and visualFolder:FindFirstChild("SparklePlane")
+	local entry: QueueVisual = {
+		Zone = zone,
+		Disc = disc,
+		Core = visualFolder and visualFolder:FindFirstChild("GlowCore") :: BasePart?,
+		Light = disc and disc:FindFirstChildOfClass("PointLight"),
+		Sparkles = plane and plane:FindFirstChildOfClass("ParticleEmitter"),
+		Color = UI.Colors.Green,
+		PulseSpeed = 1.2,
+	}
+	table.insert(visuals, entry)
+
+	-- Sized in studs so signs shrink with distance instead of crowding the screen.
+	local bb = UI.Billboard(zone, UDim2.fromScale(11, 6.4), Vector3.new(0, 7.5, 0), 160)
+	bb.Name = "QueueSign_" .. (zone:GetAttribute("QueueId") or "")
+	local panel = UI.Panel({ BackgroundTransparency = 0.12 }, bb)
+	local stroke = panel:FindFirstChildOfClass("UIStroke") :: UIStroke
+	stroke.Thickness = 3
+	local function line(y: number, h: number, color: Color3, maxSize: number): TextLabel
+		local label = UI.Label({ Text = "", TextScaled = true, TextColor3 = color, Size = UDim2.new(0.92, 0, h, 0), Position = UDim2.new(0.04, 0, y, 0) }, panel)
+		UI.New("UITextSizeConstraint", { MaxTextSize = maxSize }, label)
+		return label
+	end
+	local title = line(0.03, 0.32, UI.Colors.Green, 64)
+	local subtitle = line(0.36, 0.16, UI.Colors.Text, 26)
+	local countLabel = line(0.54, 0.18, UI.Colors.TextDim, 30)
+	local countdown = line(0.74, 0.22, UI.Colors.Gold, 40)
+
+	local lastCount, lastCd = zone:GetAttribute("Count") or 0, -1
+	local function refresh()
+		local t, s, c, cd, color = describe(zone)
+		title.Text = t
+		title.TextColor3 = color
+		subtitle.Text = s
+		countLabel.Text = c
+		countdown.Text = cd
+		stroke.Color = color
+
+		local style = StateStyle[zoneState(zone)] or StateStyle.Empty
+		entry.Color = style.Color
+		entry.PulseSpeed = style.Pulse
+		if entry.Disc then
+			UI.Tween(entry.Disc, { Color = style.Color }, 0.3)
 		end
-		play.TextColor3 = color
-		setQueueColor(color)
-		if state == "Empty" or count == 0 then
-			status.Text = "STEP INSIDE TO PLAY"
-			countdown.Text = ""
-			sub.Text = ""
-		elseif state == "CountingDown" then
-			status.Text = string.format("%d / %d PLAYERS", count, max)
-			countdown.Text = count >= max and "GO!" or tostring(cd)
-			sub.Text = (count >= max and "FULL PARTY - STARTING" or "STARTING IN") .. (msg ~= "" and ("  |  " .. msg) or "")
-			if cd ~= lastCountdown then
-				lastCountdown = cd
-				local s = countdown:FindFirstChildOfClass("UIScale") or UI.New("UIScale", {}, countdown)
-				s.Scale = 1.35
-				UI.Tween(s, { Scale = 1 }, 0.3, Enum.EasingStyle.Back)
-				if cd <= 3 and player:GetAttribute("Queued") then
-					Controllers.AudioController.Play("Countdown")
-				end
-			end
-		else
-			status.Text = string.format("%d / %d PLAYERS", count, max)
-			countdown.Text = "GO!"
-			sub.Text = "STARTING..."
+		if entry.Light then
+			UI.Tween(entry.Light, { Color = style.Color }, 0.3)
 		end
+		if entry.Sparkles then
+			entry.Sparkles.Color = ColorSequence.new(style.Color)
+			entry.Sparkles.Rate = zoneState(zone) == "Empty" and 5 or 14
+		end
+
+		local inThisQueue = player:GetAttribute("QueueId") == zone:GetAttribute("QueueId")
+		local count = zone:GetAttribute("Count") or 0
 		if count ~= lastCount then
-			if player:GetAttribute("Queued") then
+			if inThisQueue then
 				Controllers.AudioController.Play(count > lastCount and "QueueEnter" or "QueueLeave")
 			end
 			lastCount = count
 		end
+		local cdValue = zone:GetAttribute("Countdown") or 0
+		if zoneState(zone) == "CountingDown" and cdValue ~= lastCd then
+			lastCd = cdValue
+			local sc = countdown:FindFirstChildOfClass("UIScale") or UI.New("UIScale", {}, countdown)
+			sc.Scale = 1.3
+			UI.Tween(sc, { Scale = 1 }, 0.3, Enum.EasingStyle.Back)
+			if inThisQueue and cdValue <= 3 then
+				Controllers.AudioController.Play("Countdown")
+			end
+		end
+		LobbyController.RefreshPill()
 	end
-	for _, name in ipairs({ "State", "Count", "Countdown", "Message", "MaxPlayers" }) do
+	for _, name in ipairs({ "State", "Count", "Countdown", "RoomNumber", "RoomName", "OwnerUserId", "OwnerName", "ResumePercent" }) do
 		zone:GetAttributeChangedSignal(name):Connect(refresh)
 	end
 	refresh()
+end
 
-	task.spawn(function()
-		while zone.Parent do
-			local state = zone:GetAttribute("State")
-			if state == "CountingDown" then
-				UI.Tween(zone, { Transparency = 0.05 }, 0.4)
-				task.wait(0.4)
-				UI.Tween(zone, { Transparency = 0.5 }, 0.4)
-				task.wait(0.4)
+function LobbyController.RefreshPill()
+	local queueId = player:GetAttribute("QueueId") or ""
+	if queueId == "" or player:GetAttribute("InMatch") then
+		queuePill.Visible = false
+		return
+	end
+	for _, v in ipairs(visuals) do
+		if v.Zone:GetAttribute("QueueId") == queueId then
+			local state = zoneState(v.Zone)
+			local text
+			if state == "Selecting" then
+				text = v.Zone:GetAttribute("OwnerUserId") == player.UserId and "CHOOSE A ROOM TO START" or "WAITING FOR THE HOST TO CHOOSE A ROOM"
+			elseif state == "CountingDown" then
+				text = string.format("ROOM #%s  -  %d/%d  -  STARTING IN %d", v.Zone:GetAttribute("RoomNumber") or "", v.Zone:GetAttribute("Count") or 0, v.Zone:GetAttribute("MaxPlayers") or 4, v.Zone:GetAttribute("Countdown") or 0)
 			else
-				UI.Tween(zone, { Transparency = 0.3 }, 1.2)
-				task.wait(1.2)
-				UI.Tween(zone, { Transparency = 0.5 }, 1.2)
-				task.wait(1.2)
+				text = "TELEPORTING..."
 			end
+			queuePillLabel.Text = text .. (state ~= "Teleporting" and "\nWalk out of the circle to leave" or "")
+			queuePill.Visible = true
+			local stroke = queuePill:FindFirstChildOfClass("UIStroke")
+			if stroke then
+				stroke.Color = v.Color
+			end
+			return
 		end
-	end)
+	end
+	queuePill.Visible = false
 end
 
 local function attachCollectionBoard(part: BasePart)
-	local sg = UI.Surface(part, Enum.NormalId.Right, 30)
-	sg.Name = "CollectionBoardGui"
+	local sg = UI.Surface(part, (part:GetAttribute("Face") and Enum.NormalId[part:GetAttribute("Face")]) or Enum.NormalId.Front, 30)
 	local panel = UI.Frame({ BackgroundTransparency = 1 }, sg)
 	UI.Label({ Text = "YOUR COLLECTION", TextSize = 44, TextColor3 = UI.Colors.TextDim, Size = UDim2.new(1, 0, 0.2, 0) }, panel)
 	local count = UI.Label({ Text = "0 / 1000", TextSize = 100, TextColor3 = UI.Colors.Gold, Size = UDim2.new(1, 0, 0.4, 0), Position = UDim2.fromScale(0, 0.18) }, panel)
-	local bar = UI.ProgressBar(panel, UDim2.new(0.8, 0, 0.06, 0), UDim2.fromScale(0.1, 0.6), UI.Colors.Gold)
 	local button = UI.Button({ Text = "VIEW COLLECTION", Color = UI.Colors.Gold, Size = UDim2.new(0.6, 0, 0.16, 0), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.fromScale(0.5, 0.72), TextSize = 40 }, panel)
 	button.Activated:Connect(function()
 		Controllers.CollectionController.Open()
 	end)
 	local function refresh()
-		local found = player:GetAttribute("ObjectsFound") or 0
-		count.Text = string.format("%d / %d", found, GameConfig.TotalObjects)
-		bar.Set(found / GameConfig.TotalObjects)
+		count.Text = string.format("%d / %d", player:GetAttribute("ObjectsFound") or 0, GameConfig.TotalObjects)
 	end
 	player:GetAttributeChangedSignal("ObjectsFound"):Connect(refresh)
 	refresh()
 end
 
 local function attachShopStand(part: BasePart)
-	local bb = UI.Billboard(part, UDim2.fromOffset(220, 80), Vector3.new(0, 12, 0), 90)
+	local bb = UI.Billboard(part, UDim2.fromOffset(220, 80), Vector3.new(0, part.Size.Y / 2 + 4, 0), 90)
 	local panel = UI.Panel({ BackgroundTransparency = 0.1 }, bb)
 	UI.Stroke(panel, UI.Colors.Purple, 3)
 	UI.Label({ Text = "SHOP", TextSize = 44, TextColor3 = UI.Colors.Purple }, panel)
-	for _, face in ipairs({ Enum.NormalId.Front, Enum.NormalId.Back, Enum.NormalId.Left, Enum.NormalId.Right }) do
-		local sg = UI.Surface(part, face, 30)
-		local b = UI.Button({ Text = "OPEN SHOP", Color = UI.Colors.Purple, Size = UDim2.new(0.8, 0, 0.45, 0), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), TextSize = 30 }, sg)
-		b.Activated:Connect(function()
-			Controllers.ShopController.Open()
-		end)
-	end
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.ActionText = "Open Shop"
+	prompt.ObjectText = "Shop"
+	prompt.RequiresLineOfSight = false
+	prompt.MaxActivationDistance = 12
+	prompt.Parent = part
+	prompt.Triggered:Connect(function()
+		Controllers.ShopController.Open()
+	end)
 end
 
 local function attachLeaderboard(part: BasePart)
 	local kind = part:GetAttribute("Kind") or "TopFinders"
-	local sg = UI.Surface(part, Enum.NormalId.Front, 30)
+	local sg = UI.Surface(part, (part:GetAttribute("Face") and Enum.NormalId[part:GetAttribute("Face")]) or Enum.NormalId.Front, 30)
 	local panel = UI.Frame({ BackgroundTransparency = 1 }, sg)
 	UI.Label({ Text = kind == "Fastest" and "FASTEST ROOM #001" or "TOP OBJECT FINDERS", TextSize = 40, TextColor3 = kind == "Fastest" and UI.Colors.Cyan or UI.Colors.Gold, Size = UDim2.new(1, 0, 0.14, 0) }, panel)
 	local list = UI.Frame({ BackgroundTransparency = 1, Size = UDim2.new(1, -20, 0.84, 0), Position = UDim2.new(0, 10, 0.15, 0) }, panel)
@@ -201,7 +266,7 @@ local function attachLeaderboard(part: BasePart)
 end
 
 local function attachFutureDoor(part: BasePart)
-	local bb = UI.Billboard(part, UDim2.fromOffset(280, 64), Vector3.new(0, 6, 0), 80)
+	local bb = UI.Billboard(part, UDim2.fromOffset(280, 64), Vector3.new(0, part.Size.Y / 2 + 2, 0), 80)
 	local panel = UI.Panel({ BackgroundTransparency = 0.1 }, bb)
 	UI.Stroke(panel, UI.Colors.Gold, 2)
 	UI.Label({ Text = part:GetAttribute("Label") or "MORE ROOMS COMING SOON", TextSize = 22, TextColor3 = UI.Colors.Gold }, panel)
@@ -214,16 +279,15 @@ local function spinKey(model: Instance)
 	local base = model:GetPivot()
 	local t0 = os.clock()
 	RunService.Heartbeat:Connect(function()
-		if not model.Parent then
-			return
+		if model.Parent then
+			local t = os.clock() - t0
+			model:PivotTo(base * CFrame.new(0, math.sin(t * 1.5) * 0.6, 0) * CFrame.Angles(0, t * 0.8, 0))
 		end
-		local t = os.clock() - t0
-		model:PivotTo(base * CFrame.new(0, math.sin(t * 1.5) * 0.6, 0) * CFrame.Angles(0, t * 0.8, math.sin(t * 0.7) * 0.15))
 	end)
 end
 
 local handlers = {
-	QueueZone = attachQueueSign,
+	QueueZone = attachQueueZone,
 	CollectionBoard = attachCollectionBoard,
 	ShopStand = attachShopStand,
 	Leaderboard = attachLeaderboard,
@@ -243,7 +307,12 @@ local function tryAttach(tag: string, inst: Instance)
 end
 
 function LobbyController.Init()
-	for tag, _ in pairs(handlers) do
+	queuePill = UI.Panel({ Size = UDim2.fromOffset(460, 58), AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -110), Visible = false, BackgroundTransparency = 0.08 }, UI.Layers.HUD)
+	queuePillLabel = UI.Label({ Text = "", TextSize = 18, Size = UDim2.new(1, -16, 1, 0), Position = UDim2.fromOffset(8, 0) }, queuePill)
+	player:GetAttributeChangedSignal("QueueId"):Connect(LobbyController.RefreshPill)
+	player:GetAttributeChangedSignal("InMatch"):Connect(LobbyController.RefreshPill)
+
+	for tag in pairs(handlers) do
 		for _, inst in ipairs(CollectionService:GetTagged(tag)) do
 			tryAttach(tag, inst)
 		end
@@ -251,6 +320,25 @@ function LobbyController.Init()
 			tryAttach(tag, inst)
 		end)
 	end
+end
+
+function LobbyController.Start()
+	-- One cheap loop pulses every circle's glow at a speed set by its state.
+	RunService.Heartbeat:Connect(function()
+		local t = os.clock()
+		for _, v in ipairs(visuals) do
+			local wave = (math.sin(t * v.PulseSpeed * math.pi) + 1) / 2
+			if v.Disc then
+				v.Disc.Transparency = 0.25 + wave * 0.35
+			end
+			if v.Core then
+				v.Core.Transparency = 0.4 + (1 - wave) * 0.4
+			end
+			if v.Light then
+				v.Light.Brightness = 0.6 + wave * 1.2
+			end
+		end
+	end)
 end
 
 return LobbyController

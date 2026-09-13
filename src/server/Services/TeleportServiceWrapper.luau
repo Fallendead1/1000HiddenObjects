@@ -18,12 +18,19 @@ local serverRole = "Combined"
 
 function TeleportServiceWrapper.Init(role: string)
 	serverRole = role
+	TeleportService.TeleportInitFailed:Connect(function(player, result, message)
+		warn("[Teleport] Init failed for", player.Name, result, message)
+		player:SetAttribute("Teleporting", false)
+		player:SetAttribute("QueueId", "")
+		Services.NotificationService.Send(player, "Error", "Teleport failed. Please try again.")
+	end)
 end
 
 export type PartyLaunch = {
 	Players: { Player },
 	RoomId: number,
 	ResumePercent: number,
+	QueueId: string?,
 }
 
 -- Returns true when the party is on its way (or a local match started).
@@ -56,6 +63,7 @@ function TeleportServiceWrapper.TeleportParty(launch: PartyLaunch): boolean
 	options.ReservedServerAccessCode = accessCode
 	options:SetTeleportData({
 		MatchId = matchId,
+		QueueId = launch.QueueId,
 		RoomId = launch.RoomId,
 		PartySize = partySize,
 		ResumePercent = launch.ResumePercent,
