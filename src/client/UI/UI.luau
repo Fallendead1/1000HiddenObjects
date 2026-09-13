@@ -44,6 +44,102 @@ for i, name in ipairs({ "World", "HUD", "Menus", "Overlay", "Notify", "Top" }) d
 	UI.Layers[name] = layer
 end
 
+-- ===== Studio-authored art (added in Studio, no code change needed) =====
+-- ReplicatedStorage.GameAssets.UIImages is a Configuration whose string attributes map a UI
+-- key to an image ("rbxassetid://123"). Frames (Panel, Button, BarTrack, BarFill) are white
+-- 9-slice images tinted in code; an optional "<Key>_Slice" Rect attribute overrides the
+-- default slice centre (64, 64, 192, 192 on a 256 x 256 image). Missing keys fall back to the
+-- flat built-in style, so the game always works without art.
+local imageRegistry: Instance? = nil
+local function registry(): Instance?
+	if not imageRegistry then
+		local folder = ReplicatedStorage:FindFirstChild("GameAssets")
+		imageRegistry = folder and folder:FindFirstChild("UIImages")
+	end
+	return imageRegistry
+end
+
+function UI.Asset(key: string): string?
+	local reg = registry()
+	local value = reg and reg:GetAttribute(key)
+	if type(value) == "string" and value ~= "" then
+		return value
+	end
+	return nil
+end
+
+local function sliceOf(key: string): Rect
+	local reg = registry()
+	local rect = reg and reg:GetAttribute(key .. "_Slice")
+	return typeof(rect) == "Rect" and rect or Rect.new(64, 64, 192, 192)
+end
+
+-- Put a tinted 9-slice skin behind a frame/button when the art exists. The element keeps its
+-- BackgroundColor3/BackgroundTransparency API: the skin follows both.
+function UI.Skin(inst: GuiObject, key: string): ImageLabel?
+	local image = UI.Asset(key)
+	if not image then
+		return nil
+	end
+	local skin = UI.New("ImageLabel", {
+		Name = "Skin",
+		BackgroundTransparency = 1,
+		Image = image,
+		ScaleType = Enum.ScaleType.Slice,
+		SliceCenter = sliceOf(key),
+		ImageColor3 = inst.BackgroundColor3,
+		ImageTransparency = inst.BackgroundTransparency,
+		Size = UDim2.fromScale(1, 1),
+		ZIndex = 0,
+	}, inst) :: ImageLabel
+	inst:SetAttribute("SkinTransparency", inst.BackgroundTransparency)
+	inst.BackgroundTransparency = 1
+	for _, child in ipairs(inst:GetChildren()) do
+		if child:IsA("UIStroke") and child.ApplyStrokeMode == Enum.ApplyStrokeMode.Border then
+			child.Enabled = false
+		end
+	end
+	inst:GetPropertyChangedSignal("BackgroundColor3"):Connect(function()
+		skin.ImageColor3 = inst.BackgroundColor3
+	end)
+	inst:GetPropertyChangedSignal("BackgroundTransparency"):Connect(function()
+		if inst.BackgroundTransparency < 1 then
+			skin.ImageTransparency = inst.BackgroundTransparency
+			inst.BackgroundTransparency = 1
+		end
+	end)
+	return skin
+end
+
+-- An icon image when the art exists, otherwise the fallback text glyph.
+function UI.Icon(parent: Instance, key: string, fallbackText: string, labelProps: { [string]: any }?): GuiObject
+	local image = UI.Asset(key)
+	if image then
+		return UI.New("ImageLabel", {
+			Name = key,
+			BackgroundTransparency = 1,
+			Image = image,
+			ScaleType = Enum.ScaleType.Fit,
+			Size = UDim2.new(1, -4, 1, -4),
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(0.5, 0.5),
+		}, parent) :: ImageLabel
+	end
+	local props = labelProps and table.clone(labelProps) or {}
+	props.Text = fallbackText
+	local label = UI.New("TextLabel", {
+		BackgroundTransparency = 1,
+		Font = UIConfig.Font,
+		TextColor3 = UIConfig.Colors.Text,
+		TextSize = 18,
+		Size = UDim2.fromScale(1, 1),
+	}, parent) :: TextLabel
+	for k, v in pairs(props) do
+		(label :: any)[k] = v
+	end
+	return label
+end
+
 function UI.IsTouch(): boolean
 	return UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled and not UserInputService.MouseEnabled
 end
@@ -161,6 +257,7 @@ function UI.Panel(props: { [string]: any }?, parent: Instance?): Frame
 	local frame = UI.Frame(props, parent)
 	UI.Corner(frame)
 	UI.Stroke(frame)
+	UI.Skin(frame, "Panel")
 	return frame
 end
 
@@ -251,6 +348,7 @@ function UI.Button(props: { [string]: any }?, parent: Instance?): TextButton
 	UI.Corner(button, props and props.Corner or UIConfig.CornerSmall)
 	local stroke = UI.Stroke(button, Color3.new(0, 0, 0), 2, 0.6)
 	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	UI.Skin(button, props and props.Corner and props.Corner >= 40 and "ButtonRound" or "Button")
 	UI.PressEffect(button)
 	return button
 end
@@ -258,11 +356,20 @@ end
 function UI.SetButtonEnabled(button: TextButton, enabled: boolean, disabledText: string?)
 	button.Active = enabled
 	button.AutoButtonColor = false
+	local skin = button:FindFirstChild("Skin")
 	if enabled then
-		button.BackgroundTransparency = 0
+		if skin then
+			skin.ImageTransparency = 0
+		else
+			button.BackgroundTransparency = 0
+		end
 		button.TextTransparency = 0
 	else
-		button.BackgroundTransparency = 0.5
+		if skin then
+			skin.ImageTransparency = 0.5
+		else
+			button.BackgroundTransparency = 0.5
+		end
 		button.TextTransparency = 0.3
 		if disabledText then
 			button.Text = disabledText
@@ -323,13 +430,15 @@ function UI.Menu(name: string, title: string, size: UDim2)
 	}, UI.Layers.Menus)
 	UI.Corner(frame, 16)
 	UI.Stroke(frame, UI.Colors.Stroke, 3)
+	UI.Skin(frame, "Panel")
 	UI.New("UISizeConstraint", { MaxSize = Vector2.new(1100, 800), MinSize = Vector2.new(280, 200) }, frame)
 
 	local titleBar = UI.Frame({ Size = UDim2.new(1, 0, 0, 56), BackgroundColor3 = UI.Colors.PanelDark }, frame)
 	UI.Corner(titleBar, 16)
 	UI.Frame({ Size = UDim2.new(1, 0, 0, 16), Position = UDim2.new(0, 0, 1, -16), BackgroundColor3 = UI.Colors.PanelDark }, titleBar)
 	UI.Label({ Text = title, TextSize = 28, Size = UDim2.new(1, -140, 1, 0), Position = UDim2.fromOffset(20, 0), TextXAlignment = Enum.TextXAlignment.Left }, titleBar)
-	local close = UI.Button({ Text = "X", Color = UI.Colors.Red, Size = UDim2.fromOffset(48, 40), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -8, 0.5, 0), TextSize = 22 }, titleBar)
+	local close = UI.Button({ Text = "", Color = UI.Colors.Red, Size = UDim2.fromOffset(48, 40), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -8, 0.5, 0), TextSize = 22 }, titleBar)
+	UI.Icon(close, "Icon_Close", "X", { TextSize = 22 })
 
 	local content = UI.Frame({ Name = "Content", BackgroundTransparency = 1, Size = UDim2.new(1, -24, 1, -72), Position = UDim2.fromOffset(12, 64) }, frame)
 
@@ -435,8 +544,10 @@ function UI.ProgressBar(parent: Instance, size: UDim2, position: UDim2?, color: 
 	local bg = UI.Frame({ Size = size, Position = position or UDim2.new(), BackgroundColor3 = UI.Colors.PanelDark }, parent)
 	UI.Corner(bg, 999)
 	UI.Stroke(bg, UI.Colors.Stroke, 2)
+	UI.Skin(bg, "BarTrack")
 	local fill = UI.Frame({ Size = UDim2.fromScale(0, 1), BackgroundColor3 = color or UI.Colors.Green }, bg)
 	UI.Corner(fill, 999)
+	UI.Skin(fill, "BarFill")
 	return {
 		Frame = bg,
 		Fill = fill,

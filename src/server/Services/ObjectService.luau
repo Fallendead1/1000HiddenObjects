@@ -1,15 +1,20 @@
 --[[
 	Server authority for every individual clutter object.
 
-	No clutter is ever anchored during play. Everything is a real, server-owned physics body that
-	sleeps when still. States (attribute "State"):
-	  Resting -> Held (no collision, the holder owns its physics while an AlignPosition keeps it
-	  in front of them; server leashes it) -> Flying (server-owned after a throw) -> Resting
-	  again once it has been still for SettleTime. It simply stays wherever physics leaves it.
-	Pulling something out of a pile lets whatever was on it fall naturally.
+	States (attribute "State"):
+	  Resting -> Held (no collision; the holder owns its physics while an AlignPosition keeps it
+	  in front of them; server leashes it) -> Flying (thrown) -> Resting once it has been still
+	  for SettleTime. It stays wherever physics leaves it.
 
-	First time an object ends up MoveDisplacementThreshold studs from its OriginalCFrame the
-	player who moved it earns its CashValue once and room progress goes up by one object.
+	Smooth throws: the holder already simulates the object, so on release they keep simulating
+	it (no ownership hand-off hitch). The server checks the flight against the allowed throw
+	speed and takes it back after the first impact or OwnedFlightTime.
+
+	Physics bubble: objects within BubbleRadius of a player are live physics. Everything else
+	rests frozen exactly where it lies until someone comes close, so rooms can hold thousands of
+	objects and stay smooth. Pulling something out of a pile lets whatever was on it fall.
+
+	Cash is never paid here: objects pay when deposited in a bin (DepositService).
 ]]
 
 local CollectionService = game:GetService("CollectionService")
@@ -29,16 +34,32 @@ local Services = require(script.Parent)
 local ObjectService = {}
 
 type Held = { Root: BasePart, Attachment: Attachment, AlignPos: AlignPosition, AlignOri: AlignOrientation }
-type Active = { Since: number, StillFor: number, By: Player?, Lift: boolean?, LastSpeed: number?, Thrown: boolean? }
+export type Flight = {
+	Since: number,
+	StillFor: number,
+	By: Player?,
+	Lift: boolean?,
+	LastSpeed: number?,
+	Thrown: boolean?,
+	ReleasePos: Vector3?,
+	MaxSpeed: number?,
+	Owned: boolean?,
+	Cheated: boolean?,
+	LaunchVelocity: Vector3?,
+}
 
 local runtime = nil
 local held: { [Player]: Held } = {}
 local heldBy: { [BasePart]: Player } = {}
-local active: { [BasePart]: Active } = {}
+local active: { [BasePart]: Flight } = {}
+local calm: { [BasePart]: number } = {}
 local grabLimiter = RateLimiter.new(GameConfig.GrabRateLimit, GameConfig.GrabRateLimit)
 -- Throws get their own, looser budget so a legitimate release is never swallowed.
 local throwLimiter = RateLimiter.new(GameConfig.GrabRateLimit * 2, GameConfig.GrabRateLimit * 2)
 local rng = Random.new()
+
+local SOFT = { Clothes = true, Bedding = true, Bag = true, Toy = true, Shoes = true, Chunk = true }
+local PAPER = { Paper = true, Book = true, School = true }
 
 -- Studio/dev-only input audit: proves one press = one grab request = one throw.
 local function audit(player: Player, counter: string)
@@ -49,8 +70,6 @@ end
 
 local losParams = RaycastParams.new()
 losParams.FilterType = Enum.RaycastFilterType.Include
-local overlapParams = OverlapParams.new()
-overlapParams.FilterType = Enum.RaycastFilterType.Include
 
 local function setupCollisionGroups()
 	for _, name in ipairs({ "Players", "Clutter", "ClutterHeavy" }) do
@@ -102,6 +121,14 @@ local function setState(root: BasePart, state: string)
 	root:SetAttribute("State", state)
 end
 
+local function serverOwns(root: BasePart)
+	if not root.Anchored then
+		pcall(function()
+			root:SetNetworkOwner(nil)
+		end)
+	end
+end
+
 -- Thrown objects feel reduced gravity until their first impact so throws carry across the room.
 local function addLift(root: BasePart)
 	local attachment = Instance.new("Attachment")
@@ -125,50 +152,43 @@ local function clearLift(root: BasePart)
 	end
 end
 
-local function award(root: BasePart, player: Player?)
-	if root:GetAttribute("MovedBefore") then
-		return
+local function landSound(root: BasePart): string
+	local category = root:GetAttribute("Category")
+	if SOFT[category] then
+		return "LandSoft"
+	elseif PAPER[category] then
+		return "LandPaper"
 	end
-	local original: CFrame? = root:GetAttribute("OriginalCFrame")
-	if not original or (root.Position - original.Position).Magnitude < GameConfig.MoveDisplacementThreshold then
-		return
-	end
-	root:SetAttribute("MovedBefore", true)
-	runtime.MovedCount += 1
-	local weight = root:GetAttribute("Weight") or 1
-	if player and player.Parent and Services.MatchService.IsPlayerInMatch(player) then
-		local cash = math.floor((root:GetAttribute("CashValue") or 1) * Services.PlayerSessionService.GetCashMultiplier(player) + 0.5)
-		Services.EconomyService.AddCash(player, cash)
-		player:SetAttribute("ObjectsMoved", (player:GetAttribute("ObjectsMoved") or 0) + 1)
-		player:SetAttribute("WeightedMoveValue", (player:GetAttribute("WeightedMoveValue") or 0) + weight)
-		Remotes.Event("FXEvent"):FireClient(player, "CashAward", { Amount = cash, Position = root.Position, Name = root:GetAttribute("DisplayName") })
-	end
-	Services.MatchService.OnObjectFirstMoved(root, player)
+	return "LandHard"
 end
 
-local function settle(root: BasePart, info: Active)
+local function settle(root: BasePart, info: Flight)
 	active[root] = nil
 	if not root.Parent then
 		return
 	end
 	clearLift(root)
+	if info.Owned then
+		info.Owned = false
+		serverOwns(root)
+	end
 	setState(root, "Resting")
-	award(root, info.By)
 	if info.Thrown then
 		local match = Services.MatchService.GetMatch()
 		for _, p in ipairs(match and match.Players or {}) do
-			Remotes.Event("FXEvent"):FireClient(p, "Land", { Position = root.Position })
+			Remotes.Event("FXEvent"):FireClient(p, "Land", { Position = root.Position, Sound = landSound(root) })
 		end
 	end
 	Services.MatchService.OnObjectSettled(root)
 end
 
-local function makeActive(root: BasePart, by: Player?, state: string)
+local function makeActive(root: BasePart, by: Player?, state: string, keepOwner: boolean?)
 	root.Anchored = false
 	root.CanCollide = true
-	pcall(function()
-		root:SetNetworkOwner(nil)
-	end)
+	calm[root] = nil
+	if not keepOwner then
+		serverOwns(root)
+	end
 	active[root] = { Since = os.clock(), StillFor = 0, By = by }
 	setState(root, state)
 end
@@ -195,13 +215,22 @@ local function release(player: Player, velocity: Vector3)
 	if hrp and (root.Position - hrp.Position).Magnitude > GameConfig.HoldMaxDistance then
 		root.CFrame = CFrame.new(hrp.Position + hrp.CFrame.LookVector * 3 + Vector3.new(0, 1.5, 0))
 	end
-	makeActive(root, player, "Flying")
-	root.AssemblyLinearVelocity = velocity
-	active[root].Thrown = true
-	if velocity.Magnitude > 1 then
-		root.AssemblyAngularVelocity = Vector3.new(rng:NextNumber(-5, 5), rng:NextNumber(-5, 5), rng:NextNumber(-5, 5))
+	local throwing = velocity.Magnitude > 1 and hrp ~= nil and player.Parent ~= nil
+	-- A thrower keeps simulating their own throw (they already own it while holding it).
+	makeActive(root, player, "Flying", throwing)
+	local info = active[root]
+	info.Thrown = true
+	info.ReleasePos = root.Position
+	if throwing then
+		-- The thrower's client has already launched it (it owns the physics); writing the
+		-- velocity here too would fight that simulation. It is kept as a fallback launch.
+		info.LaunchVelocity = velocity
 		addLift(root)
-		active[root].Lift = true
+		info.Lift = true
+		info.MaxSpeed = velocity.Magnitude
+		info.Owned = true
+	else
+		root.AssemblyLinearVelocity = velocity
 	end
 end
 
@@ -231,8 +260,16 @@ function ObjectService.Grab(player: Player, root: any): (boolean, string?)
 	if not hasLineOfSight(hrp.Position + Vector3.new(0, 1.5, 0), root) then
 		return false, "Blocked"
 	end
+	-- Packed junk bursts into its pieces instead of being carried.
+	if root:GetAttribute("IsChunk") then
+		active[root] = nil
+		calm[root] = nil
+		Services.ChunkService.Burst(root, player)
+		return false, "Burst"
+	end
 
 	active[root] = nil
+	calm[root] = nil
 	clearLift(root)
 	heldBy[root] = player
 	root.Anchored = false
@@ -261,11 +298,18 @@ function ObjectService.Grab(player: Player, root: any): (boolean, string?)
 	end)
 	held[player] = { Root = root, Attachment = attachment, AlignPos = alignPos, AlignOri = alignOri }
 	root:SetAttribute("HeldByUserId", player.UserId)
+	root:SetAttribute("LastHolderUserId", player.UserId)
 	setState(root, "Held")
 	player:SetAttribute("HeldObjectId", root:GetAttribute("ObjectId"))
 	-- Lifting the last thing off the key reveals it right away.
 	Services.MatchService.OnObjectGrabbed(root)
 	return true, nil
+end
+
+-- The launch velocity for a throw (the client predicts the same numbers for its arc preview).
+function ObjectService.ThrowVelocity(player: Player, weight: number, direction: Vector3): Vector3
+	local speed = Services.PlayerSessionService.GetThrowSpeed(player) * math.clamp(1.3 - weight * GameConfig.ThrowWeightFalloff, 0.55, 1.2)
+	return (direction + Vector3.new(0, GameConfig.ThrowUpwardBias, 0)).Unit * speed
 end
 
 -- Only the exact object the client says it is holding can be thrown.
@@ -274,13 +318,10 @@ function ObjectService.Throw(player: Player, objectId: any, direction: any)
 	if not h or typeof(objectId) ~= "string" or h.Root:GetAttribute("ObjectId") ~= objectId then
 		return
 	end
-	local dir = Vector3.zero
+	local velocity = Vector3.zero
 	if typeof(direction) == "Vector3" and direction.Magnitude > 0.1 and direction.Magnitude < 1e4 and direction.X == direction.X then
-		dir = direction.Unit
+		velocity = ObjectService.ThrowVelocity(player, h.Root:GetAttribute("Weight") or 1, direction.Unit)
 	end
-	local weight = h.Root:GetAttribute("Weight") or 1
-	local speed = Services.PlayerSessionService.GetThrowSpeed(player) * math.clamp(1.3 - weight * GameConfig.ThrowWeightFalloff, 0.55, 1.2)
-	local velocity = dir.Magnitude > 0 and (dir + Vector3.new(0, GameConfig.ThrowUpwardBias, 0)).Unit * speed or Vector3.zero
 	release(player, velocity)
 end
 
@@ -297,21 +338,45 @@ function ObjectService.GetHeld(player: Player): BasePart?
 	return h and h.Root or nil
 end
 
+function ObjectService.GetHolder(root: BasePart): Player?
+	return heldBy[root]
+end
+
+function ObjectService.GetFlight(root: BasePart): Flight?
+	return active[root]
+end
+
+-- Every tracked loose object in motion (read-only; used by DepositService for swept checks).
+function ObjectService.GetFlights(): { [BasePart]: Flight }
+	return active
+end
+
 function ObjectService.IsBusy(root: BasePart): boolean
 	return heldBy[root] ~= nil or active[root] ~= nil
 end
 
--- Teleport an object (resume/dev tools); it stays a physics body. Counts as moved, no Cash.
+-- Start tracking a loose object as a physics body in flight (chunk pieces, knocked objects).
+function ObjectService.Activate(root: BasePart, by: Player?)
+	makeActive(root, by, "Falling")
+end
+
+-- Stop tracking an object that is leaving the room (deposited); drops it first if held.
+function ObjectService.Forget(root: BasePart)
+	local holder = heldBy[root]
+	if holder then
+		release(holder, Vector3.zero)
+	end
+	active[root] = nil
+	calm[root] = nil
+end
+
+-- Teleport an object (dev tools); it stays a physics body.
 function ObjectService.Relocate(root: BasePart, cframe: CFrame)
 	active[root] = nil
 	root.CFrame = cframe
 	root.AssemblyLinearVelocity = Vector3.zero
 	root.AssemblyAngularVelocity = Vector3.zero
 	setState(root, "Resting")
-	if not root:GetAttribute("MovedBefore") then
-		root:SetAttribute("MovedBefore", true)
-		runtime.MovedCount += 1
-	end
 end
 
 function ObjectService.SetRoom(rt)
@@ -323,7 +388,7 @@ function ObjectService.ClearRoom()
 	for player in pairs(held) do
 		release(player, Vector3.zero)
 	end
-	held, heldBy, active = {}, {}, {}
+	held, heldBy, active, calm = {}, {}, {}, {}
 	runtime = nil
 end
 
@@ -359,17 +424,71 @@ function ObjectService.Init()
 	end)
 end
 
+-- Live physics near players, frozen rest everywhere else.
+local function updateBubble(dt: number)
+	local match = Services.MatchService.GetMatch()
+	local centers = {}
+	for _, player in ipairs(match and match.Players or {}) do
+		local hrp = characterRoot(player)
+		if hrp then
+			table.insert(centers, hrp.Position)
+		end
+	end
+	local r2 = GameConfig.BubbleRadius * GameConfig.BubbleRadius
+	for _, obj in ipairs(runtime.Objects) do
+		if obj.Parent and not heldBy[obj] and not active[obj] then
+			local p = obj.Position
+			local near = false
+			for _, c in ipairs(centers) do
+				local dx, dz = p.X - c.X, p.Z - c.Z
+				if dx * dx + dz * dz <= r2 then
+					near = true
+					break
+				end
+			end
+			if near then
+				calm[obj] = nil
+				if obj.Anchored then
+					obj.Anchored = false
+					serverOwns(obj)
+				end
+			elseif not obj.Anchored then
+				if obj.AssemblyLinearVelocity.Magnitude < 0.5 then
+					local t = (calm[obj] or 0) + dt
+					if t >= GameConfig.BubbleFreezeDelay then
+						obj.Anchored = true
+						calm[obj] = nil
+					else
+						calm[obj] = t
+					end
+				else
+					calm[obj] = 0
+				end
+			end
+		end
+	end
+end
+
 function ObjectService.Start()
-	-- Everything is loose physics, so anything can be knocked out of the room: sweep for it.
+	-- Anything loose can be knocked out of the room: sweep for it.
 	task.spawn(function()
 		while true do
 			task.wait(2)
 			if runtime then
 				for _, obj in ipairs(runtime.Objects) do
-					if obj.Parent and not heldBy[obj] and Services.RoomService.IsOutOfRoom(runtime, obj) then
+					if obj.Parent and not heldBy[obj] and not obj.Anchored and Services.RoomService.IsOutOfRoom(runtime, obj) then
 						Services.RoomService.RecoverObject(runtime, obj)
 					end
 				end
+			end
+		end
+	end)
+
+	task.spawn(function()
+		while true do
+			local dt = task.wait(GameConfig.BubbleInterval)
+			if runtime then
+				updateBubble(dt)
 			end
 		end
 	end)
@@ -395,11 +514,49 @@ function ObjectService.Start()
 				continue
 			end
 			if Services.RoomService.IsOutOfRoom(runtime, root) then
+				warn(string.format("[ObjectService] %s left the room in flight at %s; recovered", root.Name, tostring(root.Position)))
 				Services.RoomService.RecoverObject(runtime, root)
+				if info.Owned then
+					info.Owned = false
+					serverOwns(root)
+				end
 				info.StillFor = 0
 				continue
 			end
 			local speed = root.AssemblyLinearVelocity.Magnitude
+			local t = now - info.Since
+			-- For the first moments of a thrower-simulated flight the server may still be seeing
+			-- the object's held state (replication lag): don't read that as an impact.
+			local settling = info.Owned and t < 0.35
+			if settling then
+				info.LastSpeed = math.max(info.LastSpeed or 0, speed)
+				continue
+			end
+			if info.Owned and info.LaunchVelocity and t < 0.8 and speed < 3 and (root.Position - (info.ReleasePos or root.Position)).Magnitude < 2 then
+				-- The thrower's client never launched it (lag/desync): launch it from the server.
+				info.Owned = false
+				serverOwns(root)
+				root.AssemblyLinearVelocity = info.LaunchVelocity
+				info.LastSpeed = info.LaunchVelocity.Magnitude
+				info.LaunchVelocity = nil
+				continue
+			end
+			if info.Owned then
+				-- The thrower simulates this flight: it must stay a plausible throw.
+				local maxTravel = (info.MaxSpeed or 0) * t * 1.15 + 0.5 * workspace.Gravity * t * t + 8
+				local travel = (root.Position - (info.ReleasePos or root.Position)).Magnitude
+				if speed > (info.MaxSpeed or 0) * 1.25 + 8 or travel > maxTravel then
+					warn(string.format("[ObjectService] Throw of %s rejected: speed %.1f (max %.1f), travel %.1f (max %.1f) at t=%.2f",
+						root.Name, speed, (info.MaxSpeed or 0) * 1.25 + 8, travel, maxTravel, t))
+					info.Cheated = true
+					info.Owned = false
+					serverOwns(root)
+					root.AssemblyLinearVelocity = Vector3.zero
+				elseif not info.Lift or t > GameConfig.OwnedFlightTime then
+					info.Owned = false
+					serverOwns(root)
+				end
+			end
 			if info.Lift then
 				-- First real impact (sudden speed loss) ends the floaty flight.
 				if info.LastSpeed and speed < info.LastSpeed * 0.6 then
@@ -413,7 +570,7 @@ function ObjectService.Start()
 			else
 				info.StillFor = 0
 			end
-			if info.StillFor >= GameConfig.SettleTime or now - info.Since > GameConfig.MaxFlightTime then
+			if info.StillFor >= GameConfig.SettleTime or t > GameConfig.MaxFlightTime then
 				settle(root, info)
 			end
 		end

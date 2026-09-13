@@ -32,16 +32,29 @@ return {
 	GrabRateLimit = 6, -- grab + throw requests per second
 	HoldDistance = 3, -- studs in front of the character (plus object radius)
 	HoldMaxDistance = 12, -- server snaps a held object back if a client drags it farther
-	HoldBaseResponsiveness = 40, -- AlignPosition responsiveness at GrabSpeed 1.0 / weight 1
+	HoldBaseResponsiveness = 40, -- AlignPosition responsiveness at Strength Lv. 1 / weight 1
 	HoldWeightFalloff = 0.18, -- responsiveness /= 1 + weight * falloff
 	ThrowUpwardBias = 0.25, -- extra lift so throws arc
 	ThrowGravityScale = 0.45, -- gravity felt by a thrown object until its first impact (floaty arcs)
 	ThrowWeightFalloff = 0.08, -- speed *= clamp(1.3 - weight * falloff, 0.55, 1.2)
 	SettleSpeed = 1.2, -- studs/second below which a thrown object counts as still
-	SettleTime = 1.2, -- seconds it must stay still before it anchors in place
-	MaxFlightTime = 8, -- force-anchor after this long no matter what
-	MoveDisplacementThreshold = 4, -- studs from OriginalCFrame that count as "moved" (Cash + progress)
+	SettleTime = 1.2, -- seconds it must stay still before it counts as landed
+	MaxFlightTime = 8, -- stop tracking a flight after this long no matter what
+	OwnedFlightTime = 1.5, -- the thrower keeps simulating its throw (no hitch) until first impact or this
 	RoomSettleSeconds = 10, -- max time a freshly built room gets to settle under physics
+
+	-- Physics bubble: objects near a player are live physics; everything else rests frozen in
+	-- place until someone comes close (keeps thousands of objects smooth).
+	BubbleRadius = 20, -- studs (XZ) around each player
+	BubbleFreezeDelay = 1.5, -- seconds an object must be calm outside every bubble before it freezes
+	BubbleInterval = 0.2,
+
+	-- Junk chunks
+	ChunkBurstSpeed = 7, -- outward speed of the pieces
+
+	-- The key "rattles" the junk over it when a player's hands are close
+	KeyRattleDistance = 6,
+	KeyRattleInterval = 1.6,
 
 	-- Economy
 	MaxCashMultiplier = 4,
@@ -49,17 +62,9 @@ return {
 	MaxWeightCap = 10,
 
 	-- Progress / checkpoints
-	-- Fractions of unique objects moved. With thousands of objects a run finds the key long
-	-- before most of the room is touched, so checkpoints sit early.
-	Checkpoints = { 0.08, 0.16, 0.24, 0.32 },
-
-	-- Tuned by simulation: 4 players finish ~25% faster than solo, not 4x.
-	PartyMessMultiplier = {
-		[1] = 1.00,
-		[2] = 1.50,
-		[3] = 1.90,
-		[4] = 2.30,
-	},
+	-- Fractions of the room CLEANED (objects deposited in bins). A run finds the key long before
+	-- most of the room is cleaned, so checkpoints sit early.
+	Checkpoints = { 0.05, 0.10, 0.15, 0.20 },
 
 	-- Hot / cold distances (studs to target cluster center)
 	HotCold = {

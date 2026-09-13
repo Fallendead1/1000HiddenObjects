@@ -1,8 +1,8 @@
 --[[
 	Lobby HUD and Match HUD. Reads replicated player attributes and MatchState attributes.
-	Match HUD: Cash + max weight (top left), room / target / ROOM SEARCHED % (top centre),
-	UPGRADES / SHOP / HINT / SETTINGS (right), boosts, team, hot/cold, and on touch a single
-	GRAB / THROW button driven by GrabController.
+	Match HUD: Cash + max weight + deposit streak (top left), room / target / ROOM CLEANED %
+	(top centre), UPGRADES / SHOP / HINT / SETTINGS (right), boosts, team, hot/cold, and on
+	touch a big GRAB / THROW button plus a DROP button driven by GrabController.
 ]]
 
 local Players = game:GetService("Players")
@@ -25,6 +25,10 @@ local HUDController = {}
 local lobbyFrame: Frame
 local matchFrame: Frame
 local mobileActionButton: TextButton
+local mobileDropButton: TextButton
+local streakFrame: Frame
+local streakLabel: TextLabel
+local streakBar
 local hotColdFrame: Frame
 local hotColdLabel: TextLabel
 local timerLabel: TextLabel
@@ -54,12 +58,12 @@ local function attr(name: string, default: any)
 	return v
 end
 
-local function sideButton(parent: Instance, text: string, color: Color3, order: number, icon: string): TextButton
+local function sideButton(parent: Instance, text: string, color: Color3, order: number, icon: string, iconKey: string): TextButton
 	local h = touch and 54 or 46
 	local b = UI.Button({ Text = "", Color = color, Size = UDim2.fromOffset(160, h), TextSize = 18, LayoutOrder = order }, parent)
 	local badge = UI.Frame({ Size = UDim2.fromOffset(h - 14, h - 14), Position = UDim2.fromOffset(7, 7), BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 0.65 }, b)
 	UI.Corner(badge, 8)
-	UI.Label({ Text = icon, TextSize = 14 }, badge)
+	UI.Icon(badge, iconKey, icon, { TextSize = 14 })
 	UI.Label({ Text = text, TextSize = 16, TextWrapped = false, Size = UDim2.new(1, -(h - 2), 1, 0), Position = UDim2.fromOffset(h - 2, 0), TextXAlignment = Enum.TextXAlignment.Left }, b)
 	return b
 end
@@ -74,9 +78,9 @@ local function buildLobbyHUD()
 
 	local buttons = UI.Frame({ BackgroundTransparency = 1, Size = UDim2.fromOffset(170, 220), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -12, 0.45, 0) }, lobbyFrame)
 	UI.ListLayout(buttons, Enum.FillDirection.Vertical, 8, Enum.HorizontalAlignment.Right)
-	HUDController.Buttons.Collection = sideButton(buttons, "COLLECTION", UI.Colors.Gold, 1, "1K")
-	HUDController.Buttons.LobbyShop = sideButton(buttons, "SHOP", UI.Colors.Purple, 2, "$")
-	HUDController.Buttons.LobbySettings = sideButton(buttons, "SETTINGS", UI.Colors.PanelLight, 3, "*")
+	HUDController.Buttons.Collection = sideButton(buttons, "COLLECTION", UI.Colors.Gold, 1, "1K", "Icon_Collection")
+	HUDController.Buttons.LobbyShop = sideButton(buttons, "SHOP", UI.Colors.Purple, 2, "$", "Icon_Shop")
+	HUDController.Buttons.LobbySettings = sideButton(buttons, "SETTINGS", UI.Colors.PanelLight, 3, "*", "Icon_Settings")
 	HUDController.Buttons.Collection.Activated:Connect(function()
 		Controllers.CollectionController.Open()
 	end)
@@ -104,23 +108,33 @@ local function buildMatchHUD()
 	roomTitleLabel = UI.Label({ Text = "ROOM #001", TextSize = 20, Size = UDim2.new(1, 0, 0, 24), Position = UDim2.fromOffset(0, 5) }, top)
 	roomTargetLabel = UI.Label({ Text = "Find the Golden Key", TextSize = 19, TextColor3 = UI.Colors.Gold, Size = UDim2.new(1, 0, 0, 22), Position = UDim2.fromOffset(0, 27) }, top)
 	progressBar = UI.ProgressBar(top, UDim2.new(1, -32, 0, 22), UDim2.fromOffset(16, 52), UI.Colors.Green)
-	progressLabel = UI.Label({ Text = "ROOM SEARCHED: 0%", TextSize = 14, Font = UI.FontBody, Size = UDim2.new(1, 0, 1, 0), ZIndex = 3 }, progressBar.Frame)
+	progressLabel = UI.Label({ Text = "ROOM CLEANED: 0%", TextSize = 14, Font = UI.FontBody, Size = UDim2.new(1, 0, 1, 0), ZIndex = 3 }, progressBar.Frame)
 	UI.Stroke(progressLabel, Color3.new(0, 0, 0), 1, 0.4)
 	timerLabel = UI.Label({ Text = "00:00", TextSize = 15, Font = UI.FontBody, TextColor3 = UI.Colors.TextDim, Size = UDim2.new(1, 0, 0, 18), Position = UDim2.fromOffset(0, 78) }, top)
 
 	local left = UI.Panel({ Size = UDim2.fromOffset(210, 80), Position = UDim2.fromOffset(12, 10), BackgroundTransparency = 0.1 }, matchFrame)
 	local cashBadge = UI.Frame({ Size = UDim2.fromOffset(30, 30), Position = UDim2.fromOffset(12, 10), BackgroundColor3 = UI.Colors.Cash }, left)
 	UI.Corner(cashBadge, 15)
-	UI.Label({ Text = "$", TextSize = 20, TextColor3 = UI.Colors.PanelDark }, cashBadge)
+	UI.Icon(cashBadge, "Icon_Cash", "$", { TextSize = 20, TextColor3 = UI.Colors.PanelDark })
 	cashLabel = UI.Label({ Text = "$0", TextSize = 30, TextColor3 = UI.Colors.Cash, Size = UDim2.new(1, -56, 0, 40), Position = UDim2.fromOffset(50, 5), TextXAlignment = Enum.TextXAlignment.Left }, left)
-	weightLabel = UI.Label({ Text = "MAX WEIGHT: 2", TextSize = 15, Font = UI.FontBody, TextColor3 = UI.Colors.TextDim, Size = UDim2.new(1, -24, 0, 22), Position = UDim2.fromOffset(12, 50), TextXAlignment = Enum.TextXAlignment.Left }, left)
+	local weightIcon = UI.Frame({ Size = UDim2.fromOffset(20, 20), Position = UDim2.fromOffset(12, 51), BackgroundTransparency = 1 }, left)
+	UI.Icon(weightIcon, "Icon_Weight", "", {})
+	weightLabel = UI.Label({ Text = "MAX WEIGHT: 2", TextSize = 15, Font = UI.FontBody, TextColor3 = UI.Colors.TextDim, Size = UDim2.new(1, -44, 0, 22), Position = UDim2.fromOffset(UI.Asset("Icon_Weight") and 36 or 12, 50), TextXAlignment = Enum.TextXAlignment.Left }, left)
+
+	-- Deposit streak: shows while deposits keep coming within the streak window.
+	streakFrame = UI.Panel({ Size = UDim2.fromOffset(210, 30), Position = UDim2.fromOffset(12, 96), BackgroundTransparency = 0.1, Visible = false }, matchFrame)
+	UI.Stroke(streakFrame, UI.Colors.Gold, 2)
+	local streakIcon = UI.Frame({ Size = UDim2.fromOffset(22, 22), Position = UDim2.fromOffset(6, 4), BackgroundTransparency = 1 }, streakFrame)
+	UI.Icon(streakIcon, "Icon_Streak", "", {})
+	streakLabel = UI.Label({ Text = "STREAK x2", TextSize = 15, TextColor3 = UI.Colors.Gold, Size = UDim2.new(0, 110, 1, 0), Position = UDim2.fromOffset(32, 0), TextXAlignment = Enum.TextXAlignment.Left }, streakFrame)
+	streakBar = UI.ProgressBar(streakFrame, UDim2.new(0, 56, 0, 8), UDim2.new(1, -64, 0.5, -4), UI.Colors.Gold)
 
 	local buttons = UI.Frame({ BackgroundTransparency = 1, Size = UDim2.fromOffset(170, 260), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -12, 0, 10) }, matchFrame)
 	UI.ListLayout(buttons, Enum.FillDirection.Vertical, 8, Enum.HorizontalAlignment.Right)
-	HUDController.Buttons.Upgrades = sideButton(buttons, "UPGRADES", UI.Colors.Green, 1, "UP")
-	HUDController.Buttons.Shop = sideButton(buttons, "SHOP", UI.Colors.Purple, 2, "$")
-	HUDController.Buttons.Hint = sideButton(buttons, "HINT", UI.Colors.Cyan, 3, "?")
-	HUDController.Buttons.Settings = sideButton(buttons, "SETTINGS", UI.Colors.PanelLight, 4, "*")
+	HUDController.Buttons.Upgrades = sideButton(buttons, "UPGRADES", UI.Colors.Green, 1, "UP", "Icon_Upgrades")
+	HUDController.Buttons.Shop = sideButton(buttons, "SHOP", UI.Colors.Purple, 2, "$", "Icon_Shop")
+	HUDController.Buttons.Hint = sideButton(buttons, "HINT", UI.Colors.Cyan, 3, "?", "Icon_Hint")
+	HUDController.Buttons.Settings = sideButton(buttons, "SETTINGS", UI.Colors.PanelLight, 4, "*", "Icon_Settings")
 	HUDController.Buttons.Upgrades.Activated:Connect(function()
 		Controllers.UpgradeController.Open()
 	end)
@@ -136,7 +150,7 @@ local function buildMatchHUD()
 
 	boostsFrame = UI.Frame({ BackgroundTransparency = 1, Size = UDim2.fromOffset(180, 80), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -12, 0, touch and 270 or 240) }, matchFrame)
 	UI.ListLayout(boostsFrame, Enum.FillDirection.Vertical, 4, Enum.HorizontalAlignment.Right)
-	teamFrame = UI.Frame({ BackgroundTransparency = 1, Size = UDim2.fromOffset(210, 120), Position = UDim2.fromOffset(12, 98) }, matchFrame)
+	teamFrame = UI.Frame({ BackgroundTransparency = 1, Size = UDim2.fromOffset(210, 120), Position = UDim2.fromOffset(12, 134) }, matchFrame)
 	UI.ListLayout(teamFrame, Enum.FillDirection.Vertical, 4, Enum.HorizontalAlignment.Left)
 
 	hotColdFrame = UI.Panel({ Size = UDim2.fromOffset(220, 46), AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -122), Visible = false, BackgroundTransparency = 0.15 }, matchFrame)
@@ -146,6 +160,10 @@ local function buildMatchHUD()
 	mobileActionButton = UI.Button({ Text = "GRAB", Color = UI.Colors.Green, Size = UDim2.fromOffset(112, 112), AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -20, 1, -140), TextSize = 28, Corner = 56 }, matchFrame)
 	UI.Stroke(mobileActionButton, Color3.new(1, 1, 1), 3, 0.5)
 	mobileActionButton.Visible = false
+	-- Touch: smaller DROP button beside it while holding something.
+	mobileDropButton = UI.Button({ Text = "DROP", Color = UI.Colors.PanelLight, Size = UDim2.fromOffset(72, 72), AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -146, 1, -150), TextSize = 18, Corner = 36 }, matchFrame)
+	UI.Stroke(mobileDropButton, Color3.new(1, 1, 1), 2, 0.5)
+	mobileDropButton.Visible = false
 end
 
 local function refreshLobby()
@@ -166,7 +184,7 @@ end
 local function refreshProgress()
 	local p = matchState:GetAttribute("Progress") or 0
 	progressBar.Set(p, true)
-	progressLabel.Text = "ROOM SEARCHED: " .. FormatUtil.Percent(p)
+	progressLabel.Text = "ROOM CLEANED: " .. FormatUtil.Percent(p)
 end
 
 local function refreshCash()
@@ -198,7 +216,7 @@ local function refreshTeam()
 	local list = {}
 	for name in string.gmatch(matchState:GetAttribute("PlayerNames") or "", "[^,]+") do
 		local p = Players:FindFirstChild(name)
-		table.insert(list, { Name = name, Moved = p and (p:GetAttribute("ObjectsMoved") or 0) or 0, Me = p == player })
+		table.insert(list, { Name = name, Moved = p and (p:GetAttribute("ObjectsCleaned") or 0) or 0, Me = p == player })
 	end
 	table.sort(list, function(a, b)
 		return a.Moved > b.Moved
@@ -305,7 +323,7 @@ function HUDController.Init()
 	matchState:GetAttributeChangedSignal("TargetName"):Connect(refreshMatchStatic)
 	matchState:GetAttributeChangedSignal("PlayerNames"):Connect(refreshTeam)
 	local function watch(p: Player)
-		p:GetAttributeChangedSignal("ObjectsMoved"):Connect(refreshTeam)
+		p:GetAttributeChangedSignal("ObjectsCleaned"):Connect(refreshTeam)
 	end
 	Players.PlayerAdded:Connect(watch)
 	for _, p in ipairs(Players:GetPlayers()) do
@@ -319,6 +337,15 @@ function HUDController.Start()
 	RunService.Heartbeat:Connect(function(dt)
 		if not matchFrame.Visible then
 			return
+		end
+		-- Streak meter (every frame so the timer bar drains smoothly).
+		local now = workspace:GetServerTimeNow()
+		local streak, expires = attr("Streak", 0), attr("StreakExpires", 0)
+		local streakOn = streak >= 2 and expires > now
+		streakFrame.Visible = streakOn
+		if streakOn then
+			streakLabel.Text = string.format("STREAK x%d  +%d%%", streak, math.floor((math.min(1 + (streak - 1) * 0.1, 1.5) - 1) * 100 + 0.5))
+			streakBar.Set((expires - now) / 3)
 		end
 		acc += dt
 		if acc < 0.5 then
@@ -336,11 +363,16 @@ function HUDController.GetMobileActionButton(): TextButton
 	return mobileActionButton
 end
 
--- "GRAB", "THROW" or nil (hidden). Touch devices only.
+function HUDController.GetMobileDropButton(): TextButton
+	return mobileDropButton
+end
+
+-- "GRAB", "THROW" or nil (hidden). Touch devices only. DROP shows alongside THROW.
 function HUDController.SetMobileAction(text: string?)
 	if not touch then
 		return
 	end
+	mobileDropButton.Visible = text == "THROW"
 	mobileActionButton.Visible = text ~= nil
 	if text and mobileActionButton.Text ~= text then
 		mobileActionButton.Text = text

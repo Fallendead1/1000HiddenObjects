@@ -6,8 +6,13 @@
 	The builder then swaps visuals for every object with that key, in every room, keeping the
 	object's CFrame, size, ObjectId and all gameplay attributes.
 
-	Weight gates grabbing (player Strength). CashValue is paid once per object, the first time
-	it is moved far enough from where the room placed it.
+	Weight gates grabbing (player Strength). CashValue is paid when the object is deposited in a
+	bin (double in its matching bin, see DepositConfig).
+
+	Special categories:
+	  Chunk    - "packed junk": one physics body that bursts into 5-8 real objects when grabbed
+	             (its Contents). Lower pile layers are made of these so rooms can be deep.
+	  Treasure - rare lost items worth a lot of Cash; they sparkle once uncovered.
 ]]
 
 local C = Color3.fromRGB
@@ -105,8 +110,36 @@ add({ Key = "StorageBin_A", DisplayName = "STORAGE BIN", Category = "Container",
 add({ Key = "HeavyBox_A", DisplayName = "HEAVY BOX", Category = "Box", Weight = 6, CashValue = 15, Shape = "Block", Size = Vector3.new(3, 2.6, 3), Colors = { C(150, 105, 65) }, Material = Enum.Material.WoodPlanks,
 	Extras = { { Offset = CFrame.new(0, 1.32, 0), Size = Vector3.new(0.6, 0.05, 3.02), Color = C(220, 60, 60) } } })
 
+-- Packed junk (bursts into its Contents when grabbed; never deposited itself)
+local JunkColors = { C(150, 130, 110), C(125, 115, 105), C(165, 140, 115) }
+local function junkExtras(size: Vector3)
+	local hx, hy, hz = size.X / 2, size.Y / 2, size.Z / 2
+	return {
+		{ Offset = CFrame.new(-hx * 0.45, hy + 0.12, -hz * 0.3) * CFrame.Angles(0, 0.4, 0.15), Size = Vector3.new(1.2, 0.3, 0.9), Color = C(230, 90, 120) },
+		{ Offset = CFrame.new(hx * 0.35, hy + 0.1, hz * 0.25) * CFrame.Angles(0.1, -0.3, 0), Size = Vector3.new(1.0, 0.25, 1.3), Color = C(90, 150, 230) },
+		{ Offset = CFrame.new(hx * 0.9, 0, -hz * 0.2) * CFrame.Angles(0, 0, 0.3), Size = Vector3.new(0.3, 0.9, 1.1), Color = C(250, 250, 250) },
+		{ Offset = CFrame.new(-hx * 0.9, -hy * 0.2, hz * 0.4), Size = Vector3.new(0.3, 0.7, 0.9), Color = C(255, 200, 60) },
+		{ Offset = CFrame.new(0, hy * 0.2, hz * 0.95) * CFrame.Angles(0, 0, 0.5), Size = Vector3.new(0.9, 0.35, 0.3), Color = C(120, 200, 120) },
+	}
+end
+add({ Key = "JunkChunk_A", DisplayName = "PACKED JUNK", Category = "Chunk", Weight = 2, CashValue = 0, Shape = "Block", Size = Vector3.new(2.6, 1.3, 2.2), Colors = JunkColors, Material = Enum.Material.Fabric, Extras = junkExtras(Vector3.new(2.6, 1.3, 2.2)) })
+add({ Key = "JunkChunk_B", DisplayName = "PACKED JUNK", Category = "Chunk", Weight = 2, CashValue = 0, Shape = "Block", Size = Vector3.new(3.0, 1.5, 2.4), Colors = JunkColors, Material = Enum.Material.Fabric, Extras = junkExtras(Vector3.new(3.0, 1.5, 2.4)) })
+add({ Key = "JunkChunk_C", DisplayName = "BIG PACKED JUNK", Category = "Chunk", Weight = 3, CashValue = 0, Shape = "Block", Size = Vector3.new(3.4, 1.7, 2.8), Colors = JunkColors, Material = Enum.Material.Fabric, Extras = junkExtras(Vector3.new(3.4, 1.7, 2.8)) })
+
+-- Treasures (rare; any bin pays their full value)
+add({ Key = "Treasure_Coin", DisplayName = "GOLD COIN", Category = "Treasure", Weight = 1, CashValue = 20, Shape = "Cylinder", Size = Vector3.new(0.2, 1.0, 1.0), Colors = { C(255, 205, 50) }, Material = Enum.Material.Metal })
+add({ Key = "Treasure_Phone", DisplayName = "LOST PHONE", Category = "Treasure", Weight = 1, CashValue = 25, Shape = "Block", Size = Vector3.new(0.7, 0.12, 1.4), Colors = { C(30, 30, 40), C(240, 240, 245) }, Material = Enum.Material.SmoothPlastic,
+	Extras = { { Offset = CFrame.new(0, 0.065, 0), Size = Vector3.new(0.6, 0.02, 1.2), Color = C(90, 200, 255) } } })
+add({ Key = "Treasure_Watch", DisplayName = "WRISTWATCH", Category = "Treasure", Weight = 1, CashValue = 15, Shape = "Cylinder", Size = Vector3.new(0.3, 0.9, 0.9), Colors = { C(220, 220, 230) }, Material = Enum.Material.Metal,
+	Extras = { { Offset = CFrame.new(0, 0, 0.75), Size = Vector3.new(0.25, 0.08, 0.6), Color = C(60, 40, 30) }, { Offset = CFrame.new(0, 0, -0.75), Size = Vector3.new(0.25, 0.08, 0.6), Color = C(60, 40, 30) } } })
+add({ Key = "Treasure_Trophy", DisplayName = "GOLD TROPHY", Category = "Treasure", Weight = 2, CashValue = 30, Shape = "Cylinder", Size = Vector3.new(0.5, 1.2, 1.2), Colors = { C(255, 200, 40) }, Material = Enum.Material.Metal,
+	Extras = { { Offset = CFrame.new(0, 0.75, 0) * CFrame.Angles(0, 0, math.rad(90)), Size = Vector3.new(1.0, 0.8, 0.8), Shape = "Cylinder" } } })
+
 local ClutterConfig = {
 	Assets = Assets,
+	TreasureKeys = { "Treasure_Coin", "Treasure_Phone", "Treasure_Watch", "Treasure_Trophy" },
+	ChunkKeys = { "JunkChunk_A", "JunkChunk_B", "JunkChunk_C" },
+	TreasureChance = 1 / 150, -- per generated object (and per chunk content)
 	-- Objects at or above this weight collide with players (big boxes/bins); lighter ones don't,
 	-- so the room never traps anyone.
 	PlayerCollisionWeight = 4,

@@ -1,5 +1,5 @@
 --[[
-	Free clue milestones (unique objects moved %), paid hints and hot/cold assistance.
+	Free clue milestones (ROOM CLEANED %: objects deposited in bins), paid hints and hot/cold assistance.
 	Clues only ever point at areas; the key is revealed solely by moving its physical blockers.
 	Stages: 1 side, 2 area, 3 region highlight, 4 hot/cold, 5 outline the objects covering it.
 ]]

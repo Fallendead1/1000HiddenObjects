@@ -1,7 +1,8 @@
 --[[
-	Feedback for every gameplay beat: Cash earned from newly moved objects (world popup + coins
-	to the HUD), upgrades, landing dust, Golden Key reveal sparkle. Respects Reduce VFX and
-	Camera Shake settings.
+	Feedback for every gameplay beat: bin deposits (a ghost of the object zips into the bin,
+	+$ popup with MATCH / SWISH / STREAK tags, coins to the HUD), chunk bursts, the key rattle,
+	upgrades, landing dust + material sounds, Golden Key reveal sparkle. Respects Reduce VFX
+	and Camera Shake settings.
 ]]
 
 local CollectionService = game:GetService("CollectionService")
@@ -109,29 +110,96 @@ function FXController.FloatingText(text: string, color: Color3, anchorPos: UDim2
 	end)
 end
 
--- "+$2" that pops out of the object in the world and floats up.
-local function worldCashPopup(position: Vector3, amount: number)
+local coinsToHud: (number) -> ()
+
+-- "+$2" that pops up in the world and floats away, with optional bonus tags under it.
+local function worldCashPopup(position: Vector3, amount: number, tags: string?, gold: boolean?)
 	local anchor = Instance.new("Attachment")
 	anchor.WorldPosition = position + Vector3.new(0, 1, 0)
 	anchor.Parent = workspace.Terrain
 	local bb = Instance.new("BillboardGui")
-	bb.Size = UDim2.fromOffset(120, 40)
+	bb.Size = UDim2.fromOffset(220, 70)
 	bb.AlwaysOnTop = true
 	bb.LightInfluence = 0
-	bb.MaxDistance = 80
+	bb.MaxDistance = 90
 	bb.Adornee = anchor
 	bb.Parent = player:WaitForChild("PlayerGui")
-	local label = UI.Label({ Text = "+$" .. amount, TextSize = 28, TextColor3 = UI.Colors.Cash }, bb)
+	local label = UI.Label({ Text = "+$" .. amount, TextSize = gold and 36 or 30, TextColor3 = gold and UI.Colors.Gold or UI.Colors.Cash, Size = UDim2.new(1, 0, 0, 40) }, bb)
 	UI.Stroke(label, Color3.new(0, 0, 0), 2, 0.2)
-	UI.Tween(bb, { StudsOffset = Vector3.new(0, 3, 0) }, 1)
-	UI.Tween(label, { TextTransparency = 1 }, 1, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
-	task.delay(1.05, function()
+	local tagLabel
+	if tags and tags ~= "" then
+		tagLabel = UI.Label({ Text = tags, TextSize = 18, TextColor3 = UI.Colors.Gold, Size = UDim2.new(1, 0, 0, 24), Position = UDim2.fromOffset(0, 40) }, bb)
+		UI.Stroke(tagLabel, Color3.new(0, 0, 0), 2, 0.2)
+	end
+	UI.Tween(bb, { StudsOffset = Vector3.new(0, 3, 0) }, 1.2)
+	UI.Tween(label, { TextTransparency = 1 }, 1.2, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+	if tagLabel then
+		UI.Tween(tagLabel, { TextTransparency = 1 }, 1.2, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+	end
+	task.delay(1.25, function()
 		bb:Destroy()
 		anchor:Destroy()
 	end)
 end
 
-local function coinsToHud(count: number)
+-- The server removes a deposited object instantly; a local ghost of it zips into the bin.
+local function ghostIntoBin(payload)
+	if not payload.Position or not payload.BinPosition or reduceVFX() then
+		return
+	end
+	local size = typeof(payload.Size) == "Vector3" and payload.Size or Vector3.one
+	local ghost = Instance.new("Part")
+	ghost.Anchored = true
+	ghost.CanCollide = false
+	ghost.CanQuery = false
+	ghost.CanTouch = false
+	ghost.CastShadow = false
+	ghost.Size = size
+	ghost.Color = typeof(payload.Color) == "Color3" and payload.Color or Color3.new(1, 1, 1)
+	ghost.Material = Enum.Material.SmoothPlastic
+	ghost.CFrame = CFrame.new(payload.Position)
+	ghost.Parent = workspace.CurrentCamera
+	UI.Tween(ghost, { CFrame = CFrame.new(payload.BinPosition), Size = size * 0.2, Transparency = 1 }, 0.28, Enum.EasingStyle.Quad, Enum.EasingDirection.In).Completed:Once(function()
+		ghost:Destroy()
+	end)
+end
+
+local function onDeposit(payload)
+	ghostIntoBin(payload)
+	if not payload.BinPosition then
+		return
+	end
+	if not payload.Mine then
+		Controllers.AudioController.PlayAt("Deposit", payload.BinPosition)
+		return
+	end
+	local sound = payload.Treasure and "Treasure" or (payload.Swish and "Swish") or (payload.Match and "DepositMatch") or "Deposit"
+	Controllers.AudioController.Play(sound)
+	if (payload.Streak or 0) >= 3 then
+		Controllers.AudioController.Play("Streak")
+	end
+	local tags = {}
+	if payload.Treasure then
+		table.insert(tags, "TREASURE!")
+	end
+	if payload.Match then
+		table.insert(tags, "MATCH x2")
+	end
+	if payload.Swish then
+		table.insert(tags, "SWISH!")
+	end
+	if (payload.Streak or 0) >= 2 then
+		table.insert(tags, "STREAK x" .. payload.Streak)
+	end
+	worldCashPopup(payload.BinPosition + Vector3.new(0, 2, 0), payload.Amount or 0, table.concat(tags, "  "), payload.Treasure or payload.Swish)
+	coinsToHud(math.clamp(payload.Amount or 1, 1, 5))
+	FXController.Burst(payload.BinPosition + Vector3.new(0, 1.5, 0), payload.Treasure and UI.Colors.Gold or UI.Colors.Cash, payload.Swish and 18 or 8, 0.3)
+	if payload.Swish or payload.Treasure then
+		FXController.FovPunch(3)
+	end
+end
+
+function coinsToHud(count: number)
 	local target = Controllers.HUDController.GetCashLabelPosition()
 	for i = 1, (reduceVFX() and 1 or count) do
 		task.delay(i * 0.05, function()
@@ -205,7 +273,24 @@ function FXController.Init()
 			if payload.Position and os.clock() - lastLand > 0.06 then
 				lastLand = os.clock()
 				FXController.DustPuff(payload.Position)
-				Controllers.AudioController.PlayAt("Land", payload.Position)
+				Controllers.AudioController.PlayAt(payload.Sound or "Land", payload.Position)
+			end
+		elseif name == "Deposit" then
+			onDeposit(payload)
+		elseif name == "ChunkBurst" then
+			if payload.Position then
+				Controllers.AudioController.PlayAt("ChunkBurst", payload.Position)
+				FXController.DustPuff(payload.Position)
+				FXController.Burst(payload.Position, Color3.fromRGB(190, 170, 140), 14, 0.5)
+				local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+				if root and (root.Position - payload.Position).Magnitude < 14 then
+					FXController.CameraShake(0.25)
+				end
+			end
+		elseif name == "KeyRattle" then
+			if payload.Position then
+				Controllers.AudioController.PlayAt("KeyRattle", payload.Position)
+				FXController.DustPuff(payload.Position + Vector3.new(0, 0.5, 0))
 			end
 		elseif name == "CashAward" then
 			Controllers.AudioController.Play("CashAward")

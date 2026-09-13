@@ -2,9 +2,9 @@
 	Room upgrade definitions. Levels are 1-indexed; level 1 is the free starting value.
 	Order defines the order cards appear in the Upgrades menu.
 
-	Strength   -> maximum object Weight the player can grab.
+	Strength   -> maximum object Weight the player can grab (each level also makes held
+	              objects snappier: +20% hold responsiveness per level).
 	ThrowPower -> launch speed (studs/second) of a thrown object before weight falloff.
-	GrabSpeed  -> held-object responsiveness multiplier (heavy items feel sluggish without it).
 	MoveSpeed  -> WalkSpeed.
 ]]
 
@@ -49,21 +49,6 @@ local Upgrades: { UpgradeDef } = {
 			{ Value = 70, Cost = 150 },
 			{ Value = 82, Cost = 350 },
 			{ Value = 95, Cost = 700 },
-		},
-	},
-	{
-		Key = "GrabSpeed",
-		Name = "GRAB SPEED",
-		Description = "Handle heavy objects faster.",
-		Icon = "GR",
-		Attribute = "GrabSpeedLevel",
-		Format = function(v) return string.format("%.2fx", v) end,
-		Levels = {
-			{ Value = 1.0, Cost = 0 },
-			{ Value = 1.25, Cost = 40 },
-			{ Value = 1.5, Cost = 120 },
-			{ Value = 1.8, Cost = 300 },
-			{ Value = 2.2, Cost = 600 },
 		},
 	},
 	{

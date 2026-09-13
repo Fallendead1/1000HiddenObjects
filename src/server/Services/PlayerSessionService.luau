@@ -1,7 +1,7 @@
 --[[
 	Server-authoritative per-player match session state, replicated through player attributes,
 	plus derived stats that fold upgrades, passes and boosts together:
-	  GetMaxWeight (Strength), GetThrowSpeed, GetHoldResponsiveness (Grab Speed),
+	  GetMaxWeight (Strength), GetThrowSpeed, GetHoldResponsiveness (Strength level + FastHands),
 	  GetWalkSpeed, GetCashMultiplier.
 ]]
 
@@ -26,10 +26,11 @@ local SessionDefaults = {
 	RoomCash = 0,
 	StrengthLevel = 1,
 	ThrowPowerLevel = 1,
-	GrabSpeedLevel = 1,
 	MoveSpeedLevel = 1,
-	ObjectsMoved = 0,
-	WeightedMoveValue = 0,
+	ObjectsCleaned = 0, -- objects this player got into a bin this room
+	Streak = 0,
+	StreakExpires = 0,
+	ThrowSpeed = 50,
 	StrengthBoostExpires = 0,
 	CashBoostExpires = 0,
 	VIPFreeHints = 0,
@@ -118,7 +119,6 @@ function PlayerSessionService.RestoreFromCheckpoint(player: Player, checkpoint)
 	player:SetAttribute("RoomCash", checkpoint.RoomCash or 0)
 	player:SetAttribute("StrengthLevel", checkpoint.StrengthLevel or 1)
 	player:SetAttribute("ThrowPowerLevel", checkpoint.ThrowPowerLevel or 1)
-	player:SetAttribute("GrabSpeedLevel", checkpoint.GrabSpeedLevel or 1)
 	player:SetAttribute("MoveSpeedLevel", checkpoint.MoveSpeedLevel or 1)
 	PlayerSessionService.RecomputeDerived(player)
 end
@@ -155,7 +155,7 @@ function PlayerSessionService.GetThrowSpeed(player: Player): number
 end
 
 function PlayerSessionService.GetHoldResponsiveness(player: Player, weight: number): number
-	local grab = UpgradeConfig.GetValue("GrabSpeed", PlayerSessionService.GetLevel(player, "GrabSpeed"))
+	local grab = 1 + (PlayerSessionService.GetLevel(player, "Strength") - 1) * 0.2
 	if owns(player, "FastHands") then
 		grab *= Effects.FastHandsMultiplier
 	end
@@ -185,6 +185,11 @@ function PlayerSessionService.RecomputeDerived(player: Player)
 	local maxWeight = PlayerSessionService.GetMaxWeight(player)
 	if player:GetAttribute("MaxWeight") ~= maxWeight then
 		player:SetAttribute("MaxWeight", maxWeight)
+	end
+	-- The client draws its throw-arc preview from this.
+	local throwSpeed = PlayerSessionService.GetThrowSpeed(player)
+	if player:GetAttribute("ThrowSpeed") ~= throwSpeed then
+		player:SetAttribute("ThrowSpeed", throwSpeed)
 	end
 	PlayerSessionService.ApplyWalkSpeed(player)
 end

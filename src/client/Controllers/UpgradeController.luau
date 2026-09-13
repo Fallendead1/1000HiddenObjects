@@ -21,7 +21,6 @@ local cashHeader: TextLabel
 local CategoryColor = {
 	Strength = UI.Colors.Red,
 	ThrowPower = UI.Colors.Orange,
-	GrabSpeed = UI.Colors.Cyan,
 	MoveSpeed = UI.Colors.Green,
 }
 
@@ -32,7 +31,7 @@ local function buildCard(def, parent: Instance, order: number)
 
 	local icon = UI.Frame({ Size = UDim2.fromOffset(54, 54), Position = UDim2.fromOffset(14, 14), BackgroundColor3 = color }, card)
 	UI.Corner(icon, 12)
-	UI.Label({ Text = def.Icon, TextSize = 20, TextColor3 = UI.Colors.PanelDark }, icon)
+	UI.Icon(icon, "Icon_" .. def.Key, def.Icon, { TextSize = 20, TextColor3 = UI.Colors.PanelDark })
 
 	UI.Label({ Text = def.Name, TextSize = 22, Size = UDim2.new(1, -90, 0, 28), Position = UDim2.fromOffset(78, 12), TextXAlignment = Enum.TextXAlignment.Left }, card)
 	local levelLabel = UI.Label({ Text = "Lv. 1 -> Lv. 2", TextSize = 15, TextColor3 = UI.Colors.TextDim, Font = UI.FontBody, Size = UDim2.new(1, -90, 0, 20), Position = UDim2.fromOffset(78, 40), TextXAlignment = Enum.TextXAlignment.Left }, card)

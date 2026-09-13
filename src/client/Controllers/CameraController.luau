@@ -80,8 +80,12 @@ function CameraController.SetCrosshair(kind: string)
 	local color = CrosshairColors[kind] or CrosshairColors.idle
 	if crosshair.BackgroundColor3 ~= color then
 		crosshair.BackgroundColor3 = color
-		local size = (kind == "idle") and 8 or 12
+		local image = crosshair:FindFirstChild("CrosshairImage") :: ImageLabel?
+		local size = image and ((kind == "idle") and 22 or 30) or ((kind == "idle") and 8 or 12)
 		crosshair.Size = UDim2.fromOffset(size, size)
+		if image then
+			image.ImageColor3 = color
+		end
 	end
 end
 
@@ -108,14 +112,22 @@ function CameraController.Init()
 
 	crosshair = UI.Frame({ Name = "Crosshair", Size = UDim2.fromOffset(8, 8), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), BackgroundColor3 = CrosshairColors.idle, Visible = false }, UI.Layers.HUD)
 	UI.Corner(crosshair, 99)
-	UI.Stroke(crosshair, Color3.new(0, 0, 0), 1.5, 0.3)
+	local crossStroke = UI.Stroke(crosshair, Color3.new(0, 0, 0), 1.5, 0.3)
+	-- Crosshair art (white, tinted per state) when it exists.
+	local crossArt = UI.Asset("Crosshair")
+	if crossArt then
+		crosshair.BackgroundTransparency = 1
+		crossStroke.Enabled = false
+		crosshair.Size = UDim2.fromOffset(22, 22)
+		UI.Image({ Name = "CrosshairImage", Image = crossArt, Size = UDim2.fromScale(1, 1), ImageColor3 = CrosshairColors.idle }, crosshair)
+	end
 
 	hint = UI.Label({
-		Text = "[ALT] mouse   [U] upgrades   [B] shop   [H] hints",
+		Text = "[ALT] mouse   [Q] drop   [U] upgrades   [B] shop   [H] hints",
 		TextSize = 14,
 		Font = UI.FontBody,
 		TextColor3 = UI.Colors.TextDim,
-		Size = UDim2.fromOffset(380, 20),
+		Size = UDim2.fromOffset(460, 20),
 		AnchorPoint = Vector2.new(1, 1),
 		Position = UDim2.new(1, -14, 1, -10),
 		TextXAlignment = Enum.TextXAlignment.Right,

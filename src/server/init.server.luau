@@ -51,6 +51,8 @@ local startOrder = {
 	"RoomService",
 	"MatchService",
 	"ObjectService",
+	"ChunkService",
+	"DepositService",
 	"EconomyService",
 	"UpgradeService",
 	"HintService",

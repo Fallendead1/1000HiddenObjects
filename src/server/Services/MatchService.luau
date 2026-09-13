@@ -6,7 +6,8 @@
 
 	The Golden Key is revealed ONLY when nothing physically covers its socket: every original
 	blocker has been moved away (or is being held) and no other object lies on the spot.
-	Room progress (unique objects moved) drives hints and checkpoints, never the reveal.
+	Room progress = ROOM CLEANED (objects deposited in bins / every real object in the room,
+	packed junk included). It drives hints and checkpoints, never the reveal.
 ]]
 
 local CollectionService = game:GetService("CollectionService")
@@ -57,7 +58,7 @@ end
 local function resetStateConfig()
 	for name, value in pairs({
 		State = "None", RoomId = 0, RoomName = "", RoomNumber = "", TargetName = "", TargetId = "",
-		PartySize = 0, StartTime = 0, EndTime = 0, TotalObjects = 0, MovedObjects = 0, Progress = 0,
+		PartySize = 0, StartTime = 0, EndTime = 0, TotalObjects = 0, CleanedObjects = 0, Progress = 0,
 		HintStage = 0, TargetRevealed = false, TargetFound = false, FinderName = "", OutlinedObjects = "",
 		TeamMuscleExpires = 0, PlayerNames = "", ResumePercent = 0,
 	}) do
@@ -161,15 +162,15 @@ local function selectTarget()
 	match.TargetSocket = eligible[match.Rng:NextInteger(1, #eligible)]
 end
 
--- Move untouched non-target objects into dump zones without physics (resume + dev tools).
-local function preDisplace(fraction: number, clearTarget: boolean?)
+-- Silently clean objects as if deposited, no Cash (checkpoint resume + dev tools).
+local function preClean(fraction: number, clearTarget: boolean?)
 	local runtime = match.Runtime
 	local socket = match.TargetSocket
 	local list = {}
 	if clearTarget then
 		list = MatchService.GetCoveringObjects()
 	else
-		local want = math.floor(#runtime.Objects * math.clamp(fraction, 0, 0.95)) - runtime.MovedCount
+		local want = math.floor(runtime.TotalObjects * math.clamp(fraction, 0, 0.95)) - runtime.DepositedCount
 		if want <= 0 then
 			return
 		end
@@ -179,7 +180,7 @@ local function preDisplace(fraction: number, clearTarget: boolean?)
 		end
 		local candidates = {}
 		for _, root in ipairs(runtime.Objects) do
-			if not root:GetAttribute("MovedBefore") and not protected[root] and not Services.ObjectService.IsBusy(root)
+			if root.Parent and not protected[root] and not root:GetAttribute("IsChunk") and not Services.ObjectService.IsBusy(root)
 				and Services.RoomService.FootprintDistanceXZ(root, root.CFrame, socket.Position) > 4 then
 				table.insert(candidates, root)
 			end
@@ -192,25 +193,13 @@ local function preDisplace(fraction: number, clearTarget: boolean?)
 			list[i] = candidates[i]
 		end
 	end
-
-	local zones = match.Config.DumpZones or {}
-	if #zones == 0 then
-		return
-	end
-	match.DumpHeights = match.DumpHeights or {}
-	for i, root in ipairs(list) do
-		local zi = (i - 1) % #zones + 1
-		local zone = zones[zi]
-		local heights = match.DumpHeights[zi] or {}
-		match.DumpHeights[zi] = heights
-		local cx = match.Rng:NextInteger(0, math.max(0, math.floor(zone.Size.X) - 1))
-		local cz = match.Rng:NextInteger(0, math.max(0, math.floor(zone.Size.Y) - 1))
-		local key = cx .. ":" .. cz
-		local h = heights[key] or 0
-		heights[key] = h + root.Size.Y
-		-- Starts above the floor carpet layer so dumped objects rest on it rather than inside it.
-		local pos = zone.Center + Vector3.new(cx - zone.Size.X / 2 + 0.5, h + root.Size.Y / 2 + 1.15, cz - zone.Size.Y / 2 + 0.5)
-		Services.ObjectService.Relocate(root, runtime.Origin * CFrame.new(pos) * CFrame.Angles(0, match.Rng:NextNumber(0, math.pi * 2), 0))
+	for _, root in ipairs(list) do
+		if root.Parent then
+			-- A packed chunk counts as every object inside it.
+			runtime.DepositedCount += root:GetAttribute("IsChunk") and #string.split(root:GetAttribute("Contents") or "", ",") or 1
+			Services.ObjectService.Forget(root)
+			root:Destroy()
+		end
 	end
 end
 
@@ -219,8 +208,38 @@ local function publishProgress()
 	local old = match.Progress
 	match.Progress = progress
 	stateConfig:SetAttribute("Progress", progress)
-	stateConfig:SetAttribute("MovedObjects", match.Runtime.MovedCount)
+	stateConfig:SetAttribute("CleanedObjects", match.Runtime.DepositedCount)
 	return old, progress
+end
+
+-- The junk over the key shivers when a player's hands are close: a physical "you're warm".
+local lastRattle = 0
+local rattleRng = Random.new()
+local function rattleKey()
+	if match.State ~= "Searching" or match.TargetRevealed or os.clock() - lastRattle < GameConfig.KeyRattleInterval then
+		return
+	end
+	local socket = match.TargetSocket.Position
+	local near = {}
+	for _, player in ipairs(match.Players) do
+		local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+		if root and Vector2.new(root.Position.X - socket.X, root.Position.Z - socket.Z).Magnitude <= GameConfig.KeyRattleDistance then
+			table.insert(near, player)
+		end
+	end
+	if #near == 0 then
+		return
+	end
+	lastRattle = os.clock()
+	for _, root in ipairs(MatchService.GetCoveringObjects()) do
+		if not root.Anchored then
+			root.AssemblyLinearVelocity += Vector3.new(rattleRng:NextNumber(-1.2, 1.2), rattleRng:NextNumber(2.5, 4), rattleRng:NextNumber(-1.2, 1.2))
+			root.AssemblyAngularVelocity += Vector3.new(rattleRng:NextNumber(-3, 3), rattleRng:NextNumber(-3, 3), rattleRng:NextNumber(-3, 3))
+		end
+	end
+	for _, player in ipairs(near) do
+		Remotes.Event("FXEvent"):FireClient(player, "KeyRattle", { Position = socket })
+	end
 end
 
 function MatchService.Init(role: string)
@@ -284,6 +303,9 @@ function MatchService.Start(role: string)
 			if match and match.Runtime then
 				checkTargetExposure()
 				Services.HintService.RefreshOutline(match)
+				if match.TargetSocket then
+					rattleKey()
+				end
 				for _, player in ipairs(match.Players) do
 					local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
 					if root and root.Position.Y < match.Runtime.FloorY - GameConfig.FallProtectionDepth then
@@ -430,7 +452,7 @@ function MatchService.BeginMatch(params: LaunchParams, origin: CFrame): boolean
 
 	selectTarget()
 	if match.ResumePercent > 0 then
-		preDisplace(match.ResumePercent)
+		preClean(match.ResumePercent)
 	end
 
 	resetStateConfig()
@@ -440,7 +462,7 @@ function MatchService.BeginMatch(params: LaunchParams, origin: CFrame): boolean
 	stateConfig:SetAttribute("TargetName", config.TargetName)
 	stateConfig:SetAttribute("TargetId", config.TargetId)
 	stateConfig:SetAttribute("PartySize", params.PartySize)
-	stateConfig:SetAttribute("TotalObjects", #runtime.Objects)
+	stateConfig:SetAttribute("TotalObjects", runtime.TotalObjects)
 	stateConfig:SetAttribute("PlayerNames", playerNamesString(players))
 	stateConfig:SetAttribute("ResumePercent", match.ResumePercent)
 	publishProgress()
@@ -471,7 +493,7 @@ function MatchService.BeginMatch(params: LaunchParams, origin: CFrame): boolean
 		TargetId = config.TargetId,
 		ResumePercent = match.ResumePercent,
 	})
-	Services.AnalyticsService.Log("match_start", players[1], { RoomId = config.Id, PartySize = params.PartySize, Resume = match.ResumePercent, Objects = #runtime.Objects })
+	Services.AnalyticsService.Log("match_start", players[1], { RoomId = config.Id, PartySize = params.PartySize, Resume = match.ResumePercent, Objects = runtime.TotalObjects })
 
 	task.spawn(function()
 		local thisMatch = match
@@ -495,13 +517,15 @@ end
 
 -- ===== ObjectService callbacks =====
 
-function MatchService.OnObjectFirstMoved(_root: BasePart, _player: Player?)
+function MatchService.OnObjectDeposited(_player: Player?)
 	if not match then
 		return
 	end
+	match.Runtime.DepositedCount += 1
 	local old, progress = publishProgress()
 	Services.HintService.OnProgress(match, progress)
 	Services.CheckpointService.OnProgress(match, old, progress)
+	checkTargetExposure()
 end
 
 function MatchService.OnObjectSettled(_root: BasePart)
@@ -649,7 +673,7 @@ function MatchService.CompleteMatch(finder: Player)
 	for _, player in ipairs(match.Players) do
 		local firstClear = false
 		Services.DataService.Update(player, function(data)
-			data.TotalMessCleared += player:GetAttribute("ObjectsMoved") or 0
+			data.TotalMessCleared += player:GetAttribute("ObjectsCleaned") or 0
 			-- Collection progress is strictly sequential: only the player's next required room counts.
 			if data.HighestRoomCompleted + 1 == roomId then
 				data.HighestRoomCompleted = roomId
@@ -678,7 +702,7 @@ function MatchService.CompleteMatch(finder: Player)
 
 	local contributions = {}
 	for _, player in ipairs(match.Players) do
-		table.insert(contributions, { Name = player.Name, UserId = player.UserId, Objects = player:GetAttribute("ObjectsMoved") or 0, Weighted = player:GetAttribute("WeightedMoveValue") or 0 })
+		table.insert(contributions, { Name = player.Name, UserId = player.UserId, Objects = player:GetAttribute("ObjectsCleaned") or 0 })
 	end
 	table.sort(contributions, function(a, b)
 		return a.Objects > b.Objects
@@ -769,7 +793,7 @@ end
 
 function MatchService.ForceProgress(fraction: number)
 	if match and match.State == "Searching" then
-		preDisplace(fraction)
+		preClean(fraction)
 		local old, progress = publishProgress()
 		Services.HintService.OnProgress(match, progress)
 		Services.CheckpointService.OnProgress(match, old, progress)
@@ -778,7 +802,7 @@ end
 
 function MatchService.ForceReveal()
 	if match and match.State == "Searching" and not match.TargetRevealed then
-		preDisplace(0, true)
+		preClean(0, true)
 		publishProgress()
 		checkTargetExposure()
 		if not match.TargetRevealed then

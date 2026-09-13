@@ -37,15 +37,15 @@ local function stepText(n: number): string
 	if n == 1 then
 		return platformText("Aim at an object and HOLD LEFT MOUSE TO GRAB it.", "Aim at an object and tap GRAB.", "Aim at an object and HOLD R2 to grab it.")
 	elseif n == 2 then
-		return platformText("KEEP HOLDING and aim with your mouse.", "Turn the camera to aim.", "KEEP HOLDING R2 and aim.")
+		return platformText("KEEP HOLDING and aim. The dotted arc shows where it lands.", "Turn the camera to aim. The dotted arc shows where it lands.", "KEEP HOLDING R2 and aim. The arc shows where it lands.")
 	elseif n == 3 then
 		return platformText("RELEASE LEFT MOUSE TO THROW!", "Tap THROW!", "RELEASE R2 TO THROW!")
 	elseif n == 4 then
-		return "Move objects you haven't touched yet to earn Cash."
+		return "Throw or carry junk into a glowing BIN to clean it and earn Cash. The right bin pays DOUBLE!"
 	elseif n == 5 then
 		return "Buy UPGRADES to lift heavier objects."
 	end
-	return "Now dig through the room and find the Golden Key!"
+	return "Dig down through the junk and find the Golden Key!"
 end
 
 local function clearHighlight()
@@ -119,8 +119,8 @@ function TutorialController.Init()
 		end
 	end)
 
-	Remotes.Event("FXEvent").OnClientEvent:Connect(function(name)
-		if name == "CashAward" and step == 4 then
+	Remotes.Event("FXEvent").OnClientEvent:Connect(function(name, payload)
+		if name == "Deposit" and payload and payload.Mine and step == 4 then
 			task.delay(1, function()
 				showStep(5)
 			end)

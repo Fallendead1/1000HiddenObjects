@@ -54,13 +54,16 @@ function AudioController.Init()
 	musicGroup.Name = "Music"
 	musicGroup.Parent = SoundService
 
+	-- Studio overrides: SoundService.GameSounds.<Key> (a Sound) replaces the config placeholder.
+	local overrides = SoundService:FindFirstChild("GameSounds")
 	for key, def in pairs(AudioConfig.SFX) do
-		local id = resolveId(def.Id)
+		local override = overrides and overrides:FindFirstChild(key)
+		local id = (override and override:IsA("Sound") and override.SoundId ~= "") and override.SoundId or resolveId(def.Id)
 		if id then
 			local s = Instance.new("Sound")
 			s.Name = key
 			s.SoundId = id
-			s.Volume = def.Volume or 0.5
+			s.Volume = (override and override:IsA("Sound")) and override.Volume or def.Volume or 0.5
 			s.Looped = def.Looped == true
 			s.SoundGroup = sfxGroup
 			s:SetAttribute("Pitch", type(def.Pitch) == "table" and 0 or (def.Pitch or 1))
@@ -166,14 +169,17 @@ function AudioController.SetMusic(key: string?)
 		return
 	end
 	local def = AudioConfig.Music[key]
-	local id = def and resolveId(def.Id)
+	local overrides = SoundService:FindFirstChild("GameSounds")
+	local override = overrides and overrides:FindFirstChild(key)
+	local useOverride = override ~= nil and override:IsA("Sound") and override.SoundId ~= ""
+	local id = useOverride and override.SoundId or (def and resolveId(def.Id))
 	if not id then
 		return
 	end
 	local s = Instance.new("Sound")
 	s.Name = key
 	s.SoundId = id
-	s.Volume = def.Volume or 0.3
+	s.Volume = useOverride and override.Volume or (def and def.Volume) or 0.3
 	s.Looped = def.Looped ~= false
 	s.SoundGroup = musicGroup
 	s.Parent = SoundService

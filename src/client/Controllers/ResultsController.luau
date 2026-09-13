@@ -135,7 +135,7 @@ local function showResults(payload)
 			mine = c.Objects or 0
 		end
 	end
-	resStats.Text = string.format("Time: %s\nFinder: %s\nTeam Size: %d\nYou Moved: %s objects\nRoom Searched: %s",
+	resStats.Text = string.format("Time: %s\nFinder: %s\nTeam Size: %d\nYou Cleaned: %s objects\nRoom Cleaned: %s",
 		FormatUtil.Time(payload.Elapsed or 0), payload.FinderName or "?", payload.TeamSize or 1, FormatUtil.Comma(mine), FormatUtil.Percent(payload.RoomSearched or 0))
 	local best = player:GetAttribute("BestTimeRoom1") or 0
 	if best > 0 then
@@ -153,7 +153,7 @@ local function showResults(payload)
 		local row = UI.Frame({ Size = UDim2.new(1, 0, 0, 24), BackgroundColor3 = UI.Colors.PanelLight, LayoutOrder = i }, resContrib)
 		UI.Corner(row, 6)
 		UI.Label({ Text = c.Name, TextSize = 15, Font = UI.FontBody, TextColor3 = c.UserId == player.UserId and UI.Colors.Gold or UI.Colors.Text, Size = UDim2.new(0.6, 0, 1, 0), Position = UDim2.fromOffset(10, 0), TextXAlignment = Enum.TextXAlignment.Left }, row)
-		UI.Label({ Text = tostring(c.Objects or 0) .. " moved", TextSize = 15, Font = UI.FontBody, TextColor3 = UI.Colors.TextDim, Size = UDim2.new(0.4, -10, 1, 0), Position = UDim2.new(0.6, 0, 0, 0), TextXAlignment = Enum.TextXAlignment.Right }, row)
+		UI.Label({ Text = tostring(c.Objects or 0) .. " cleaned", TextSize = 15, Font = UI.FontBody, TextColor3 = UI.Colors.TextDim, Size = UDim2.new(0.4, -10, 1, 0), Position = UDim2.new(0.6, 0, 0, 0), TextXAlignment = Enum.TextXAlignment.Right }, row)
 	end
 
 	if payload.NextRoomAvailable then
@@ -185,7 +185,7 @@ function ResultsController.Init()
 	local icon = UI.Frame({ Size = UDim2.fromOffset(84, 84), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 62), BackgroundColor3 = UI.Colors.Gold }, resultsCard)
 	UI.Corner(icon, 18)
 	UI.Stroke(icon, Color3.new(1, 1, 1), 3)
-	UI.Label({ Text = "K", TextSize = 50, TextColor3 = UI.Colors.PanelDark }, icon)
+	UI.Icon(icon, "Icon_Key", "K", { TextSize = 50, TextColor3 = UI.Colors.PanelDark })
 	resObject = UI.Label({ Text = "#001 - Golden Key", TextSize = 24, TextColor3 = UI.Colors.Gold, Size = UDim2.new(1, 0, 0, 32), Position = UDim2.fromOffset(0, 152) }, resultsCard)
 	resStats = UI.Label({ Text = "", TextSize = 18, Font = UI.FontBody, TextColor3 = UI.Colors.TextDim, Size = UDim2.new(0.5, -20, 0, 110), Position = UDim2.fromOffset(20, 192), TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top }, resultsCard)
 	resBest = UI.Label({ Text = "", TextSize = 16, Font = UI.FontBody, TextColor3 = UI.Colors.Cyan, Size = UDim2.new(0.5, -20, 0, 22), Position = UDim2.fromOffset(20, 300), TextXAlignment = Enum.TextXAlignment.Left }, resultsCard)

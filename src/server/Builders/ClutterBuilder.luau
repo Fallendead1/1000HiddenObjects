@@ -17,7 +17,8 @@
 	already there, and each object takes the region it actually lands in.
 
 	Attributes: ObjectId, AssetKey, DisplayName, Category, RegionId, Weight, CashValue,
-	OriginalCFrame, OriginalClusterId, DepthLayer, Movable, MovedBefore, State.
+	OriginalCFrame, OriginalClusterId, DepthLayer, Movable, State (+ IsChunk/Contents on junk
+	chunks, tag Treasure on treasures).
 
 	Final art: put a Model/BasePart named <AssetKey> in ServerStorage.ClutterAssets. Every
 	object with that key (every room) gets it, scaled to the object's size, same CFrame/ids.
@@ -34,6 +35,10 @@ local ClutterBuilder = {}
 local CELL = 0.5
 local placeParams = OverlapParams.new()
 placeParams.FilterType = Enum.RaycastFilterType.Include
+-- Rectangles (room-local XZ) no pile may place into: deposit bins and a margin around them.
+local keepOut: { { Center: Vector2, Size: Vector2 } } = {}
+local spawnCounter = 0
+local spawnRng = Random.new()
 
 local function hashString(s: string): number
 	local h = 5381
@@ -196,19 +201,30 @@ function ClutterBuilder.ApplyFinalAsset(root: BasePart): boolean
 	end
 	local clone = source:Clone()
 	local parts = {}
+	-- Fit the art into the object's FULL placeholder outline (root + detail parts), centred on
+	-- that outline, so a duck's head or a laptop's lid isn't squashed into the root box.
+	local def = ClutterConfig.Get(root:GetAttribute("AssetKey") or "")
+	local boxSize, boxCF = root.Size, root.CFrame
+	if def then
+		local s = root.Size.X / math.max(rootSize(def, 1).X, 0.001)
+		local mn, mx = assetBounds(def)
+		boxSize = (mx - mn) * s
+		boxCF = root.CFrame * CFrame.new((mn + mx) / 2 * s)
+	end
 	if clone:IsA("Model") then
 		local _, size = clone:GetBoundingBox()
-		local fit = math.min(root.Size.X / math.max(size.X, 0.01), root.Size.Y / math.max(size.Y, 0.01), root.Size.Z / math.max(size.Z, 0.01))
+		local fit = math.min(boxSize.X / math.max(size.X, 0.01), boxSize.Y / math.max(size.Y, 0.01), boxSize.Z / math.max(size.Z, 0.01))
 		clone:ScaleTo(clone:GetScale() * fit)
-		clone:PivotTo(root.CFrame)
+		local bbCF = clone:GetBoundingBox()
+		clone:PivotTo(boxCF * bbCF:ToObjectSpace(clone:GetPivot()))
 		for _, d in ipairs(clone:GetDescendants()) do
 			if d:IsA("BasePart") then
 				table.insert(parts, d)
 			end
 		end
 	elseif clone:IsA("BasePart") then
-		clone.Size = root.Size
-		clone.CFrame = root.CFrame
+		clone.Size = boxSize
+		clone.CFrame = boxCF
 		table.insert(parts, clone)
 	end
 	for _, p in ipairs(parts) do
@@ -217,6 +233,10 @@ function ClutterBuilder.ApplyFinalAsset(root: BasePart): boolean
 		p.CanQuery = true
 		p.CanTouch = false
 		p.Massless = true
+		-- One mesh, many colours: parts marked Tintable take this object's rolled colour.
+		if p:GetAttribute("Tintable") == true then
+			p.Color = root.Color
+		end
 		p:SetAttribute("FinalVisual", true)
 		for _, j in ipairs(p:GetChildren()) do
 			if j:IsA("JointInstance") or j:IsA("WeldConstraint") then
@@ -248,8 +268,13 @@ local function finalize(root: BasePart, def, meta, folder: Instance)
 	root:SetAttribute("OriginalClusterId", meta.PileId)
 	root:SetAttribute("DepthLayer", meta.DepthLayer)
 	root:SetAttribute("Movable", true)
-	root:SetAttribute("MovedBefore", false)
 	root:SetAttribute("State", "Resting")
+	if def.Category == "Chunk" then
+		root:SetAttribute("IsChunk", true)
+		root:SetAttribute("Contents", table.concat(meta.Contents or {}, ","))
+	elseif def.Category == "Treasure" then
+		CollectionService:AddTag(root, "Treasure")
+	end
 	CollectionService:AddTag(root, "Clutter")
 	ClutterBuilder.ApplyFinalAsset(root)
 	root.Parent = folder
@@ -295,15 +320,37 @@ local function fits(cframe: CFrame, size: Vector3): boolean
 	return #workspace:GetPartBoundsInBox(cframe, size, placeParams) == 0
 end
 
+local function maybeTreasure(rng: Random, key: string): string
+	if rng:NextNumber() < ClutterConfig.TreasureChance then
+		return ClutterConfig.TreasureKeys[rng:NextInteger(1, #ClutterConfig.TreasureKeys)]
+	end
+	return key
+end
+
+-- What a junk chunk bursts into: real objects from the pile's own mix.
+local function rollContents(rng: Random, mix, keys: { string }, range: { number }?): { string }
+	local contents = {}
+	local lo, hi = (range and range[1]) or 5, (range and range[2]) or 8
+	for _ = 1, rng:NextInteger(lo, hi) do
+		table.insert(contents, maybeTreasure(rng, pickFromMix(rng, mix, keys)))
+	end
+	return contents
+end
+
 -- Stack `pile.Count` objects into a height map over the pile's footprint.
 local function buildHeap(pile, config, origin: CFrame, rng: Random, folder: Instance, newId, out)
 	local keys = sortedKeys(pile.Mix)
 	local picks = {}
 	for _ = 1, pile.Count do
-		local def = ClutterConfig.Get(pickFromMix(rng, pile.Mix, keys))
+		local def = ClutterConfig.Get(maybeTreasure(rng, pickFromMix(rng, pile.Mix, keys)))
 		if def then
 			table.insert(picks, { Def = def, Order = def.Weight + rng:NextNumber() * 2.5 })
 		end
+	end
+	-- The bottom share of the pile is packed junk (Order 100+ sorts it to the bottom).
+	for i = 1, math.floor(#picks * (pile.ChunkFraction or 0)) do
+		local chunk = ClutterConfig.Get(ClutterConfig.ChunkKeys[rng:NextInteger(1, #ClutterConfig.ChunkKeys)])
+		picks[i] = { Def = chunk, Order = 100 + rng:NextNumber(), Contents = rollContents(rng, pile.Mix, keys, pile.ChunkContents) }
 	end
 	-- Heavier things tend to go down first so big boxes/bins end up at the bottom of piles.
 	table.sort(picks, function(a, b)
@@ -344,7 +391,7 @@ local function buildHeap(pile, config, origin: CFrame, rng: Random, folder: Inst
 					px = math.clamp(math.cos(ang) * r * sizeX, -sizeX / 2 + hx * 0.6, sizeX / 2 - hx * 0.6)
 					pz = math.clamp(math.sin(ang) * r * sizeZ, -sizeZ / 2 + hz * 0.6, sizeZ / 2 - hz * 0.6)
 				end
-				if not insideExclusion(pile.Exclusions, pile.Center.X + px, pile.Center.Z + pz) then
+				if not insideExclusion(pile.Exclusions, pile.Center.X + px, pile.Center.Z + pz) and not insideExclusion(keepOut, pile.Center.X + px, pile.Center.Z + pz) then
 					local ax, bx = cellRange(px, hx, nx, sizeX)
 					local az, bz = cellRange(pz, hz, nz, sizeZ)
 					local top = 0
@@ -372,7 +419,7 @@ local function buildHeap(pile, config, origin: CFrame, rng: Random, folder: Inst
 					layer += 1
 					local root = makeRoot(def, scale, def.Colors[rng:NextInteger(1, #def.Colors)], cf)
 					local region = pile.RegionId or regionFor(config, localPos)
-					finalize(root, def, { ObjectId = newId(def), RegionId = region, PileId = pile.PileId or pile.Id, DepthLayer = layer }, folder)
+					finalize(root, def, { ObjectId = newId(def), RegionId = region, PileId = pile.PileId or pile.Id, DepthLayer = layer, Contents = pick.Contents }, folder)
 					table.insert(out, root)
 					local newTop = cand[7] + height
 					for ix = cand[3], cand[4] do
@@ -465,6 +512,10 @@ function ClutterBuilder.Build(config, origin: CFrame, folder: Instance, variant:
 		table.insert(filter, part)
 	end
 	placeParams.FilterDescendantsInstances = filter
+	keepOut = {}
+	for _, bin in ipairs(config.DepositBins or {}) do
+		table.insert(keepOut, { Center = Vector2.new(bin.Center.X, bin.Center.Z), Size = Vector2.new(bin.Size.X + 3, bin.Size.Z + 3) })
+	end
 
 	local out = {}
 	for _, pile in ipairs(config.Piles or {}) do
@@ -475,6 +526,9 @@ function ClutterBuilder.Build(config, origin: CFrame, folder: Instance, variant:
 			heap.Count = math.floor(pile.Count * (config.CountMultiplier or 1) + 0.5)
 			if pile.Center.Y == 0 and pile.MaxHeight > 2 then
 				heap.MaxHeight = pile.MaxHeight + (config.FloorHeapHeightBonus or 0)
+				-- Only real floor heaps get packed-junk bottoms (not scatter, shelves or furniture tops).
+				heap.ChunkFraction = config.ChunkFraction
+				heap.ChunkContents = config.ChunkContents
 			end
 			buildHeap(heap, config, origin, Random.new(hashString(config.Name .. pile.Id .. tostring(variant or 1))), folder, newId, out)
 		end
@@ -485,9 +539,46 @@ function ClutterBuilder.Build(config, origin: CFrame, folder: Instance, variant:
 			buildCarpet(pile, config, origin, folder, newId, out, variant)
 		end
 	end
-	print(string.format("[ClutterBuilder] %s: %d movable objects (%d in heaps/rows, %d floor carpet) built in %.2fs",
-		config.Name, #out, piled, #out - piled, os.clock() - started))
+	local chunks, hidden, treasures = 0, 0, 0
+	for _, root in ipairs(out) do
+		if root:GetAttribute("IsChunk") then
+			chunks += 1
+			hidden += #string.split(root:GetAttribute("Contents") or "", ",")
+		elseif root:GetAttribute("Category") == "Treasure" then
+			treasures += 1
+		end
+	end
+	print(string.format("[ClutterBuilder] %s: %d physics bodies (%d in heaps/rows, %d floor carpet), %d junk chunks holding %d more objects, %d treasures, built in %.2fs",
+		config.Name, #out, piled, #out - piled, chunks, hidden, treasures, os.clock() - started))
 	return out
+end
+
+-- Create one more object at runtime (junk chunk pieces). Same attributes/tags/final art as
+-- built objects; ids continue with an X counter so they never collide with built ones.
+function ClutterBuilder.Spawn(config, folder: Instance, key: string, cframe: CFrame, meta: { RegionId: string, PileId: string }): BasePart?
+	local def = ClutterConfig.Get(key)
+	if not def then
+		return nil
+	end
+	spawnCounter += 1
+	local prefix = config.ObjectPrefix or ("Room" .. config.DisplayNumber)
+	local root = makeRoot(def, 1, def.Colors[spawnRng:NextInteger(1, #def.Colors)], cframe)
+	finalize(root, def, {
+		ObjectId = string.format("%s_%s_X%04d", prefix, def.Category, spawnCounter),
+		RegionId = meta.RegionId,
+		PileId = meta.PileId,
+		DepthLayer = 0,
+	}, folder)
+	return root
+end
+
+-- Local-space bounds (min, max) of an asset at scale 1, root + extras.
+function ClutterBuilder.Bounds(key: string): (Vector3?, Vector3?)
+	local def = ClutterConfig.Get(key)
+	if not def then
+		return nil, nil
+	end
+	return assetBounds(def)
 end
 
 return ClutterBuilder

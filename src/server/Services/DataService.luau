@@ -31,7 +31,6 @@ local Template = {
 		RoomCash = 0,
 		StrengthLevel = 1,
 		ThrowPowerLevel = 1,
-		GrabSpeedLevel = 1,
 		MoveSpeedLevel = 1,
 		UpdatedAt = 0,
 	},

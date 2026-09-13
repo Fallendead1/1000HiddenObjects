@@ -14,6 +14,10 @@
 ]]
 
 local CollectionService = game:GetService("CollectionService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ServerStorage = game:GetService("ServerStorage")
+
+local DepositConfig = require(ReplicatedStorage.Shared.Config.DepositConfig)
 
 local RoomBuilder = {}
 
@@ -222,6 +226,114 @@ local function buildFurniture(origin: CFrame, parent: Folder)
 end
 
 
+-- Final art for a prop: ServerStorage.Props.<key> (Model or BasePart), scaled to fit `size`
+-- around `cf`. Visual only - the placeholder parts keep collision and are hidden.
+local function applyProp(key: string, cf: CFrame, size: Vector3, parent: Instance, hide: { BasePart }): boolean
+	local library = ServerStorage:FindFirstChild("Props")
+	local source = library and library:FindFirstChild(key)
+	if not source then
+		return false
+	end
+	local clone = source:Clone()
+	if clone:IsA("Model") then
+		local _, bbox = clone:GetBoundingBox()
+		local fit = math.min(size.X / math.max(bbox.X, 0.01), size.Y / math.max(bbox.Y, 0.01), size.Z / math.max(bbox.Z, 0.01))
+		clone:ScaleTo(clone:GetScale() * fit)
+		local bbCF = clone:GetBoundingBox()
+		clone:PivotTo(cf * bbCF:ToObjectSpace(clone:GetPivot()))
+	elseif clone:IsA("BasePart") then
+		clone.Size = size
+		clone.CFrame = cf
+	else
+		clone:Destroy()
+		return false
+	end
+	local list = clone:IsA("BasePart") and { clone } or clone:GetDescendants()
+	for _, d in ipairs(list) do
+		if d:IsA("BasePart") then
+			d.Anchored = true
+			d.CanCollide = false
+			d.CanQuery = false
+			d.CanTouch = false
+		elseif d:IsA("LuaSourceContainer") then
+			d:Destroy()
+		end
+	end
+	clone.Name = key
+	clone.Parent = parent
+	for _, p in ipairs(hide) do
+		p.Transparency = 1
+	end
+	return true
+end
+
+-- Four walls (and optionally a floor) around an inner W x D area, H tall.
+local function openBox(origin: CFrame, center: Vector3, inner: Vector3, thickness: number, color: Color3, material: Enum.Material, parent: Instance, name: string, withFloor: boolean): { BasePart }
+	local w, h, d, t = inner.X, inner.Y, inner.Z, thickness
+	local parts = {}
+	local specs = {
+		{ Vector3.new(w + t * 2, h, t), Vector3.new(0, h / 2, -(d + t) / 2) },
+		{ Vector3.new(w + t * 2, h, t), Vector3.new(0, h / 2, (d + t) / 2) },
+		{ Vector3.new(t, h, d), Vector3.new(-(w + t) / 2, h / 2, 0) },
+		{ Vector3.new(t, h, d), Vector3.new((w + t) / 2, h / 2, 0) },
+	}
+	for _, s in ipairs(specs) do
+		table.insert(parts, part({ Name = name, Size = s[1], CFrame = origin * CFrame.new(center + s[2]), Color = color, Material = material }, parent))
+	end
+	if withFloor then
+		table.insert(parts, part({ Name = name .. "Floor", Size = Vector3.new(w, 0.2, d), CFrame = origin * CFrame.new(center + Vector3.new(0, 0.1, 0)), Color = color, Material = material }, parent))
+	end
+	return parts
+end
+
+-- Deposit bins: collidable walls in Structure, plus an invisible "mouth" volume (tag DepositBin)
+-- that DepositService watches. Anything that ends up inside the mouth is cleaned.
+local function buildBins(config, origin: CFrame, structure: Folder, binsFolder: Folder, propsFolder: Folder)
+	for i, bin in ipairs(config.DepositBins or {}) do
+		local def = DepositConfig.Types[bin.Type]
+		if not def then
+			warn("[RoomBuilder] Unknown bin type:", bin.Type)
+			continue
+		end
+		local body = Color3.new(def.Color.R * 0.75, def.Color.G * 0.75, def.Color.B * 0.75)
+		local parts = openBox(origin, bin.Center, bin.Size, 0.35, body, Enum.Material.SmoothPlastic, structure, "BinWall", true)
+		-- Bright rim so a bin reads from across the room.
+		local w, h, d = bin.Size.X, bin.Size.Y, bin.Size.Z
+		for _, s in ipairs({
+			{ Vector3.new(w + 0.9, 0.25, 0.45), Vector3.new(0, h + 0.12, -(d + 0.35) / 2) },
+			{ Vector3.new(w + 0.9, 0.25, 0.45), Vector3.new(0, h + 0.12, (d + 0.35) / 2) },
+			{ Vector3.new(0.45, 0.25, d), Vector3.new(-(w + 0.35) / 2, h + 0.12, 0) },
+			{ Vector3.new(0.45, 0.25, d), Vector3.new((w + 0.35) / 2, h + 0.12, 0) },
+		}) do
+			table.insert(parts, part({ Name = "BinRim", Size = s[1], CFrame = origin * CFrame.new(bin.Center + s[2]), Color = def.Color, Material = Enum.Material.Neon }, structure))
+		end
+		local mouth = part({
+			Name = "BinMouth_" .. bin.Type .. "_" .. i,
+			Size = Vector3.new(w - 0.1, h + 0.8, d - 0.1),
+			CFrame = origin * CFrame.new(bin.Center + Vector3.new(0, 0.2 + (h + 0.8) / 2, 0)),
+			Transparency = 1,
+			CanCollide = false,
+			CanQuery = false,
+			CanTouch = false,
+		}, binsFolder)
+		mouth:SetAttribute("BinType", bin.Type)
+		mouth:SetAttribute("BinName", def.Name)
+		mouth:SetAttribute("Rim", h)
+		CollectionService:AddTag(mouth, "DepositBin")
+		local outer = Vector3.new(w + 0.9, h + 0.25, d + 0.9)
+		applyProp(def.PropKey, origin * CFrame.new(bin.Center + Vector3.new(0, outer.Y / 2, 0)), outer, propsFolder, parts)
+	end
+end
+
+-- Big open-top boxes that hold a pile's height (walls only; the pile sits on the room floor).
+local function buildContainers(config, origin: CFrame, structure: Folder, propsFolder: Folder)
+	for _, box in ipairs(config.Containers or {}) do
+		local parts = openBox(origin, box.Center, box.Size, 0.4, box.Color or C(196, 150, 100), Enum.Material.SmoothPlastic, structure, "ContainerWall", false)
+		local outer = Vector3.new(box.Size.X + 0.8, box.Size.Y, box.Size.Z + 0.8)
+		applyProp("Container_" .. box.Id, origin * CFrame.new(box.Center + Vector3.new(0, outer.Y / 2, 0)), outer, propsFolder, parts)
+	end
+end
+
 local function buildRegions(config, origin: CFrame, parent: Folder)
 	for _, r in ipairs(config.Regions) do
 		local p = part({ Name = "Region_" .. r.Id, Size = r.Size, CFrame = origin * CFrame.new(r.Center), Transparency = 1, CanCollide = false, CanQuery = false, CanTouch = false }, parent)
@@ -263,6 +375,15 @@ function RoomBuilder.Build(config, origin: CFrame): Model
 	structure.Parent = model
 	buildStructure(config, origin, structure)
 	buildFurniture(origin, structure)
+
+	local bins = Instance.new("Folder")
+	bins.Name = "Bins"
+	bins.Parent = model
+	local props = Instance.new("Folder")
+	props.Name = "Props"
+	props.Parent = model
+	buildBins(config, origin, structure, bins, props)
+	buildContainers(config, origin, structure, props)
 
 	local spawn = part({
 		Name = "RoomSpawn",

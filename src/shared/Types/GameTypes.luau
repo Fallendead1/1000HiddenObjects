@@ -17,7 +17,6 @@ export type Profile = {
 		RoomCash: number,
 		StrengthLevel: number,
 		ThrowPowerLevel: number,
-		GrabSpeedLevel: number,
 		MoveSpeedLevel: number,
 		UpdatedAt: number,
 	},

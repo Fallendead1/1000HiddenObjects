@@ -76,6 +76,7 @@ function RoomValidator.Validate(runtime, config): (boolean, string)
 
 	-- Individual clutter objects
 	local ids, perKey, badPhysics = {}, {}, 0
+	local chunks, hidden, treasures = 0, 0, 0
 	local maxStrength = UpgradeConfig.GetValue("Strength", UpgradeConfig.GetMaxLevel("Strength"))
 	if #runtime.Objects == 0 then
 		err("Room has no movable clutter objects (tag Clutter)")
@@ -123,6 +124,21 @@ function RoomValidator.Validate(runtime, config): (boolean, string)
 		if not root.CanQuery then
 			badPhysics += 1
 		end
+		if root:GetAttribute("IsChunk") then
+			chunks += 1
+			local contents = root:GetAttribute("Contents") or ""
+			if contents == "" then
+				err("Junk chunk with no contents: " .. label)
+			end
+			for _, k in ipairs(string.split(contents, ",")) do
+				hidden += 1
+				if k ~= "" and not ClutterConfig.Get(k) then
+					err("Junk chunk holds unknown AssetKey '" .. k .. "': " .. label)
+				end
+			end
+		elseif root:GetAttribute("Category") == "Treasure" then
+			treasures += 1
+		end
 		for _, child in ipairs(root:GetChildren()) do
 			if child:IsA("BasePart") and (child.CanCollide or not child.Massless or not child:FindFirstChildWhichIsA("WeldConstraint")) then
 				badPhysics += 1
@@ -131,6 +147,25 @@ function RoomValidator.Validate(runtime, config): (boolean, string)
 	end
 	if badPhysics > 0 then
 		err(string.format("%d clutter parts have broken physics setup (root must be queryable; details massless, non-colliding, welded)", badPhysics))
+	end
+
+	-- Deposit bins (the only Cash source) and nothing spawned inside one
+	local binCount = 0
+	local clutterFolder = runtime.Model:FindFirstChild("Clutter")
+	local binParams = OverlapParams.new()
+	binParams.FilterType = Enum.RaycastFilterType.Include
+	binParams.FilterDescendantsInstances = clutterFolder and { clutterFolder } or {}
+	for _, mouth in ipairs(CollectionService:GetTagged("DepositBin")) do
+		if mouth:IsA("BasePart") and mouth:IsDescendantOf(runtime.Model) then
+			binCount += 1
+			local inside = clutterFolder and #workspace:GetPartBoundsInBox(mouth.CFrame, mouth.Size, binParams) or 0
+			if inside > 0 then
+				err(string.format("%d clutter parts spawned inside %s (they would be cleaned instantly)", inside, mouth.Name))
+			end
+		end
+	end
+	if binCount == 0 then
+		err("Room has no deposit bins (tag DepositBin): players could never earn Cash")
 	end
 
 	-- Anything visible that isn't furniture/clutter and looks grabbable
@@ -210,6 +245,8 @@ function RoomValidator.Validate(runtime, config): (boolean, string)
 		string.format("=== ROOM VALIDATION: %s (%s) ===", config.Name, config.DisplayNumber),
 		string.format("Movable objects: %d | AssetKeys used: %d | Sockets: %d exposable / %d | Regions: %d | Total parts: %d",
 			#runtime.Objects, #keys, exposable, #runtime.SocketList, regionCount, partCount),
+		string.format("Bins: %d | Junk chunks: %d holding %d objects | Treasures: %d | Real objects in room: %d",
+			binCount, chunks, hidden, treasures, runtime.TotalObjects or #runtime.Objects),
 		#errors == 0 and "RESULT: PASS" or string.format("RESULT: FAIL (%d errors)", #errors),
 	}
 	for i, e in ipairs(errors) do

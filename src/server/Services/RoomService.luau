@@ -47,7 +47,8 @@ export type RoomRuntime = {
 	FloorY: number,
 	BoundsCFrame: CFrame,
 	BoundsSize: Vector3,
-	MovedCount: number,
+	DepositedCount: number, -- objects cleaned into bins
+	TotalObjects: number, -- every real object, including the ones still packed in junk chunks
 }
 
 local function taggedIn(model: Instance, tag: string): { Instance }
@@ -60,13 +61,16 @@ local function taggedIn(model: Instance, tag: string): { Instance }
 	return result
 end
 
--- XZ distance from a point to an object's (rotated) footprint. 0 when the point is under it.
+-- XZ distance from a point to an object's footprint on the floor. 0 when the point is under
+-- it. Uses the world-aligned box the object covers, so it stays right however the object has
+-- tumbled (loose physics lays things on their side; the object's own Y is not always up).
 function RoomService.FootprintDistanceXZ(root: BasePart, cframe: CFrame, point: Vector3): number
-	local lp = cframe:PointToObjectSpace(point)
-	local half = root.Size / 2
-	local dx = math.max(0, math.abs(lp.X) - half.X)
-	local dz = math.max(0, math.abs(lp.Z) - half.Z)
-	-- Balls/cylinders and tilted parts: good enough as a box approximation.
+	local s = root.Size
+	local r, u, l = cframe.RightVector, cframe.UpVector, cframe.LookVector
+	local ex = (math.abs(r.X) * s.X + math.abs(u.X) * s.Y + math.abs(l.X) * s.Z) / 2
+	local ez = (math.abs(r.Z) * s.X + math.abs(u.Z) * s.Y + math.abs(l.Z) * s.Z) / 2
+	local dx = math.max(0, math.abs(point.X - cframe.Position.X) - ex)
+	local dz = math.max(0, math.abs(point.Z - cframe.Position.Z) - ez)
 	return math.sqrt(dx * dx + dz * dz)
 end
 
@@ -122,7 +126,8 @@ function RoomService.Build(config, origin: CFrame): RoomRuntime
 		FloorY = origin.Position.Y,
 		BoundsCFrame = origin * CFrame.new(0, config.Size.Y / 2, 0),
 		BoundsSize = config.Size,
-		MovedCount = 0,
+		DepositedCount = 0,
+		TotalObjects = 0,
 	}
 
 	for _, inst in ipairs(taggedIn(model, "Clutter")) do
@@ -130,6 +135,11 @@ function RoomService.Build(config, origin: CFrame): RoomRuntime
 			local id = inst:GetAttribute("ObjectId") or inst.Name
 			table.insert(runtime.Objects, inst)
 			runtime.ObjectsById[id] = inst
+			if inst:GetAttribute("IsChunk") then
+				runtime.TotalObjects += #string.split(inst:GetAttribute("Contents") or "", ",")
+			else
+				runtime.TotalObjects += 1
+			end
 		end
 	end
 
@@ -235,14 +245,53 @@ function RoomService.SettleAndSnapshot(runtime: RoomRuntime, maxSeconds: number)
 		end
 		task.wait(0.5)
 	end
+	-- Anything that slid into a bin while settling goes back on the pile beside it (otherwise
+	-- it would be cleaned for free the moment the search starts).
+	local clutter = runtime.Model:FindFirstChild("Clutter")
+	local bins = runtime.Model:FindFirstChild("Bins")
+	if clutter and bins then
+		local inParams = OverlapParams.new()
+		inParams.FilterType = Enum.RaycastFilterType.Include
+		inParams.FilterDescendantsInstances = { clutter }
+		local downParams = RaycastParams.new()
+		downParams.FilterType = Enum.RaycastFilterType.Include
+		downParams.FilterDescendantsInstances = { clutter, runtime.Model:FindFirstChild("Structure") }
+		for _, mouth in ipairs(bins:GetChildren()) do
+			if mouth:IsA("BasePart") then
+				local moved = {}
+				for _, part in ipairs(workspace:GetPartBoundsInBox(mouth.CFrame, mouth.Size, inParams)) do
+					local root = CollectionService:HasTag(part, "Clutter") and part or part.Parent
+					if root:IsA("BasePart") and not moved[root] then
+						moved[root] = true
+						local side = (#moved % 2 == 0) and 1 or -1
+						local spot = mouth.Position + Vector3.new(0, 0, side * (mouth.Size.Z / 2 + 2.5))
+						local hit = workspace:Raycast(spot + Vector3.new(0, 15, 0), Vector3.new(0, -30, 0), downParams)
+						local y = hit and hit.Position.Y or runtime.FloorY
+						root.CFrame = CFrame.new(spot.X, y + root.Size.Y / 2 + 0.05, spot.Z)
+						root.AssemblyLinearVelocity = Vector3.zero
+					end
+				end
+			end
+		end
+	end
 	for _, obj in ipairs(runtime.Objects) do
 		if RoomService.IsOutOfRoom(runtime, obj) then
 			RoomService.RecoverObject(runtime, obj)
 		end
 		obj:SetAttribute("OriginalCFrame", obj.CFrame)
+		-- Rest frozen where it settled; ObjectService's physics bubble wakes it when a player
+		-- comes close.
+		obj.Anchored = true
 	end
 	RoomService.ComputeBlockers(runtime)
 	return os.clock() - started
+end
+
+-- Add an object created during play (junk chunk pieces) to the room.
+function RoomService.Register(runtime: RoomRuntime, root: BasePart)
+	table.insert(runtime.Objects, root)
+	runtime.ObjectsById[root:GetAttribute("ObjectId") or root.Name] = root
+	root:SetAttribute("OriginalCFrame", root.CFrame)
 end
 
 function RoomService.Destroy(runtime: RoomRuntime)
@@ -251,11 +300,12 @@ function RoomService.Destroy(runtime: RoomRuntime)
 	end
 end
 
+-- Room cleaned: share of every real object (packed ones included) deposited in bins.
 function RoomService.GetProgress(runtime: RoomRuntime): number
-	if #runtime.Objects == 0 then
+	if runtime.TotalObjects == 0 then
 		return 0
 	end
-	return runtime.MovedCount / #runtime.Objects
+	return math.min(1, runtime.DepositedCount / runtime.TotalObjects)
 end
 
 -- True when the point lies inside the room's playable box.

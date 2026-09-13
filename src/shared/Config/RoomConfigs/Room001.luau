@@ -29,14 +29,19 @@ local Room = {
 	RequiredBlockerDisplacement = 1.4,
 
 	-- Unique-object progress milestones: side / area / region / hot-cold / blocker outline.
-	-- Scaled for ~2,200 objects: 5% is roughly 110 objects moved.
-	HintMilestones = { 0.05, 0.10, 0.18, 0.26, 0.35 },
+	-- Fractions of the room CLEANED (deposited in bins). ~4,500 objects: 2% is ~90 deposits.
+	HintMilestones = { 0.02, 0.045, 0.08, 0.12, 0.17 },
 
 	LayoutVariants = { 1 },
 
 	-- Density knobs for the builder (tune against the performance test, not per pile).
-	-- Every object is loose physics: ~1,800 loose objects settle to 60/60, ~3,600 never sleep.
-	CountMultiplier = 2.1, -- more candidate objects per heap
+	-- Only objects near players are live physics (GameConfig.BubbleRadius), so the room can
+	-- hold far more than the ~1,800 loose bodies Roblox settles at 60 Hz all at once.
+	CountMultiplier = 2.4, -- more candidate objects per heap
+	-- Share of every floor heap built from packed junk chunks (bottom layers). Each chunk bursts
+	-- into ChunkContents real objects when grabbed: depth without thousands of live bodies.
+	ChunkFraction = 0.28,
+	ChunkContents = { 5, 8 },
 	FloorHeapHeightBonus = 4, -- taller floor heaps (light clutter never blocks players)
 
 	Size = Vector3.new(90, 26, 70),
@@ -66,6 +71,23 @@ Room.HintAreas = {
 	{ Label = "DESK / BOOKSHELF / WINDOW", Regions = { "Desk", "Bookshelf", "WindowArea" } },
 	{ Label = "LAUNDRY / LEFT FLOOR / DRESSER", Regions = { "LaundryCorner", "LeftFloor", "Dresser" } },
 	{ Label = "TOYS / RIGHT FLOOR / CENTER", Regions = { "ToyCorner", "RightFloor", "CenterFloor" } },
+}
+
+-- Where cleaned objects go (see DepositConfig). Center = floor centre of the bin, Size = inner
+-- width / wall height / depth. Clutter never spawns in or right around a bin.
+Room.DepositBins = {
+	{ Type = "Laundry", Center = Vector3.new(-17.5, 0, 30), Size = Vector3.new(4.6, 2.6, 4.6) },
+	{ Type = "Toys", Center = Vector3.new(17.5, 0, 30), Size = Vector3.new(4.6, 2.6, 4.6) },
+	{ Type = "Books", Center = Vector3.new(31, 0, 5), Size = Vector3.new(4.2, 2.4, 4.2) },
+	{ Type = "Trash", Center = Vector3.new(-5, 0, -17), Size = Vector3.new(4.2, 2.8, 4.2) },
+	{ Type = "Donation", Center = Vector3.new(9, 0, 31), Size = Vector3.new(6.5, 1.4, 5) },
+}
+
+-- Big open-top boxes that keep their piles tall instead of slumping flat (the deepest digs).
+Room.Containers = {
+	{ Id = "MovingBox", Center = Vector3.new(-19, 0, 2), Size = Vector3.new(8.6, 3.6, 8.6), Color = Color3.fromRGB(196, 150, 100) },
+	{ Id = "ToyChest", Center = Vector3.new(34, 0, 28), Size = Vector3.new(11.6, 3.2, 8.6), Color = Color3.fromRGB(150, 95, 60) },
+	{ Id = "Hamper", Center = Vector3.new(-36, 0, 29), Size = Vector3.new(10.6, 3.4, 8.6), Color = Color3.fromRGB(235, 235, 240) },
 }
 
 -- AssetKey mixes (key = relative frequency).
@@ -142,9 +164,9 @@ Room.Piles = {
 	heap("Mound_Shelfside", "RightFloor", "Books", Vector3.new(29, 0, -12), Vector2.new(7, 7), 40, 4),
 	-- The whole floor, buried: layered flat junk everywhere the heaps and furniture aren't.
 	-- A small doormat by the entrance stays clear so the spawn reads as a doorway.
-	carpet("Carpet", "Carpet", Vector3.new(0, 0, 0), Vector2.new(88, 68), 0.32, 1.8, {
+	carpet("Carpet", "Carpet", Vector3.new(0, 0, 0), Vector2.new(88, 68), 0.55, 1.8, {
 		{ Center = Vector2.new(0, 31.5), Size = Vector2.new(6, 5) },
-	}, 1.8),
+	}, 1.6),
 	-- Bookshelf rows (shelf tops) and clothes hanging on the closet rail.
 	row("Shelf_1", "Bookshelf", "ShelfBooks", Vector3.new(43, 0, -13.6), Vector3.new(43, 0, 1.6), 3.7, 43),
 	row("Shelf_2", "Bookshelf", "ShelfBooks", Vector3.new(43, 0, -13.6), Vector3.new(43, 0, 1.6), 6.7, 43),
@@ -172,14 +194,6 @@ Room.Sockets = {
 	socket("S_Center_01", "Center_Main", -2, -2, 1), socket("S_Center_02", "Center_Main", 2.5, 2, 1), socket("S_Center_03", "Center_B", 0, 0, 1), socket("S_Center_04", "Center_C", 0, 0, 1),
 	socket("S_Left_01", "Left_A", 0, -1), socket("S_Left_02", "Left_B", 0, 0),
 	socket("S_Right_01", "Right_A", 0, 1), socket("S_Right_02", "Right_B", 0, 0),
-}
-
--- Open floor where resume/dev tools pile pre-displaced objects (never contains sockets).
-Room.DumpZones = {
-	{ Center = Vector3.new(-13, 0, 31), Size = Vector2.new(9, 5) },
-	{ Center = Vector3.new(13, 0, 31), Size = Vector2.new(8, 5) },
-	{ Center = Vector3.new(-11, 0, 21), Size = Vector2.new(6, 5) },
-	{ Center = Vector3.new(11, 0, 21), Size = Vector2.new(6, 5) },
 }
 
 return Room

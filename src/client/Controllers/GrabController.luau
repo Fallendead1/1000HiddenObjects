@@ -4,8 +4,13 @@
 	  Idle --press on an object--> Requesting --server says ok--> Holding --release--> Idle
 
 	  PC:      press Left Mouse on an object, keep holding to carry, release to throw.
-	  Gamepad: same with R2.
-	  Mobile:  tap GRAB to pick up, tap THROW to throw (camera stays free in between).
+	           Q (or Right Mouse in first person) sets it down gently.
+	  Gamepad: same with R2; B drops.
+	  Mobile:  tap GRAB to pick up, tap THROW to throw, DROP to set down.
+
+	While holding, a dotted arc + landing ring predicts the throw (gold = it lands in a bin).
+	We simulate our own held object, so a throw launches locally with zero delay; the server
+	validates it.
 
 	Guarantees:
 	  - One press = at most one grab request (a second press is ignored until release).
@@ -27,6 +32,7 @@ local UserInputService = game:GetService("UserInputService")
 local Shared = ReplicatedStorage.Shared
 local GameConfig = require(Shared.Config.GameConfig)
 local UpgradeConfig = require(Shared.Config.UpgradeConfig)
+local DepositConfig = require(Shared.Config.DepositConfig)
 local Remotes = require(Shared.Utility.Remotes)
 
 local UI = require(script.Parent.Parent.UI.UI)
@@ -55,8 +61,20 @@ local cardStats: TextLabel
 local cardAction: TextLabel
 local tooHeavyUntil = 0
 
+-- Throw preview
+local ARC_DOTS = 22
+local arcDots: { BasePart } = {}
+local ring: BasePart
+local arcBin: BasePart? = nil
+-- Recently thrown object (for bin magnetism while we still simulate it) and fade state.
+local lastThrown: BasePart? = nil
+local lastThrownAt = 0
+local fadedRoot: BasePart? = nil
+
 local rayParams = RaycastParams.new()
 rayParams.FilterType = Enum.RaycastFilterType.Exclude
+local arcParams = RaycastParams.new()
+arcParams.FilterType = Enum.RaycastFilterType.Exclude
 
 local function inSearching(): boolean
 	return player:GetAttribute("InMatch") == true and matchState:GetAttribute("State") == "Searching"
@@ -175,13 +193,87 @@ local function requestGrab(fromToggle: boolean)
 	end)
 end
 
+local function throwDirection(): Vector3
+	return usesCenterAim() and workspace.CurrentCamera.CFrame.LookVector or aimRay().Direction.Unit
+end
+
+-- Same formula as ObjectService.ThrowVelocity, using the replicated ThrowSpeed.
+local function predictedVelocity(root: BasePart, direction: Vector3): Vector3
+	local weight = root:GetAttribute("Weight") or 1
+	local speed = (player:GetAttribute("ThrowSpeed") or 50) * math.clamp(1.3 - weight * GameConfig.ThrowWeightFalloff, 0.55, 1.2)
+	return (direction + Vector3.new(0, GameConfig.ThrowUpwardBias, 0)).Unit * speed
+end
+
+local function unfade()
+	if fadedRoot then
+		fadedRoot.LocalTransparencyModifier = 0
+		for _, d in ipairs(fadedRoot:GetDescendants()) do
+			if d:IsA("BasePart") then
+				d.LocalTransparencyModifier = 0
+			end
+		end
+		fadedRoot = nil
+	end
+end
+
 local function throwHeld()
 	if state ~= "Holding" or not heldId then
 		return
 	end
-	local direction = usesCenterAim() and workspace.CurrentCamera.CFrame.LookVector or aimRay().Direction.Unit
+	local root = heldRoot
+	local direction = throwDirection()
 	Remotes.Event("ThrowObject"):FireServer(heldId, direction)
+	if root and root.Parent then
+		-- We already simulate our held object: launch it now so it leaves the hand instantly.
+		for _, c in ipairs(root:GetChildren()) do
+			if c:IsA("AlignPosition") or c:IsA("AlignOrientation") then
+				c.Enabled = false
+			end
+		end
+		root.AssemblyLinearVelocity = predictedVelocity(root, direction)
+		-- Reduced-gravity lift from the very first frame, so the flight matches the arc preview.
+		-- The server's FlightLift replaces it as soon as it arrives.
+		local att = Instance.new("Attachment")
+		att.Name = "LocalLiftAttachment"
+		att.Parent = root
+		local lift = Instance.new("VectorForce")
+		lift.Name = "LocalLift"
+		lift.Attachment0 = att
+		lift.RelativeTo = Enum.ActuatorRelativeTo.World
+		lift.ApplyAtCenterOfMass = true
+		lift.Force = Vector3.new(0, root.AssemblyMass * workspace.Gravity * (1 - GameConfig.ThrowGravityScale), 0)
+		lift.Parent = root
+		local conn
+		local function removeLocalLift()
+			if conn then
+				conn:Disconnect()
+			end
+			lift:Destroy()
+			att:Destroy()
+		end
+		conn = root.ChildAdded:Connect(function(child)
+			if child.Name == "FlightLift" then
+				removeLocalLift()
+			end
+		end)
+		task.delay(0.6, removeLocalLift)
+		lastThrown = root
+		lastThrownAt = os.clock()
+	end
+	unfade()
 	Controllers.AudioController.Play("Throw")
+	Controllers.FXController.FovPunch(2)
+	setIdle()
+end
+
+-- Set the held object down gently in front of you.
+local function dropHeld()
+	if state ~= "Holding" or not heldId then
+		return
+	end
+	Remotes.Event("DropObject"):FireServer(heldId)
+	unfade()
+	pressDown = false
 	setIdle()
 end
 
@@ -248,8 +340,14 @@ local function tapAction()
 end
 
 local function onInputBegan(input: InputObject, gameProcessed: boolean)
-	if isGrabInput(input) and not gameProcessed then
+	if gameProcessed then
+		return
+	end
+	if isGrabInput(input) then
 		pressAction()
+	elseif input.KeyCode == Enum.KeyCode.Q or input.KeyCode == Enum.KeyCode.ButtonB
+		or (input.UserInputType == Enum.UserInputType.MouseButton2 and Controllers.CameraController.IsFirstPerson()) then
+		dropHeld()
 	end
 end
 
@@ -302,13 +400,25 @@ local function steerHeld()
 	end
 end
 
-local function actionText(): string
+local function actionText(chunk: boolean): string
+	local verb = chunk and "BREAK IT OPEN" or "GRAB"
 	if UI.IsTouch() then
-		return "TAP GRAB"
+		return "TAP " .. (chunk and "GRAB TO BREAK IT" or "GRAB")
 	elseif UI.IsGamepad() then
-		return "HOLD R2 TO GRAB"
+		return "HOLD R2 TO " .. verb
 	end
-	return "HOLD LEFT MOUSE TO GRAB"
+	return "HOLD LEFT MOUSE TO " .. verb
+end
+
+-- "$2 in any bin  •  $4 in the LAUNDRY BASKET"
+local function valueText(root: BasePart): string
+	local value = root:GetAttribute("CashValue") or 0
+	local matchType = DepositConfig.MatchingType(root:GetAttribute("Category"), root:GetAttribute("Weight"))
+	local bin = matchType and DepositConfig.Types[matchType]
+	if bin then
+		return string.format("$%d   •   $%d in the %s", value, value * DepositConfig.MatchMultiplier, bin.Name)
+	end
+	return string.format("$%d in any bin", value)
 end
 
 local function updateVisuals()
@@ -316,36 +426,188 @@ local function updateVisuals()
 	highlight.Adornee = target
 	local crosshair = "idle"
 	if heldRoot then
-		highlight.OutlineColor = UI.Colors.Green
+		highlight.OutlineColor = arcBin and UI.Colors.Gold or UI.Colors.Green
 		crosshair = "hold"
 		card.Visible = true
 		cardName.Text = heldRoot:GetAttribute("DisplayName") or "OBJECT"
-		cardStats.Text = "Aim where you want it to go"
-		cardAction.Text = UI.IsTouch() and "TAP THROW" or (UI.IsGamepad() and "RELEASE R2 TO THROW" or "RELEASE LEFT MOUSE TO THROW")
+		if arcBin then
+			cardStats.Text = "IN THE " .. (arcBin:GetAttribute("BinName") or "BIN") .. "!"
+			cardStats.TextColor3 = UI.Colors.Gold
+		else
+			cardStats.Text = valueText(heldRoot)
+			cardStats.TextColor3 = UI.Colors.TextDim
+		end
+		cardAction.Text = UI.IsTouch() and "TAP THROW  •  DROP" or (UI.IsGamepad() and "RELEASE R2 TO THROW  •  B DROP" or "RELEASE TO THROW  •  [Q] DROP")
 		cardAction.TextColor3 = UI.Colors.Green
 	elseif hovered then
 		local weight = hovered:GetAttribute("Weight") or 1
 		local tooHeavy = weight > maxWeight()
+		local chunk = hovered:GetAttribute("IsChunk") == true
 		highlight.OutlineColor = tooHeavy and UI.Colors.Red or Color3.new(1, 1, 1)
 		crosshair = tooHeavy and "heavy" or "hover"
 		card.Visible = true
 		cardName.Text = hovered:GetAttribute("DisplayName") or "OBJECT"
-		if hovered:GetAttribute("MovedBefore") then
-			cardStats.Text = string.format("Weight: %d   •   Already moved", weight)
+		cardStats.TextColor3 = UI.Colors.TextDim
+		if chunk then
+			cardStats.Text = string.format("Weight: %d   •   Packed with junk - grab to break it open", weight)
 		else
-			cardStats.Text = string.format("Weight: %d   •   Value: $%d", weight, hovered:GetAttribute("CashValue") or 0)
+			cardStats.Text = string.format("Weight: %d   •   %s", weight, valueText(hovered))
 		end
 		if tooHeavy then
 			cardAction.Text = string.format("TOO HEAVY - Requires Strength Lv. %d", UpgradeConfig.StrengthLevelFor(weight) or 99)
 			cardAction.TextColor3 = UI.Colors.Red
 		else
-			cardAction.Text = actionText()
+			cardAction.Text = actionText(chunk)
 			cardAction.TextColor3 = UI.Colors.Gold
 		end
 	else
 		card.Visible = os.clock() < tooHeavyUntil
 	end
 	Controllers.CameraController.SetCrosshair(crosshair)
+end
+
+-- ===== Throw preview, fade, bin magnetism =====
+
+local function makeArc()
+	local folder = Instance.new("Folder")
+	folder.Name = "ThrowArc"
+	folder.Parent = workspace.CurrentCamera
+	local function visual(shape: Enum.PartType, size: Vector3): Part
+		local p = Instance.new("Part")
+		p.Shape = shape
+		p.Size = size
+		p.Material = Enum.Material.Neon
+		p.Anchored = true
+		p.CanCollide = false
+		p.CanQuery = false
+		p.CanTouch = false
+		p.CastShadow = false
+		p.Transparency = 1
+		p.Parent = folder
+		return p
+	end
+	for i = 1, ARC_DOTS do
+		arcDots[i] = visual(Enum.PartType.Ball, Vector3.new(0.22, 0.22, 0.22))
+	end
+	ring = visual(Enum.PartType.Cylinder, Vector3.new(0.06, 2.4, 2.4))
+end
+
+local function hideArc()
+	for _, dot in ipairs(arcDots) do
+		dot.Transparency = 1
+	end
+	if ring then
+		ring.Transparency = 1
+	end
+	arcBin = nil
+end
+
+local function binAt(pos: Vector3): BasePart?
+	for _, mouth in ipairs(Controllers.BinController.GetMouths()) do
+		local lp = mouth.CFrame:PointToObjectSpace(pos)
+		local h = mouth.Size / 2
+		if math.abs(lp.X) <= h.X and math.abs(lp.Y) <= h.Y and math.abs(lp.Z) <= h.Z then
+			return mouth
+		end
+	end
+	return nil
+end
+
+local function drawArc()
+	local root = heldRoot
+	if not root or not root.Parent or Controllers.CameraController.IsCursorFree() then
+		hideArc()
+		return
+	end
+	local v = predictedVelocity(root, throwDirection())
+	local g = Vector3.new(0, -workspace.Gravity * GameConfig.ThrowGravityScale, 0)
+	local pos = root.Position
+	arcParams.FilterDescendantsInstances = { player.Character, workspace.CurrentCamera, root }
+	local points = {}
+	local hitPos, hitNormal, bin = nil, nil, nil
+	local dt = 0.045
+	-- Sweep a sphere roughly the object's size: a thin ray misses pile edges the object clips.
+	local radius = math.clamp(math.max(root.Size.X, root.Size.Y, root.Size.Z) * 0.25, 0.3, 1)
+	for _ = 1, 90 do
+		local nextPos = pos + v * dt + g * (0.5 * dt * dt)
+		v += g * dt
+		-- Walls and piles first, so a path through a bin's side never counts as "in".
+		local result = workspace:Spherecast(pos, radius, nextPos - pos, arcParams)
+		if result then
+			hitPos, hitNormal = result.Position, result.Normal
+			break
+		end
+		-- In = dropping into a bin's mouth through its top opening.
+		local mouth = binAt(nextPos)
+		if mouth and pos.Y >= mouth.Position.Y + mouth.Size.Y / 2 - 0.8 then
+			bin = mouth
+			hitPos, hitNormal = nextPos, Vector3.yAxis
+			break
+		end
+		table.insert(points, nextPos)
+		pos = nextPos
+	end
+	arcBin = bin
+	local color = bin and UI.Colors.Gold or Color3.new(1, 1, 1)
+	for i, dot in ipairs(arcDots) do
+		local idx = math.floor(i * #points / ARC_DOTS)
+		if idx >= 1 then
+			dot.CFrame = CFrame.new(points[idx])
+			dot.Color = color
+			dot.Transparency = 0.2 + 0.55 * (i / ARC_DOTS)
+		else
+			dot.Transparency = 1
+		end
+	end
+	if hitPos and hitNormal then
+		local side = math.abs(hitNormal.Z) < 0.9 and hitNormal:Cross(Vector3.zAxis).Unit or hitNormal:Cross(Vector3.xAxis).Unit
+		ring.CFrame = CFrame.fromMatrix(hitPos + hitNormal * 0.05, hitNormal, side)
+		ring.Color = bin and UI.Colors.Gold or UI.Colors.Green
+		ring.Transparency = 0.3
+	else
+		ring.Transparency = 1
+	end
+end
+
+-- The held object is see-through in first person so it never blocks what you're aiming at.
+local function updateFade()
+	local want = (heldRoot and Controllers.CameraController.IsFirstPerson()) and heldRoot or nil
+	if want ~= fadedRoot then
+		unfade()
+		if want then
+			fadedRoot = want
+		end
+	end
+	if fadedRoot then
+		fadedRoot.LocalTransparencyModifier = 0.55
+		for _, d in ipairs(fadedRoot:GetDescendants()) do
+			if d:IsA("BasePart") then
+				d.LocalTransparencyModifier = 0.55
+			end
+		end
+	end
+end
+
+-- While we still simulate a fresh throw, a near miss over a bin gets nudged in.
+local function binMagnet()
+	local root = lastThrown
+	if not root or not root.Parent or os.clock() - lastThrownAt > GameConfig.OwnedFlightTime then
+		lastThrown = nil
+		return
+	end
+	local v = root.AssemblyLinearVelocity
+	if v.Y > 0 then
+		return
+	end
+	for _, mouth in ipairs(Controllers.BinController.GetMouths()) do
+		local lp = mouth.CFrame:PointToObjectSpace(root.Position)
+		local h = mouth.Size / 2
+		if lp.Y > -h.Y and lp.Y < h.Y + 3 and math.abs(lp.X) <= h.X + 1.5 and math.abs(lp.Z) <= h.Z + 1.5 then
+			local flat = Vector3.new(mouth.Position.X - root.Position.X, 0, mouth.Position.Z - root.Position.Z)
+			root.AssemblyLinearVelocity = Vector3.new(v.X * 0.5 + flat.X * 3, v.Y, v.Z * 0.5 + flat.Z * 3)
+			return
+		end
+	end
 end
 
 function GrabController.Init()
@@ -361,12 +623,14 @@ function GrabController.Init()
 	cardStats = UI.Label({ Text = "", TextSize = 15, Font = UI.FontBody, TextColor3 = UI.Colors.TextDim, Size = UDim2.new(1, -16, 0, 20), Position = UDim2.fromOffset(8, 32) }, card)
 	cardAction = UI.Label({ Text = "", TextSize = 17, TextColor3 = UI.Colors.Gold, Size = UDim2.new(1, -16, 0, 24), Position = UDim2.fromOffset(8, 56) }, card)
 
+	makeArc()
 	UserInputService.InputBegan:Connect(onInputBegan)
 	UserInputService.InputEnded:Connect(onInputEnded)
 	Remotes.Event("GrabResult").OnClientEvent:Connect(onGrabResult)
 	player:GetAttributeChangedSignal("HeldObjectId"):Connect(onHeldAttribute)
 
 	Controllers.HUDController.GetMobileActionButton().Activated:Connect(tapAction)
+	Controllers.HUDController.GetMobileDropButton().Activated:Connect(dropHeld)
 
 	-- Studio-only test hook: drives the exact same press/release/tap paths as real input,
 	-- so the state machine can be tested without touching anyone's mouse.
@@ -380,6 +644,8 @@ function GrabController.Init()
 				releaseAction()
 			elseif action == "tap" then
 				tapAction()
+			elseif action == "drop" then
+				dropHeld()
 			elseif action == "centerAimOn" then
 				forceCenterAim = true
 			elseif action == "centerAimOff" then
@@ -410,6 +676,9 @@ function GrabController.Start()
 			hovered = nil
 			highlight.Adornee = nil
 			card.Visible = false
+			hideArc()
+			unfade()
+			Controllers.BinController.SetHeld(nil)
 			Controllers.CameraController.SetCrosshair("idle")
 			Controllers.HUDController.SetMobileAction(nil)
 			return
@@ -422,6 +691,10 @@ function GrabController.Start()
 			heldRoot = folder and folder:FindFirstChild(heldId) :: BasePart?
 		end
 		steerHeld()
+		drawArc()
+		updateFade()
+		binMagnet()
+		Controllers.BinController.SetHeld(heldRoot)
 		hovered = (state == "Idle") and findAimed() or nil
 		updateVisuals()
 		Controllers.HUDController.SetMobileAction(state == "Holding" and "THROW" or (hovered and "GRAB" or nil))
