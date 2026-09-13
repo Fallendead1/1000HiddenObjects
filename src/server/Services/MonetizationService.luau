@@ -74,24 +74,24 @@ function MonetizationService.GrantProduct(player: Player, key: string): boolean
 		if not Services.HintService.GrantSuperHint(player) then
 			Services.NotificationService.Send(player, "Info", "Super Hint saved for your next room.")
 		end
-	elseif key == "SearchPower10Min" then
-		Services.PlayerSessionService.ExtendBoost(player, "SearchBoostExpires", effects.BoostDurationSeconds)
-		Services.NotificationService.Send(player, "Premium", "2X SEARCH POWER activated!")
+	elseif key == "Strength10Min" then
+		Services.PlayerSessionService.ExtendBoost(player, "StrengthBoostExpires", effects.BoostDurationSeconds)
+		Services.NotificationService.Send(player, "Premium", "2X STRENGTH activated!")
 	elseif key == "Cash10Min" then
 		Services.PlayerSessionService.ExtendBoost(player, "CashBoostExpires", effects.BoostDurationSeconds)
 		Services.NotificationService.Send(player, "Premium", "2X CASH activated!")
-	elseif key == "TeamSearchSurge" then
+	elseif key == "TeamMuscleBoost" then
 		if match then
-			local base = math.max(match.TeamSurgeExpires or 0, workspace:GetServerTimeNow())
-			match.TeamSurgeExpires = base + effects.BoostDurationSeconds
-			Services.MatchService.GetStateConfig():SetAttribute("TeamSurgeExpires", match.TeamSurgeExpires)
-			Services.NotificationService.SendMany(match.Players, "Premium", string.format("%s activated TEAM SEARCH SURGE!", player.Name))
+			local base = math.max(match.TeamMuscleExpires or 0, workspace:GetServerTimeNow())
+			match.TeamMuscleExpires = base + effects.BoostDurationSeconds
+			Services.MatchService.GetStateConfig():SetAttribute("TeamMuscleExpires", match.TeamMuscleExpires)
+			for _, p in ipairs(match.Players) do
+				Services.PlayerSessionService.RecomputeDerived(p)
+			end
+			Services.NotificationService.SendMany(match.Players, "Premium", string.format("%s activated TEAM MUSCLE BOOST!", player.Name))
 		else
-			Services.PlayerSessionService.ExtendBoost(player, "SearchBoostExpires", effects.BoostDurationSeconds)
+			Services.PlayerSessionService.ExtendBoost(player, "StrengthBoostExpires", effects.BoostDurationSeconds)
 		end
-	elseif key == "TrashBomb" then
-		player:SetAttribute("PendingTrashBombs", (player:GetAttribute("PendingTrashBombs") or 0) + 1)
-		Remotes.Event("PurchaseUpdate"):FireClient(player, "TrashBombReady", {})
 	else
 		return false
 	end

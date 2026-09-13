@@ -3,6 +3,10 @@
 	hold exactly one party; the Combined dev server runs one local match at a time).
 
 	States: Loading -> Countdown -> Searching -> TargetFound -> Results -> Returning -> Ended
+
+	The Golden Key is revealed ONLY when nothing physically covers its socket: every original
+	blocker has been moved away (or is being held) and no other object lies on the spot.
+	Room progress (unique objects moved) drives hints and checkpoints, never the reveal.
 ]]
 
 local CollectionService = game:GetService("CollectionService")
@@ -13,9 +17,8 @@ local RunService = game:GetService("RunService")
 local Shared = ReplicatedStorage.Shared
 local GameConfig = require(Shared.Config.GameConfig)
 local RoomRegistry = require(Shared.Config.RoomConfigs)
-local MonetizationConfig = require(Shared.Config.MonetizationConfig)
+local UpgradeConfig = require(Shared.Config.UpgradeConfig)
 local Remotes = require(Shared.Utility.Remotes)
-local TargetData = require(Shared.Data.TargetData)
 
 local Services = require(script.Parent)
 local Builders = script.Parent.Parent.Builders
@@ -29,14 +32,15 @@ local match = nil
 local stateConfig: Configuration
 local lobbyModel: Instance? = nil
 local lobbySpawn: BasePart? = nil
+local coverParams = OverlapParams.new()
+coverParams.FilterType = Enum.RaycastFilterType.Include
 
 local function now(): number
 	return workspace:GetServerTimeNow()
 end
 
 local function fireMatch(eventName: string, payload: any, players: { Player }?)
-	local list = players or (match and match.Players) or {}
-	for _, player in ipairs(list) do
+	for _, player in ipairs(players or (match and match.Players) or {}) do
 		if player.Parent then
 			Remotes.Event("MatchUpdate"):FireClient(player, eventName, payload)
 		end
@@ -44,43 +48,26 @@ local function fireMatch(eventName: string, payload: any, players: { Player }?)
 end
 
 local function setState(newState: string)
-	if not match then
-		return
+	if match then
+		match.State = newState
+		stateConfig:SetAttribute("State", newState)
 	end
-	match.State = newState
-	stateConfig:SetAttribute("State", newState)
 end
 
 local function resetStateConfig()
-	stateConfig:SetAttribute("State", "None")
-	stateConfig:SetAttribute("RoomId", 0)
-	stateConfig:SetAttribute("RoomName", "")
-	stateConfig:SetAttribute("RoomNumber", "")
-	stateConfig:SetAttribute("TargetName", "")
-	stateConfig:SetAttribute("TargetId", "")
-	stateConfig:SetAttribute("PartySize", 0)
-	stateConfig:SetAttribute("StartTime", 0)
-	stateConfig:SetAttribute("EndTime", 0)
-	stateConfig:SetAttribute("InitialMess", 0)
-	stateConfig:SetAttribute("CurrentMess", 0)
-	stateConfig:SetAttribute("Progress", 0)
-	stateConfig:SetAttribute("HintStage", 0)
-	stateConfig:SetAttribute("TargetRevealed", false)
-	stateConfig:SetAttribute("TargetFound", false)
-	stateConfig:SetAttribute("FinderName", "")
-	stateConfig:SetAttribute("OutlinedClusterId", "")
-	stateConfig:SetAttribute("TeamSurgeExpires", 0)
-	stateConfig:SetAttribute("PlayerNames", "")
-	stateConfig:SetAttribute("ResumePercent", 0)
+	for name, value in pairs({
+		State = "None", RoomId = 0, RoomName = "", RoomNumber = "", TargetName = "", TargetId = "",
+		PartySize = 0, StartTime = 0, EndTime = 0, TotalObjects = 0, MovedObjects = 0, Progress = 0,
+		HintStage = 0, TargetRevealed = false, TargetFound = false, FinderName = "", OutlinedObjects = "",
+		TeamMuscleExpires = 0, PlayerNames = "", ResumePercent = 0,
+	}) do
+		stateConfig:SetAttribute(name, value)
+	end
 end
 
 local function moveCharacterTo(player: Player, cframe: CFrame)
 	local character = player.Character
-	if not character then
-		return
-	end
-	local root = character:FindFirstChild("HumanoidRootPart")
-	if root then
+	if character and character:FindFirstChild("HumanoidRootPart") then
 		character:PivotTo(cframe + Vector3.new(0, 3, 0))
 	end
 end
@@ -100,65 +87,140 @@ local function playerNamesString(players: { Player }): string
 	return table.concat(names, ",")
 end
 
--- Pre-clear non-target clusters so the room roughly matches a resumed checkpoint.
-local function preClearForResume(resumePercent: number)
-	if resumePercent <= 0 then
+local function clutterRootOf(part: Instance): BasePart?
+	if CollectionService:HasTag(part, "Clutter") then
+		return part :: BasePart
+	end
+	local parent = part.Parent
+	if parent and parent:IsA("BasePart") and CollectionService:HasTag(parent, "Clutter") then
+		return parent
+	end
+	return nil
+end
+
+local function isBlockerClear(root: BasePart): boolean
+	if (root:GetAttribute("HeldByUserId") or 0) ~= 0 then
+		return true
+	end
+	local distance = Services.RoomService.FootprintDistanceXZ(root, root.CFrame, match.TargetSocket.Position)
+	return distance >= (match.Config.RequiredBlockerDisplacement or 3)
+end
+
+-- Everything physically covering the key right now (never includes held objects).
+function MatchService.GetCoveringObjects(): { BasePart }
+	if not match or not match.TargetSocket then
+		return {}
+	end
+	local socket = match.TargetSocket
+	local result, seen = {}, {}
+	for _, root in ipairs(socket.Blockers) do
+		if root.Parent and not isBlockerClear(root) then
+			seen[root] = true
+			table.insert(result, root)
+		end
+	end
+	local folder = match.Runtime.Model:FindFirstChild("Clutter")
+	if folder then
+		local r = match.Config.SocketBlockerRadius or 1.4
+		coverParams.FilterDescendantsInstances = { folder }
+		for _, part in ipairs(workspace:GetPartBoundsInBox(CFrame.new(socket.Position + Vector3.new(0, 3, 0)), Vector3.new(r * 2, 6.5, r * 2), coverParams)) do
+			local root = clutterRootOf(part)
+			if root and not seen[root] and (root:GetAttribute("HeldByUserId") or 0) == 0 then
+				seen[root] = true
+				table.insert(result, root)
+			end
+		end
+	end
+	return result
+end
+
+local function checkTargetExposure()
+	if not match or match.State ~= "Searching" or match.TargetRevealed then
 		return
 	end
-	local target = match.InitialMess * resumePercent
-	local candidates = {}
-	for _, cluster in ipairs(match.Runtime.ClusterList) do
-		if cluster.Id ~= match.TargetCluster.Id then
-			table.insert(candidates, cluster)
-		end
+	if #MatchService.GetCoveringObjects() == 0 then
+		MatchService.RevealTarget()
 	end
-	match.Rng:NextNumber()
-	for i = #candidates, 2, -1 do
-		local j = match.Rng:NextInteger(1, i)
-		candidates[i], candidates[j] = candidates[j], candidates[i]
-	end
-	local cleared = 0
-	for _, cluster in ipairs(candidates) do
-		if cleared >= target then
-			break
-		end
-		local remaining = target - cleared
-		local take = math.min(cluster.CurrentMess, remaining)
-		if take >= cluster.CurrentMess * 0.95 then
-			take = cluster.CurrentMess
-		end
-		Services.RoomService.RemoveMess(cluster, take)
-		cleared += take
-	end
-	match.CurrentMess = Services.RoomService.GetTotalMess(match.Runtime)
-	match.Progress = 1 - match.CurrentMess / match.InitialMess
-	stateConfig:SetAttribute("CurrentMess", match.CurrentMess)
-	stateConfig:SetAttribute("Progress", match.Progress)
 end
 
 local function selectTarget()
+	local maxWeight = UpgradeConfig.GetValue("Strength", UpgradeConfig.GetMaxLevel("Strength"))
 	local eligible = {}
 	for _, socket in ipairs(match.Runtime.SocketList) do
-		local cluster = match.Runtime.Clusters[socket.ClusterId]
-		if cluster and cluster.TargetEligible and cluster.MaxMess > 0 then
+		local ok = #socket.Blockers > 0
+		for _, b in ipairs(socket.Blockers) do
+			if (b:GetAttribute("Weight") or 1) > maxWeight then
+				ok = false
+			end
+		end
+		if ok then
 			table.insert(eligible, socket)
 		end
 	end
-	assert(#eligible > 0, "Room has no eligible target sockets")
-	local socket = eligible[match.Rng:NextInteger(1, #eligible)]
-	match.TargetSocket = socket
-	match.TargetCluster = match.Runtime.Clusters[socket.ClusterId]
-	match.TargetDepth = match.Rng:NextNumber(match.Config.TargetDepthMin, match.Config.TargetDepthMax)
+	assert(#eligible > 0, "Room has no exposable target sockets")
+	match.TargetSocket = eligible[match.Rng:NextInteger(1, #eligible)]
 end
 
-local function checkTargetReveal()
-	if match.TargetRevealed or not match.TargetCluster then
+-- Move untouched non-target objects into dump zones without physics (resume + dev tools).
+local function preDisplace(fraction: number, clearTarget: boolean?)
+	local runtime = match.Runtime
+	local socket = match.TargetSocket
+	local list = {}
+	if clearTarget then
+		list = MatchService.GetCoveringObjects()
+	else
+		local want = math.floor(#runtime.Objects * math.clamp(fraction, 0, 0.95)) - runtime.MovedCount
+		if want <= 0 then
+			return
+		end
+		local protected = {}
+		for _, b in ipairs(socket.Blockers) do
+			protected[b] = true
+		end
+		local candidates = {}
+		for _, root in ipairs(runtime.Objects) do
+			if not root:GetAttribute("MovedBefore") and not protected[root] and not Services.ObjectService.IsBusy(root)
+				and Services.RoomService.FootprintDistanceXZ(root, root.CFrame, socket.Position) > 4 then
+				table.insert(candidates, root)
+			end
+		end
+		-- Highest objects first keeps every remaining stack physically supported.
+		table.sort(candidates, function(a, b)
+			return a.Position.Y > b.Position.Y
+		end)
+		for i = 1, math.min(want, #candidates) do
+			list[i] = candidates[i]
+		end
+	end
+
+	local zones = match.Config.DumpZones or {}
+	if #zones == 0 then
 		return
 	end
-	local fraction = Services.RoomService.GetClearedFraction(match.TargetCluster)
-	if fraction + 1e-6 >= match.TargetDepth then
-		MatchService.RevealTarget()
+	match.DumpHeights = match.DumpHeights or {}
+	for i, root in ipairs(list) do
+		local zi = (i - 1) % #zones + 1
+		local zone = zones[zi]
+		local heights = match.DumpHeights[zi] or {}
+		match.DumpHeights[zi] = heights
+		local cx = match.Rng:NextInteger(0, math.max(0, math.floor(zone.Size.X) - 1))
+		local cz = match.Rng:NextInteger(0, math.max(0, math.floor(zone.Size.Y) - 1))
+		local key = cx .. ":" .. cz
+		local h = heights[key] or 0
+		heights[key] = h + root.Size.Y
+		-- Starts above the floor carpet layer so dumped objects rest on it rather than inside it.
+		local pos = zone.Center + Vector3.new(cx - zone.Size.X / 2 + 0.5, h + root.Size.Y / 2 + 1.15, cz - zone.Size.Y / 2 + 0.5)
+		Services.ObjectService.Relocate(root, runtime.Origin * CFrame.new(pos) * CFrame.Angles(0, match.Rng:NextNumber(0, math.pi * 2), 0))
 	end
+end
+
+local function publishProgress()
+	local progress = Services.RoomService.GetProgress(match.Runtime)
+	local old = match.Progress
+	match.Progress = progress
+	stateConfig:SetAttribute("Progress", progress)
+	stateConfig:SetAttribute("MovedObjects", match.Runtime.MovedCount)
+	return old, progress
 end
 
 function MatchService.Init(role: string)
@@ -173,13 +235,11 @@ function MatchService.Init(role: string)
 			MatchService.ReturnPlayer(player)
 		end
 	end)
-
 	Remotes.Event("TutorialComplete").OnServerEvent:Connect(function(player)
 		Services.DataService.Update(player, function(data)
 			data.TutorialCompleted = true
 		end)
 	end)
-
 	Remotes.Event("UpdateSettings").OnServerEvent:Connect(function(player, settings)
 		if type(settings) ~= "table" then
 			return
@@ -192,7 +252,6 @@ function MatchService.Init(role: string)
 			end
 		end)
 	end)
-
 	Players.PlayerRemoving:Connect(function(player)
 		MatchService.RemovePlayer(player)
 	end)
@@ -203,8 +262,7 @@ function MatchService.Start(role: string)
 		-- Workspace.Lobby is authored in Studio and is the only lobby; nothing is generated.
 		lobbyModel = workspace:FindFirstChild("Lobby")
 		if lobbyModel then
-			local tagged = CollectionService:GetTagged("LobbySpawn")
-			for _, inst in ipairs(tagged) do
+			for _, inst in ipairs(CollectionService:GetTagged("LobbySpawn")) do
 				if inst:IsA("BasePart") and inst:IsDescendantOf(lobbyModel) then
 					lobbySpawn = inst
 				end
@@ -219,15 +277,16 @@ function MatchService.Start(role: string)
 		task.spawn(MatchService.StartFromTeleport)
 	end
 
-	-- Fall protection + keep players inside the room during a match.
+	-- Fall protection, plus a regular exposure check: loose piles can shift on their own.
 	task.spawn(function()
 		while true do
 			task.wait(1)
 			if match and match.Runtime then
-				local floorY = match.Runtime.FloorY
+				checkTargetExposure()
+				Services.HintService.RefreshOutline(match)
 				for _, player in ipairs(match.Players) do
 					local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
-					if root and root.Position.Y < floorY - GameConfig.FallProtectionDepth then
+					if root and root.Position.Y < match.Runtime.FloorY - GameConfig.FallProtectionDepth then
 						local spawnCF = getSpawnCFrame()
 						if spawnCF then
 							moveCharacterTo(player, spawnCF)
@@ -279,12 +338,10 @@ function MatchService.StartLocalMatch(params: LaunchParams): boolean
 		Services.NotificationService.SendMany(params.Players, "Warning", "A test match is already running. Wait for it to finish.")
 		return false
 	end
-	local origin = CFrame.new(GameConfig.CombinedRoomOffset)
-	return MatchService.BeginMatch(params, origin)
+	return MatchService.BeginMatch(params, CFrame.new(GameConfig.CombinedRoomOffset))
 end
 
 function MatchService.StartFromTeleport()
-	-- Wait for the first player to read teleport data.
 	local firstPlayer = Players:GetPlayers()[1] or Players.PlayerAdded:Wait()
 	local joinData = firstPlayer:GetJoinData()
 	local data = joinData and joinData.TeleportData or {}
@@ -294,7 +351,6 @@ function MatchService.StartFromTeleport()
 	end
 	local expected = data.ExpectedUserIds or {}
 	local partySize = math.clamp(tonumber(data.PartySize) or math.max(1, #expected), 1, GameConfig.MaxPartySize)
-
 	local deadline = os.clock() + GameConfig.MatchWaitForPartySeconds
 	while os.clock() < deadline do
 		local present = 0
@@ -308,7 +364,6 @@ function MatchService.StartFromTeleport()
 		end
 		task.wait(0.5)
 	end
-
 	local partyPlayers = Players:GetPlayers()
 	for _, p in ipairs(partyPlayers) do
 		Services.DataService.WaitFor(p, 10)
@@ -329,7 +384,6 @@ function MatchService.BeginMatch(params: LaunchParams, origin: CFrame): boolean
 		warn("[MatchService] Unknown room", params.RoomId)
 		return false
 	end
-
 	local players = {}
 	for _, p in ipairs(params.Players) do
 		if p.Parent then
@@ -341,8 +395,10 @@ function MatchService.BeginMatch(params: LaunchParams, origin: CFrame): boolean
 	end
 
 	local runtime = Services.RoomService.Build(config, origin)
-	local initialMess = Services.RoomService.ApplyMess(runtime, params.PartySize)
-
+	Services.ObjectService.SetRoom(runtime)
+	-- Hand every object to real physics and let the room settle before anyone enters.
+	local settled = Services.RoomService.SettleAndSnapshot(runtime, GameConfig.RoomSettleSeconds)
+	print(string.format("[MatchService] %d objects released to physics, settled in %.1fs", #runtime.Objects, settled))
 	local ok, report = RoomValidator.Validate(runtime, config)
 	if RunService:IsStudio() or not ok then
 		print(report)
@@ -356,30 +412,26 @@ function MatchService.BeginMatch(params: LaunchParams, origin: CFrame): boolean
 		Rng = Random.new(params.Seed),
 		PartySize = params.PartySize,
 		Players = players,
-		OriginalPlayers = table.clone(players),
 		State = "Loading",
 		StartTime = 0,
 		EndTime = 0,
-		InitialMess = initialMess,
-		CurrentMess = initialMess,
 		Progress = 0,
 		Runtime = runtime,
 		TargetSocket = nil,
-		TargetCluster = nil,
-		TargetDepth = 0,
 		TargetRevealed = false,
 		TargetFound = false,
 		FinderUserId = 0,
 		TargetModel = nil,
 		HintStage = 0,
-		TeamSurgeExpires = 0,
+		TeamMuscleExpires = 0,
 		ResumePercent = params.ResumePercent or 0,
-		FirstSaleLogged = false,
 		ClaimLock = false,
 	}
 
 	selectTarget()
-	preClearForResume(match.ResumePercent)
+	if match.ResumePercent > 0 then
+		preDisplace(match.ResumePercent)
+	end
 
 	resetStateConfig()
 	stateConfig:SetAttribute("RoomId", config.Id)
@@ -388,11 +440,10 @@ function MatchService.BeginMatch(params: LaunchParams, origin: CFrame): boolean
 	stateConfig:SetAttribute("TargetName", config.TargetName)
 	stateConfig:SetAttribute("TargetId", config.TargetId)
 	stateConfig:SetAttribute("PartySize", params.PartySize)
-	stateConfig:SetAttribute("InitialMess", initialMess)
-	stateConfig:SetAttribute("CurrentMess", match.CurrentMess)
-	stateConfig:SetAttribute("Progress", match.Progress)
+	stateConfig:SetAttribute("TotalObjects", #runtime.Objects)
 	stateConfig:SetAttribute("PlayerNames", playerNamesString(players))
 	stateConfig:SetAttribute("ResumePercent", match.ResumePercent)
+	publishProgress()
 	setState("Loading")
 
 	for _, player in ipairs(players) do
@@ -405,15 +456,13 @@ function MatchService.BeginMatch(params: LaunchParams, origin: CFrame): boolean
 		player:SetAttribute("MatchId", match.Id)
 		Services.PlayerSessionService.RecomputeDerived(player)
 		local spawnCF = getSpawnCFrame()
-		if spawnCF then
-			if player.Character then
-				moveCharacterTo(player, spawnCF)
-			end
+		if spawnCF and player.Character then
+			moveCharacterTo(player, spawnCF)
 		end
 	end
 
 	Services.HintService.ResetForMatch(match)
-	Services.HintService.ApplyStagesForProgress(match, match.Progress, true)
+	Services.HintService.ApplyStagesForProgress(match, match.Progress)
 
 	fireMatch("Intro", {
 		RoomNumber = config.DisplayNumber,
@@ -422,7 +471,7 @@ function MatchService.BeginMatch(params: LaunchParams, origin: CFrame): boolean
 		TargetId = config.TargetId,
 		ResumePercent = match.ResumePercent,
 	})
-	Services.AnalyticsService.Log("match_start", players[1], { RoomId = config.Id, PartySize = params.PartySize, Resume = match.ResumePercent })
+	Services.AnalyticsService.Log("match_start", players[1], { RoomId = config.Id, PartySize = params.PartySize, Resume = match.ResumePercent, Objects = #runtime.Objects })
 
 	task.spawn(function()
 		local thisMatch = match
@@ -439,10 +488,37 @@ function MatchService.BeginMatch(params: LaunchParams, origin: CFrame): boolean
 		stateConfig:SetAttribute("StartTime", match.StartTime)
 		setState("Searching")
 		fireMatch("Started", {})
+		checkTargetExposure()
 	end)
-
 	return true
 end
+
+-- ===== ObjectService callbacks =====
+
+function MatchService.OnObjectFirstMoved(_root: BasePart, _player: Player?)
+	if not match then
+		return
+	end
+	local old, progress = publishProgress()
+	Services.HintService.OnProgress(match, progress)
+	Services.CheckpointService.OnProgress(match, old, progress)
+end
+
+function MatchService.OnObjectSettled(_root: BasePart)
+	if match then
+		checkTargetExposure()
+		Services.HintService.RefreshOutline(match)
+	end
+end
+
+function MatchService.OnObjectGrabbed(_root: BasePart)
+	if match then
+		checkTargetExposure()
+		Services.HintService.RefreshOutline(match)
+	end
+end
+
+-- ===== Players =====
 
 function MatchService.RemovePlayer(player: Player)
 	if not match then
@@ -451,8 +527,7 @@ function MatchService.RemovePlayer(player: Player)
 	local idx = table.find(match.Players, player)
 	if idx then
 		table.remove(match.Players, idx)
-		Services.SearchService.StopSearch(player)
-		Services.EconomyService.ClearPlayer(player)
+		Services.ObjectService.Drop(player)
 		stateConfig:SetAttribute("PlayerNames", playerNamesString(match.Players))
 		if match.State == "Searching" then
 			Services.AnalyticsService.Log("room_quit", player, { RoomId = match.RoomId, Progress = match.Progress })
@@ -467,35 +542,7 @@ function MatchService.RemovePlayer(player: Player)
 	end
 end
 
--- Remove `amount` mess from a cluster on behalf of a player (or nil for system actions
--- like Trash Bomb). Returns actual removed amount.
-function MatchService.RemoveMess(clusterId: string, amount: number, player: Player?): number
-	if not match or match.State ~= "Searching" then
-		return 0
-	end
-	local cluster = match.Runtime.Clusters[clusterId]
-	if not cluster or cluster.CurrentMess <= 0 or amount <= 0 then
-		return 0
-	end
-	local removed = Services.RoomService.RemoveMess(cluster, amount)
-	if removed <= 0 then
-		return 0
-	end
-	local oldProgress = match.Progress
-	match.CurrentMess -= removed
-	match.Progress = 1 - match.CurrentMess / match.InitialMess
-	stateConfig:SetAttribute("CurrentMess", match.CurrentMess)
-	stateConfig:SetAttribute("Progress", match.Progress)
-
-	if player then
-		player:SetAttribute("ContributionMess", (player:GetAttribute("ContributionMess") or 0) + removed)
-	end
-
-	Services.HintService.OnProgress(match, oldProgress, match.Progress)
-	Services.CheckpointService.OnProgress(match, oldProgress, match.Progress)
-	checkTargetReveal()
-	return removed
-end
+-- ===== Target =====
 
 function MatchService.RevealTarget()
 	if not match or match.TargetRevealed then
@@ -503,13 +550,11 @@ function MatchService.RevealTarget()
 	end
 	match.TargetRevealed = true
 	local socket = match.TargetSocket
-	Services.RoomService.ExposeSocket(match.TargetCluster, socket)
-
 	local model = TargetBuilder.Get(match.Config.TargetId)
 	model.Name = "HiddenTarget"
-	local pivot = socket.Part.CFrame
 	if model.PrimaryPart then
-		model:PivotTo(pivot * CFrame.new(0, 0.3, 0) * CFrame.Angles(0, 0, math.rad(20)))
+		-- Lying flat on the surface it was buried on.
+		model:PivotTo(CFrame.new(socket.Position - Vector3.new(0, 0.15, 0)) * CFrame.Angles(math.rad(90), match.Rng:NextNumber(0, math.pi * 2), 0))
 	end
 	model:SetAttribute("IsTarget", true)
 	CollectionService:AddTag(model, "HiddenTarget")
@@ -523,7 +568,6 @@ function MatchService.RevealTarget()
 	prompt.HoldDuration = 0
 	prompt.MaxActivationDistance = 10
 	prompt.RequiresLineOfSight = false
-	prompt.Style = Enum.ProximityPromptStyle.Default
 	prompt.Parent = model.PrimaryPart
 	prompt.Triggered:Connect(function(player)
 		MatchService.OnTargetClaim(player)
@@ -532,7 +576,9 @@ function MatchService.RevealTarget()
 	model.Parent = match.Runtime.Model
 	match.TargetModel = model
 	stateConfig:SetAttribute("TargetRevealed", true)
+	stateConfig:SetAttribute("OutlinedObjects", "")
 	fireMatch("TargetRevealed", { Position = model.PrimaryPart and model.PrimaryPart.Position })
+	Services.AnalyticsService.Log("target_revealed", match.Players[1], { RoomId = match.RoomId, Progress = match.Progress })
 end
 
 function MatchService.OnTargetClaim(player: Player)
@@ -544,10 +590,7 @@ function MatchService.OnTargetClaim(player: Player)
 	end
 	local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
 	local targetPart = match.TargetModel and match.TargetModel.PrimaryPart
-	if not root or not targetPart then
-		return
-	end
-	if (root.Position - targetPart.Position).Magnitude > 14 then
+	if not root or not targetPart or (root.Position - targetPart.Position).Magnitude > 14 then
 		return
 	end
 	match.ClaimLock = true
@@ -564,20 +607,16 @@ function MatchService.CompleteMatch(finder: Player)
 	stateConfig:SetAttribute("EndTime", match.EndTime)
 	stateConfig:SetAttribute("TargetFound", true)
 	stateConfig:SetAttribute("FinderName", finder.Name)
-
 	for _, player in ipairs(match.Players) do
-		Services.SearchService.StopSearch(player)
+		Services.ObjectService.Drop(player)
 	end
-
-	local targetDef = TargetData.Get(match.RoomId)
 	local roomId = match.RoomId
 
 	-- Save FIRST, then celebrate.
 	for _, player in ipairs(match.Players) do
 		local firstClear = false
 		Services.DataService.Update(player, function(data)
-			local contribution = player:GetAttribute("ContributionMess") or 0
-			data.TotalMessCleared += contribution
+			data.TotalMessCleared += player:GetAttribute("ObjectsMoved") or 0
 			-- Collection progress is strictly sequential: only the player's next required room counts.
 			if data.HighestRoomCompleted + 1 == roomId then
 				data.HighestRoomCompleted = roomId
@@ -588,31 +627,28 @@ function MatchService.CompleteMatch(finder: Player)
 				data.FinderWins += 1
 			end
 			local key = tostring(roomId)
-			if elapsed >= GameConfig.MinimumLegitimateRoomTime then
-				if not data.BestTimes[key] or elapsed < data.BestTimes[key] then
-					data.BestTimes[key] = math.floor(elapsed)
-				end
+			if elapsed >= GameConfig.MinimumLegitimateRoomTime and (not data.BestTimes[key] or elapsed < data.BestTimes[key]) then
+				data.BestTimes[key] = math.floor(elapsed)
 			end
 		end)
 		Services.CheckpointService.ClearForRoom(player, roomId)
 		Services.DataService.Save(player)
-
 		local data = Services.DataService.Get(player)
 		if data then
 			Services.LeaderboardService.SubmitObjectsFound(player, data.ObjectsFound)
 			Services.LeaderboardService.SubmitRoomTime(player, roomId, elapsed)
 		end
 		Services.MonetizationService.CheckBadges(player, firstClear, player == finder)
-		Services.AnalyticsService.Log("room_complete", player, { RoomId = roomId, PartySize = match.PartySize, ElapsedTime = math.floor(elapsed), FirstClear = firstClear })
+		Services.AnalyticsService.Log("room_complete", player, { RoomId = roomId, PartySize = match.PartySize, ElapsedTime = math.floor(elapsed), FirstClear = firstClear, Progress = match.Progress })
 	end
 	Services.AnalyticsService.Log("target_found", finder, { RoomId = roomId, ElapsedTime = math.floor(elapsed) })
 
 	local contributions = {}
 	for _, player in ipairs(match.Players) do
-		table.insert(contributions, { Name = player.Name, UserId = player.UserId, Mess = player:GetAttribute("ContributionMess") or 0 })
+		table.insert(contributions, { Name = player.Name, UserId = player.UserId, Objects = player:GetAttribute("ObjectsMoved") or 0, Weighted = player:GetAttribute("WeightedMoveValue") or 0 })
 	end
 	table.sort(contributions, function(a, b)
-		return a.Mess > b.Mess
+		return a.Objects > b.Objects
 	end)
 
 	fireMatch("TargetFound", {
@@ -629,7 +665,6 @@ function MatchService.CompleteMatch(finder: Player)
 			return
 		end
 		setState("Results")
-		local nextRoomExists = RoomRegistry.Exists(roomId + 1)
 		fireMatch("Results", {
 			RoomNumber = match.Config.DisplayNumber,
 			RoomName = match.Config.Name,
@@ -640,7 +675,8 @@ function MatchService.CompleteMatch(finder: Player)
 			Elapsed = elapsed,
 			TeamSize = match.PartySize,
 			Contributions = contributions,
-			NextRoomAvailable = nextRoomExists,
+			RoomSearched = match.Progress,
+			NextRoomAvailable = RoomRegistry.Exists(roomId + 1),
 			TotalObjects = GameConfig.TotalObjects,
 		})
 	end)
@@ -659,14 +695,10 @@ end
 
 function MatchService.MovePlayerToLobby(player: Player)
 	local wasInMatch = match and table.find(match.Players, player)
-	if match then
-		local idx = table.find(match.Players, player)
-		if idx then
-			table.remove(match.Players, idx)
-		end
+	if match and wasInMatch then
+		table.remove(match.Players, wasInMatch)
 	end
-	Services.SearchService.StopSearch(player)
-	Services.EconomyService.ClearPlayer(player)
+	Services.ObjectService.Drop(player)
 	Services.PlayerSessionService.Reset(player)
 	player:SetAttribute("InMatch", false)
 	player:SetAttribute("MatchId", "")
@@ -684,11 +716,9 @@ function MatchService.EndMatch()
 		return
 	end
 	setState("Ended")
-	for _, player in ipairs(match.Players) do
-		Services.SearchService.StopSearch(player)
-	end
 	local runtime = match.Runtime
 	local remaining = table.clone(match.Players)
+	Services.ObjectService.ClearRoom()
 	match = nil
 	resetStateConfig()
 	Services.HintService.ResetForMatch(nil)
@@ -705,44 +735,22 @@ end
 -- ===== Developer helpers =====
 
 function MatchService.ForceProgress(fraction: number)
-	if not match or match.State ~= "Searching" then
-		return
-	end
-	fraction = math.clamp(fraction, 0, 0.999)
-	local targetRemaining = match.InitialMess * (1 - fraction)
-	local toRemove = match.CurrentMess - targetRemaining
-	if toRemove <= 0 then
-		return
-	end
-	for _, cluster in ipairs(match.Runtime.ClusterList) do
-		if toRemove <= 0 then
-			break
-		end
-		if cluster.Id ~= match.TargetCluster.Id and cluster.CurrentMess > 0 then
-			local take = math.min(cluster.CurrentMess, toRemove)
-			toRemove -= MatchService.RemoveMess(cluster.Id, take, nil)
-		end
-	end
-	if toRemove > 0 then
-		local cap = math.floor(match.TargetCluster.MaxMess * (match.TargetDepth - 0.05))
-		local allowed = match.TargetCluster.CurrentMess - (match.TargetCluster.MaxMess - cap)
-		if allowed > 0 then
-			MatchService.RemoveMess(match.TargetCluster.Id, math.min(allowed, toRemove), nil)
-		end
+	if match and match.State == "Searching" then
+		preDisplace(fraction)
+		local old, progress = publishProgress()
+		Services.HintService.OnProgress(match, progress)
+		Services.CheckpointService.OnProgress(match, old, progress)
 	end
 end
 
 function MatchService.ForceReveal()
-	if not match or match.State ~= "Searching" or match.TargetRevealed then
-		return
-	end
-	local cluster = match.TargetCluster
-	local needed = math.ceil(cluster.MaxMess * match.TargetDepth) - (cluster.MaxMess - cluster.CurrentMess)
-	if needed > 0 then
-		MatchService.RemoveMess(cluster.Id, needed + 1, nil)
-	end
-	if not match.TargetRevealed then
-		MatchService.RevealTarget()
+	if match and match.State == "Searching" and not match.TargetRevealed then
+		preDisplace(0, true)
+		publishProgress()
+		checkTargetExposure()
+		if not match.TargetRevealed then
+			MatchService.RevealTarget()
+		end
 	end
 end
 
@@ -760,14 +768,20 @@ function MatchService.ForceComplete(player: Player)
 end
 
 function MatchService.GetTargetInfo()
-	if not match then
+	if not match or not match.TargetSocket then
 		return nil
 	end
+	local ids = {}
+	for _, b in ipairs(match.TargetSocket.Blockers) do
+		table.insert(ids, b:GetAttribute("ObjectId"))
+	end
 	return {
-		SocketId = match.TargetSocket and match.TargetSocket.Id,
-		ClusterId = match.TargetCluster and match.TargetCluster.Id,
-		RegionId = match.TargetCluster and match.TargetCluster.RegionId,
-		Depth = match.TargetDepth,
+		SocketId = match.TargetSocket.Id,
+		RegionId = match.TargetSocket.RegionId,
+		Position = match.TargetSocket.Position,
+		Blockers = #match.TargetSocket.Blockers,
+		BlockerIds = ids,
+		Covering = #MatchService.GetCoveringObjects(),
 		Revealed = match.TargetRevealed,
 	}
 end

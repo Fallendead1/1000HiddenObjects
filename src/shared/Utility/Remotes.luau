@@ -8,10 +8,11 @@ local RunService = game:GetService("RunService")
 
 local Remotes = {
 	Events = {
-		"SearchStart", -- C->S (clusterId)
-		"SearchStop", -- C->S
+		"GrabObject", -- C->S (clutter root part, requestId)
+		"GrabResult", -- S->C (requestId, ok, objectId?, reason?)
+		"ThrowObject", -- C->S (objectId, aim direction Vector3)
+		"DropObject", -- C->S (objectId?)
 		"RequestHint", -- C->S (kind: "Free" | "Quick" | "Super")
-		"RequestTrashBomb", -- C->S (clusterId)
 		"RequestPurchase", -- C->S (productKey)
 		"ReturnToLobby", -- C->S
 		"SelectRoom", -- C->S (queueId, roomId) queue owner picks the room

@@ -132,11 +132,11 @@ local function showResults(payload)
 	local mine = 0
 	for _, c in ipairs(payload.Contributions or {}) do
 		if c.UserId == player.UserId then
-			mine = c.Mess
+			mine = c.Objects or 0
 		end
 	end
-	resStats.Text = string.format("Time: %s\nFinder: %s\nTeam Size: %d\nYour Mess Cleared: %s",
-		FormatUtil.Time(payload.Elapsed or 0), payload.FinderName or "?", payload.TeamSize or 1, FormatUtil.Comma(mine))
+	resStats.Text = string.format("Time: %s\nFinder: %s\nTeam Size: %d\nYou Moved: %s objects\nRoom Searched: %s",
+		FormatUtil.Time(payload.Elapsed or 0), payload.FinderName or "?", payload.TeamSize or 1, FormatUtil.Comma(mine), FormatUtil.Percent(payload.RoomSearched or 0))
 	local best = player:GetAttribute("BestTimeRoom1") or 0
 	if best > 0 then
 		resBest.Text = "Best time: " .. FormatUtil.Time(best) .. ((payload.Elapsed or 0) <= best + 1 and "  (NEW BEST!)" or "")
@@ -153,7 +153,7 @@ local function showResults(payload)
 		local row = UI.Frame({ Size = UDim2.new(1, 0, 0, 24), BackgroundColor3 = UI.Colors.PanelLight, LayoutOrder = i }, resContrib)
 		UI.Corner(row, 6)
 		UI.Label({ Text = c.Name, TextSize = 15, Font = UI.FontBody, TextColor3 = c.UserId == player.UserId and UI.Colors.Gold or UI.Colors.Text, Size = UDim2.new(0.6, 0, 1, 0), Position = UDim2.fromOffset(10, 0), TextXAlignment = Enum.TextXAlignment.Left }, row)
-		UI.Label({ Text = FormatUtil.Compact(c.Mess), TextSize = 15, Font = UI.FontBody, TextColor3 = UI.Colors.TextDim, Size = UDim2.new(0.4, -10, 1, 0), Position = UDim2.new(0.6, 0, 0, 0), TextXAlignment = Enum.TextXAlignment.Right }, row)
+		UI.Label({ Text = tostring(c.Objects or 0) .. " moved", TextSize = 15, Font = UI.FontBody, TextColor3 = UI.Colors.TextDim, Size = UDim2.new(0.4, -10, 1, 0), Position = UDim2.new(0.6, 0, 0, 0), TextXAlignment = Enum.TextXAlignment.Right }, row)
 	end
 
 	if payload.NextRoomAvailable then

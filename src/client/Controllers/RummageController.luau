@@ -1,7 +1,7 @@
 --[[
-	Procedural rummaging animation. No animation assets required: while a player is searching
-	(replicated IsSearching attribute) their arms reach forward and alternate digging motions
-	and the torso leans in. Works for R15 and R6, for the local player and teammates.
+	Procedural carry pose. No animation assets required: while a player holds an object
+	(replicated HeldObjectId attribute) their arms reach forward together and the torso leans
+	in slightly. Works for R15 and R6, for the local player and teammates.
 
 	The pose is layered onto each joint's Transform right after the Animator writes it
 	(PreSimulation), so it blends with walk/idle animations. C0 is never touched: with
@@ -11,10 +11,6 @@
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-
-local Controllers = require(script.Parent)
-
-local player = Players.LocalPlayer
 
 local RummageController = {}
 
@@ -65,11 +61,11 @@ end
 
 local function offsetFor(kind: string, ph: number): CFrame
 	if kind == "R" then
-		return CFrame.Angles(math.rad(70 + math.sin(ph) * 25), 0, math.rad(-15))
+		return CFrame.Angles(math.rad(78 + math.sin(ph * 0.4) * 4), 0, math.rad(-12))
 	elseif kind == "L" then
-		return CFrame.Angles(math.rad(70 + math.sin(ph + math.pi) * 25), 0, math.rad(15))
+		return CFrame.Angles(math.rad(78 + math.sin(ph * 0.4) * 4), 0, math.rad(12))
 	elseif kind == "Waist" then
-		return CFrame.Angles(math.rad(-14 + math.sin(ph * 0.5) * 3), 0, 0)
+		return CFrame.Angles(math.rad(-8), 0, 0)
 	elseif kind == "R6R" then
 		return CFrame.Angles(0, 0, math.rad(80 + math.sin(ph) * 25))
 	elseif kind == "R6L" then
@@ -139,7 +135,7 @@ function RummageController.Start()
 					continue
 				end
 			end
-			local target = p:GetAttribute("IsSearching") == true and 1 or 0
+			local target = (p:GetAttribute("HeldObjectId") or "") ~= "" and 1 or 0
 			if target > t.Weight then
 				t.Weight = math.min(1, t.Weight + dt * 6)
 			elseif target < t.Weight then
@@ -147,12 +143,6 @@ function RummageController.Start()
 			end
 			-- At zero weight this restores the last base once, then no-ops.
 			applyPose(t, now)
-		end
-
-		if player:GetAttribute("IsSearching") and tracked[player] then
-			Controllers.AudioController.PlayLoop("SearchLoop")
-		else
-			Controllers.AudioController.StopLoop("SearchLoop")
 		end
 	end)
 end

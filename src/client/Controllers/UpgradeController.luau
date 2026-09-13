@@ -19,9 +19,9 @@ local busy = false
 local cashHeader: TextLabel
 
 local CategoryColor = {
-	SearchPower = UI.Colors.Red,
-	SearchSpeed = UI.Colors.Cyan,
-	BagSize = UI.Colors.Orange,
+	Strength = UI.Colors.Red,
+	ThrowPower = UI.Colors.Orange,
+	GrabSpeed = UI.Colors.Cyan,
 	MoveSpeed = UI.Colors.Green,
 }
 

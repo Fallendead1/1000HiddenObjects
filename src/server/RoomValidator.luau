@@ -1,17 +1,61 @@
 --[[
-	Development validator for room runtimes. Produces a readable report so AI-generated
-	rooms can be checked before they are ever played.
+	Development validator for a built room (and the lobby's matchmaking zones). Produces a
+	readable report so AI-generated rooms can be checked before they are ever played.
 ]]
+
+local CollectionService = game:GetService("CollectionService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ServerStorage = game:GetService("ServerStorage")
+
+local ClutterConfig = require(ReplicatedStorage.Shared.Config.ClutterConfig)
+local UpgradeConfig = require(ReplicatedStorage.Shared.Config.UpgradeConfig)
 
 local RoomValidator = {}
 
-local SANE_MESS_MIN = 5000
-local SANE_MESS_MAX = 2000000
+-- Structure/decor names that would read as clutter to a player but can't be grabbed.
+local CLUTTER_LOOKING = { "book", "shirt", "sock", "shoe", "toy", "box", "pillow", "blanket", "basketball", "bottle", "cup", "can", "paper", "magazine", "controller", "skateboard", "plush", "bear" }
+
+local function looksLikeClutter(name: string): boolean
+	local lower = string.lower(name)
+	if string.find(lower, "shelf", 1, true) then
+		return false
+	end
+	for _, word in ipairs(CLUTTER_LOOKING) do
+		if string.find(lower, word, 1, true) then
+			return true
+		end
+	end
+	return false
+end
+
+function RoomValidator.ValidateLobby(errors: { string }, warnings: { string })
+	local lobby = workspace:FindFirstChild("Lobby")
+	if not lobby then
+		table.insert(warnings, "No Workspace.Lobby (matchmaking circles unavailable on this server)")
+		return
+	end
+	local seen, count = {}, 0
+	for _, zone in ipairs(CollectionService:GetTagged("QueueZone")) do
+		if zone:IsDescendantOf(lobby) then
+			count += 1
+			local id = zone:GetAttribute("QueueId")
+			if not id or id == "" then
+				table.insert(errors, "Matchmaking zone without QueueId: " .. zone:GetFullName())
+			elseif seen[id] then
+				table.insert(errors, "Duplicate QueueId: " .. id)
+			end
+			if id then
+				seen[id] = true
+			end
+		end
+	end
+	if count == 0 then
+		table.insert(errors, "Workspace.Lobby has no matchmaking zones (tag QueueZone)")
+	end
+end
 
 function RoomValidator.Validate(runtime, config): (boolean, string)
-	local errors = {}
-	local warnings = {}
-
+	local errors, warnings = {}, {}
 	local function err(msg: string)
 		table.insert(errors, msg)
 	end
@@ -22,113 +66,164 @@ function RoomValidator.Validate(runtime, config): (boolean, string)
 	if not runtime.SpawnPart then
 		err("Missing RoomSpawn (tag RoomSpawn)")
 	end
-	if not runtime.TrashChuteZone then
-		err("Missing TrashChute (tag TrashChute)")
+	local regionCount = 0
+	for _ in pairs(runtime.Regions) do
+		regionCount += 1
 	end
-	if #runtime.ClusterList == 0 then
-		err("No ClutterClusters found (tag ClutterCluster)")
-	end
-
-	local seenIds = {}
-	local eligibleCount = 0
-	for _, cluster in ipairs(runtime.ClusterList) do
-		if seenIds[cluster.Id] then
-			err("Duplicate ClusterId: " .. cluster.Id)
-		end
-		seenIds[cluster.Id] = true
-		if cluster.Weight <= 0 then
-			err("Cluster has zero/negative Weight (would get zero MaxMess): " .. cluster.Id)
-		end
-		if cluster.RegionId == "" then
-			err("Cluster missing RegionId: " .. cluster.Id)
-		elseif not runtime.Regions[cluster.RegionId] then
-			warnMsg("Cluster references unknown region '" .. cluster.RegionId .. "': " .. cluster.Id)
-		end
-		if cluster.ChunkCount == 0 then
-			warnMsg("Cluster has no visual chunks: " .. cluster.Id)
-		end
-		if cluster.TargetEligible then
-			eligibleCount += 1
-		end
-		if cluster.MaxMess > 0 and cluster.MaxMess < 200 then
-			warnMsg(string.format("Cluster %s has very little mess (%d)", cluster.Id, cluster.MaxMess))
-		end
-	end
-	if eligibleCount == 0 and #runtime.ClusterList > 0 then
-		err("No TargetEligible clusters")
+	if regionCount == 0 then
+		warnMsg("No SearchRegion volumes; region hints will have nothing to highlight")
 	end
 
-	local minSockets = config.MinimumTargetSockets or 30
-	local validSockets = 0
-	for _, socket in ipairs(runtime.SocketList) do
-		local cluster = runtime.Clusters[socket.ClusterId]
-		if not cluster then
-			err("Socket references missing cluster '" .. socket.ClusterId .. "': " .. socket.Id)
+	-- Individual clutter objects
+	local ids, perKey, badPhysics = {}, {}, 0
+	local maxStrength = UpgradeConfig.GetValue("Strength", UpgradeConfig.GetMaxLevel("Strength"))
+	if #runtime.Objects == 0 then
+		err("Room has no movable clutter objects (tag Clutter)")
+	end
+	for _, root in ipairs(runtime.Objects) do
+		local id = root:GetAttribute("ObjectId")
+		local label = id or root:GetFullName()
+		if not id or id == "" then
+			err("Clutter object missing ObjectId: " .. root:GetFullName())
+		elseif ids[id] then
+			err("Duplicate ObjectId: " .. id)
 		else
-			if not cluster.TargetEligible then
-				warnMsg("Socket in non-eligible cluster: " .. socket.Id)
-			else
-				validSockets += 1
+			ids[id] = true
+		end
+		if root:GetAttribute("Movable") ~= true then
+			err("Visible clutter not Movable: " .. label)
+		end
+		local key = root:GetAttribute("AssetKey")
+		if not key or key == "" then
+			err("Missing AssetKey: " .. label)
+		else
+			perKey[key] = (perKey[key] or 0) + 1
+			if not ClutterConfig.Get(key) then
+				warnMsg("AssetKey not in ClutterConfig: " .. key .. " (" .. label .. ")")
 			end
-			local half = cluster.Volume.Size / 2 + Vector3.new(1, 2, 1)
-			local lp = cluster.Volume.CFrame:PointToObjectSpace(socket.Part.Position)
-			if math.abs(lp.X) > half.X or math.abs(lp.Y) > half.Y or math.abs(lp.Z) > half.Z then
-				warnMsg("Socket lies outside its cluster volume: " .. socket.Id)
+		end
+		local weight = root:GetAttribute("Weight")
+		if type(weight) ~= "number" then
+			err("Missing Weight: " .. label)
+		elseif weight < 1 or weight > ClutterConfig.MaxReasonableWeight then
+			err(string.format("Absurd Weight %s: %s", tostring(weight), label))
+		elseif weight > maxStrength then
+			warnMsg(string.format("%s weighs %d - heavier than max Strength %d, can never be moved", label, weight, maxStrength))
+		end
+		if type(root:GetAttribute("CashValue")) ~= "number" then
+			err("Missing CashValue: " .. label)
+		end
+		if typeof(root:GetAttribute("OriginalCFrame")) ~= "CFrame" then
+			err("Invalid OriginalCFrame: " .. label)
+		end
+		local region = root:GetAttribute("RegionId")
+		if not region or not runtime.Regions[region] then
+			err("Invalid RegionId '" .. tostring(region) .. "': " .. label)
+		end
+		if not root.CanQuery then
+			badPhysics += 1
+		end
+		for _, child in ipairs(root:GetChildren()) do
+			if child:IsA("BasePart") and (child.CanCollide or not child.Massless or not child:FindFirstChildWhichIsA("WeldConstraint")) then
+				badPhysics += 1
 			end
 		end
-		if socket.RegionId == "" then
-			warnMsg("Socket missing RegionId: " .. socket.Id)
-		end
 	end
-	if validSockets < minSockets then
-		err(string.format("Only %d valid target sockets (minimum %d)", validSockets, minSockets))
+	if badPhysics > 0 then
+		err(string.format("%d clutter parts have broken physics setup (root must be queryable; details massless, non-colliding, welded)", badPhysics))
 	end
 
-	local total = 0
-	for _, cluster in ipairs(runtime.ClusterList) do
-		total += cluster.MaxMess
-	end
-	if total > 0 and (total < SANE_MESS_MIN or total > SANE_MESS_MAX) then
-		err(string.format("Total mess %d outside sane range [%d, %d]", total, SANE_MESS_MIN, SANE_MESS_MAX))
-	end
-
-	if #runtime.Regions == 0 then
-		local count = 0
-		for _ in pairs(runtime.Regions) do
-			count += 1
-		end
-		if count == 0 then
-			warnMsg("No SearchRegion volumes found; 75% hint highlight will have nothing to show")
+	-- Anything visible that isn't furniture/clutter and looks grabbable
+	local structure = runtime.Model:FindFirstChild("Structure")
+	if structure then
+		for _, p in ipairs(structure:GetDescendants()) do
+			if p:IsA("BasePart") and p.Transparency < 1 and looksLikeClutter(p.Name) then
+				warnMsg("Decor looks like clutter but is not interactive: " .. p.Name)
+			end
 		end
 	end
 
-	local ServerStorage = game:GetService("ServerStorage")
+	-- Target sockets and their physical blocker groups
+	local minSockets = config.MinimumTargetSockets or 30
+	local exposable = 0
+	for _, socket in ipairs(runtime.SocketList) do
+		local group = socket.Part:GetAttribute("BlockerGroup") or ""
+		if group == "" or #socket.Blockers == 0 then
+			err("TargetSocket has no blocker group (key would be visible at start): " .. socket.Id)
+		else
+			local ok = true
+			for blockerId in string.gmatch(group, "[^,]+") do
+				local obj = runtime.ObjectsById[blockerId]
+				if not obj then
+					err("Socket " .. socket.Id .. " blocker references missing object " .. blockerId)
+					ok = false
+				elseif (obj:GetAttribute("Weight") or 1) > maxStrength then
+					err("Impossible exposure: " .. socket.Id .. " is under " .. blockerId .. " which no Strength level can lift")
+					ok = false
+				end
+			end
+			if ok then
+				exposable += 1
+			end
+		end
+		if socket.RegionId == "" or not runtime.Regions[socket.RegionId] then
+			err("Socket has invalid RegionId: " .. socket.Id)
+		end
+		-- Only solid furniture can swallow the key; thin decor such as rugs does not.
+		local solid = {}
+		for _, part in ipairs(runtime.StructureParts) do
+			if part.CanCollide then
+				table.insert(solid, part)
+			end
+		end
+		local params = OverlapParams.new()
+		params.FilterType = Enum.RaycastFilterType.Include
+		params.FilterDescendantsInstances = solid
+		local inside = workspace:GetPartBoundsInBox(CFrame.new(socket.Position), Vector3.new(0.4, 0.4, 0.4), params)
+		if #inside > 0 then
+			err("Socket " .. socket.Id .. " is inside furniture (" .. inside[1].Name .. ")")
+		end
+	end
+	if exposable < minSockets then
+		err(string.format("Only %d exposable target sockets (minimum %d)", exposable, minSockets))
+	end
+
 	local targets = ServerStorage:FindFirstChild("Targets")
 	if not (targets and targets:FindFirstChild(config.TargetId)) then
 		warnMsg("No final target model at ServerStorage.Targets." .. config.TargetId .. " (placeholder in use)")
 	end
 
+	RoomValidator.ValidateLobby(errors, warnings)
+
+	local keys = {}
+	for k in pairs(perKey) do
+		table.insert(keys, k)
+	end
+	table.sort(keys)
+	local partCount = 0
+	for _, d in ipairs(runtime.Model:GetDescendants()) do
+		if d:IsA("BasePart") then
+			partCount += 1
+		end
+	end
 	local lines = {
 		string.format("=== ROOM VALIDATION: %s (%s) ===", config.Name, config.DisplayNumber),
-		string.format("Clusters: %d | Eligible: %d | Sockets: %d valid / %d | Regions: %d | Total mess: %d",
-			#runtime.ClusterList, eligibleCount, validSockets, #runtime.SocketList,
-			(function()
-				local n = 0
-				for _ in pairs(runtime.Regions) do
-					n += 1
-				end
-				return n
-			end)(), total),
+		string.format("Movable objects: %d | AssetKeys used: %d | Sockets: %d exposable / %d | Regions: %d | Total parts: %d",
+			#runtime.Objects, #keys, exposable, #runtime.SocketList, regionCount, partCount),
+		#errors == 0 and "RESULT: PASS" or string.format("RESULT: FAIL (%d errors)", #errors),
 	}
-	if #errors == 0 then
-		table.insert(lines, "RESULT: PASS")
-	else
-		table.insert(lines, string.format("RESULT: FAIL (%d errors)", #errors))
-	end
-	for _, e in ipairs(errors) do
+	for i, e in ipairs(errors) do
+		if i > 25 then
+			table.insert(lines, string.format("  ... %d more errors", #errors - 25))
+			break
+		end
 		table.insert(lines, "  [ERROR] " .. e)
 	end
-	for _, w in ipairs(warnings) do
+	for i, w in ipairs(warnings) do
+		if i > 15 then
+			table.insert(lines, string.format("  ... %d more warnings", #warnings - 15))
+			break
+		end
 		table.insert(lines, "  [WARN]  " .. w)
 	end
 	return #errors == 0, table.concat(lines, "\n")

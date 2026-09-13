@@ -85,8 +85,8 @@ commands.ValidateRoom = function(player, roomId)
 		if not config then
 			report = "Unknown room " .. tostring(roomId)
 		else
-			local runtime = Services.RoomService.Build(config, CFrame.new(0, -500, 0))
-			Services.RoomService.ApplyMess(runtime, 1)
+			-- Built off to the side (not near FallenPartsDestroyHeight) and never released to physics.
+			local runtime = Services.RoomService.Build(config, CFrame.new(-700, 0, 0))
 			local _, r = RoomValidator.Validate(runtime, config)
 			report = r
 			Services.RoomService.Destroy(runtime)
@@ -121,7 +121,7 @@ end
 commands.TargetInfo = function(player)
 	local info = Services.MatchService.GetTargetInfo()
 	if info then
-		local text = string.format("[DEV] Target: %s in %s (%s) depth %.0f%% revealed=%s", tostring(info.SocketId), tostring(info.ClusterId), tostring(info.RegionId), (info.Depth or 0) * 100, tostring(info.Revealed))
+		local text = string.format("[DEV] Target: %s (%s) at %s | %d covering / %d blockers | revealed=%s | blockers: %s", tostring(info.SocketId), tostring(info.RegionId), tostring(info.Position), info.Covering or 0, info.Blockers or 0, tostring(info.Revealed), table.concat(info.BlockerIds or {}, ","))
 		print(text)
 		Services.NotificationService.Send(player, "Info", text, 8)
 	end

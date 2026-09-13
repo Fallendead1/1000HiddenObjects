@@ -1,68 +1,66 @@
 --[[
 	ROOM #001 - THE MESSY BEDROOM
-	Data-driven room definition. Positions are room-local studs; the room origin is the
-	center of the floor at y = 0. X spans [-45, 45], Z spans [-35, 35]. The door/entrance
-	is on the +Z wall.
+	Room-local studs: origin = floor centre at y = 0, X [-45, 45], Z [-35, 35], door on +Z.
 
-	A pre-built room model placed at ServerStorage.Rooms.Room001 (tagged per the docs)
-	overrides the placeholder geometry described in Layout, but the gameplay data below
-	(clusters, sockets, regions, hints) is always the source of truth.
+	Piles are LAYOUT metadata only: they tell the builder where to physically stack individual
+	clutter objects, which AssetKeys to use and how many. Players never interact with a pile -
+	only with the individual objects in it.
+	  Layout "Heap": objects stacked with a height map (heavier items tend to sit lower).
+	  Layout "Row":  objects standing upright in a line (books on shelves, clothes on a rail).
+
+	Target sockets sit at the base of a pile. Their blockers are the real objects the builder
+	stacked over the socket; the Golden Key appears only once those objects are moved away.
 ]]
 
 local Room = {
 	Id = 1,
 	DisplayNumber = "001",
 	Name = "The Messy Bedroom",
+	ObjectPrefix = "Bedroom", -- ObjectIds look like Bedroom_Book_0042
 
 	TargetId = "GoldenKey",
 	TargetName = "Golden Key",
 
-	-- Simulation-tuned: solo median ~75-90 real minutes with an efficient player.
-	BaseMessUnits = 100000,
-
-	TargetDepthMin = 0.65,
-	TargetDepthMax = 0.90,
-
 	MinimumTargetSockets = 30,
+	SocketBlockerRadius = 1.4, -- XZ radius around a socket that must be clear of clutter
+	-- A blocker stops covering the key once its footprint is this far (XZ) from the socket: the
+	-- same test that made it a blocker. Loose piles slump, so anything stricter keeps the key
+	-- hidden under objects that have already slid off it.
+	RequiredBlockerDisplacement = 1.4,
 
-	-- Side / area / region / hot-cold / outline. Earlier than the design draft so a solo
-	-- player has a useful clue by ~40 minutes instead of ~50.
-	HintMilestones = { 0.20, 0.40, 0.60, 0.80, 0.95 },
+	-- Unique-object progress milestones: side / area / region / hot-cold / blocker outline.
+	-- Scaled for ~2,200 objects: 5% is roughly 110 objects moved.
+	HintMilestones = { 0.05, 0.10, 0.18, 0.26, 0.35 },
 
 	LayoutVariants = { 1 },
 
-	-- Multiplies every cluster's ChunkCount for the placeholder builder (visual density only).
-	-- 30 clusters x ~21 avg x 1.6 = ~1,000 anchored, non-collidable props.
-	ChunkDensity = 1.6,
+	-- Density knobs for the builder (tune against the performance test, not per pile).
+	-- Every object is loose physics: ~1,800 loose objects settle to 60/60, ~3,600 never sleep.
+	CountMultiplier = 2.1, -- more candidate objects per heap
+	FloorHeapHeightBonus = 4, -- taller floor heaps (light clutter never blocks players)
 
 	Size = Vector3.new(90, 26, 70),
+	SpawnPosition = Vector3.new(0, 3, 29),
 
-	SpawnPosition = Vector3.new(0, 3, 27),
-	TrashChutePosition = Vector3.new(9, 0, 30),
-	DoorPosition = Vector3.new(0, 0, 35),
-
-	AmbientColor = Color3.fromRGB(150, 160, 190),
 	FloorColor = Color3.fromRGB(180, 140, 100),
 	WallColor = Color3.fromRGB(120, 170, 220),
 }
 
--- Regions used by hints, validation and highlight volumes.
 Room.Regions = {
-	{ Id = "BedPile", Name = "BED", Center = Vector3.new(-30, 5, -18), Size = Vector3.new(22, 10, 26) },
-	{ Id = "UnderBed", Name = "UNDER THE BED", Center = Vector3.new(-30, 1, -18), Size = Vector3.new(16, 3, 22) },
-	{ Id = "Desk", Name = "DESK", Center = Vector3.new(30, 5, -26), Size = Vector3.new(22, 10, 16) },
-	{ Id = "Closet", Name = "CLOSET", Center = Vector3.new(-38, 6, 10), Size = Vector3.new(12, 14, 26) },
-	{ Id = "Bookshelf", Name = "BOOKSHELF", Center = Vector3.new(38, 6, -6), Size = Vector3.new(12, 12, 18) },
-	{ Id = "LaundryCorner", Name = "LAUNDRY CORNER", Center = Vector3.new(-32, 4, 24), Size = Vector3.new(20, 8, 18) },
-	{ Id = "ToyCorner", Name = "TOY CORNER", Center = Vector3.new(32, 4, 22), Size = Vector3.new(20, 8, 20) },
-	{ Id = "Dresser", Name = "DRESSER", Center = Vector3.new(-2, 5, -28), Size = Vector3.new(26, 10, 12) },
-	{ Id = "WindowArea", Name = "WINDOW", Center = Vector3.new(14, 5, -24), Size = Vector3.new(14, 10, 14) },
-	{ Id = "CenterFloor", Name = "CENTER FLOOR", Center = Vector3.new(0, 3, 0), Size = Vector3.new(20, 6, 22) },
-	{ Id = "LeftFloor", Name = "LEFT FLOOR", Center = Vector3.new(-19, 3, 2), Size = Vector3.new(16, 6, 26) },
-	{ Id = "RightFloor", Name = "RIGHT FLOOR", Center = Vector3.new(20, 3, 4), Size = Vector3.new(16, 6, 26) },
+	{ Id = "BedPile", Name = "BED", Center = Vector3.new(-30, 6, -18), Size = Vector3.new(16, 8, 24) },
+	{ Id = "UnderBed", Name = "UNDER THE BED", Center = Vector3.new(-30, 1, -18), Size = Vector3.new(16, 3, 24) },
+	{ Id = "Desk", Name = "DESK", Center = Vector3.new(30, 5, -26), Size = Vector3.new(24, 10, 18) },
+	{ Id = "Closet", Name = "CLOSET", Center = Vector3.new(-38, 7, 10), Size = Vector3.new(14, 14, 28) },
+	{ Id = "Bookshelf", Name = "BOOKSHELF", Center = Vector3.new(39, 7, -6), Size = Vector3.new(12, 14, 20) },
+	{ Id = "LaundryCorner", Name = "LAUNDRY CORNER", Center = Vector3.new(-32, 4, 25), Size = Vector3.new(22, 8, 18) },
+	{ Id = "ToyCorner", Name = "TOY CORNER", Center = Vector3.new(32, 4, 23), Size = Vector3.new(22, 8, 20) },
+	{ Id = "Dresser", Name = "DRESSER", Center = Vector3.new(-3, 5, -28), Size = Vector3.new(26, 10, 14) },
+	{ Id = "WindowArea", Name = "WINDOW", Center = Vector3.new(14, 4, -25), Size = Vector3.new(14, 8, 14) },
+	{ Id = "CenterFloor", Name = "CENTER FLOOR", Center = Vector3.new(0, 3, 0), Size = Vector3.new(22, 6, 24) },
+	{ Id = "LeftFloor", Name = "LEFT FLOOR", Center = Vector3.new(-19, 3, 5), Size = Vector3.new(16, 6, 26) },
+	{ Id = "RightFloor", Name = "RIGHT FLOOR", Center = Vector3.new(20, 3, 6), Size = Vector3.new(16, 6, 26) },
 }
 
--- Broad area groups used for the 50% clue ("Search around the BED / CLOSET side").
 Room.HintAreas = {
 	{ Label = "BED / UNDER BED / CLOSET", Regions = { "BedPile", "UnderBed", "Closet" } },
 	{ Label = "DESK / BOOKSHELF / WINDOW", Regions = { "Desk", "Bookshelf", "WindowArea" } },
@@ -70,127 +68,118 @@ Room.HintAreas = {
 	{ Label = "TOYS / RIGHT FLOOR / CENTER", Regions = { "ToyCorner", "RightFloor", "CenterFloor" } },
 }
 
--- Placeholder furniture. Each entry becomes an anchored Part (or a small set of parts).
-Room.Furniture = {
-	{ Name = "BedFrame", Position = Vector3.new(-30, 1.5, -18), Size = Vector3.new(14, 3, 22), Color = Color3.fromRGB(110, 70, 40), Material = Enum.Material.Wood },
-	{ Name = "Mattress", Position = Vector3.new(-30, 3.5, -18), Size = Vector3.new(13, 1.5, 21), Color = Color3.fromRGB(230, 230, 240), Material = Enum.Material.Fabric },
-	{ Name = "Blanket", Position = Vector3.new(-30, 4.4, -14), Size = Vector3.new(13.2, 0.4, 12), Color = Color3.fromRGB(90, 130, 220), Material = Enum.Material.Fabric },
-	{ Name = "Pillow", Position = Vector3.new(-30, 4.8, -26), Size = Vector3.new(6, 1.2, 3), Color = Color3.fromRGB(250, 250, 255), Material = Enum.Material.Fabric },
-	{ Name = "Nightstand", Position = Vector3.new(-40, 1.5, -30), Size = Vector3.new(4, 3, 4), Color = Color3.fromRGB(120, 80, 50), Material = Enum.Material.Wood },
-	{ Name = "Lamp", Position = Vector3.new(-40, 4.2, -30), Size = Vector3.new(1.5, 2.4, 1.5), Color = Color3.fromRGB(255, 240, 180), Material = Enum.Material.Neon },
-	{ Name = "Desk", Position = Vector3.new(30, 3, -30), Size = Vector3.new(16, 0.8, 7), Color = Color3.fromRGB(150, 110, 70), Material = Enum.Material.Wood },
-	{ Name = "DeskLegL", Position = Vector3.new(23, 1.3, -30), Size = Vector3.new(1, 2.6, 6), Color = Color3.fromRGB(130, 95, 60), Material = Enum.Material.Wood },
-	{ Name = "DeskLegR", Position = Vector3.new(37, 1.3, -30), Size = Vector3.new(1, 2.6, 6), Color = Color3.fromRGB(130, 95, 60), Material = Enum.Material.Wood },
-	{ Name = "Monitor", Position = Vector3.new(30, 5.2, -32), Size = Vector3.new(6, 3.5, 0.5), Color = Color3.fromRGB(30, 30, 40), Material = Enum.Material.SmoothPlastic },
-	{ Name = "Chair", Position = Vector3.new(30, 1.6, -22), Size = Vector3.new(3.5, 3.2, 3.5), Color = Color3.fromRGB(60, 60, 80), Material = Enum.Material.Plastic },
-	{ Name = "Bookshelf", Position = Vector3.new(43, 6, -6), Size = Vector3.new(3, 12, 16), Color = Color3.fromRGB(140, 100, 60), Material = Enum.Material.Wood },
-	{ Name = "Closet", Position = Vector3.new(-43, 7, 10), Size = Vector3.new(4, 14, 22), Color = Color3.fromRGB(235, 235, 235), Material = Enum.Material.SmoothPlastic },
-	{ Name = "Dresser", Position = Vector3.new(-2, 3, -32), Size = Vector3.new(14, 6, 5), Color = Color3.fromRGB(120, 85, 55), Material = Enum.Material.Wood },
-	{ Name = "Rug", Position = Vector3.new(0, 0.1, 2), Size = Vector3.new(26, 0.2, 22), Color = Color3.fromRGB(200, 80, 90), Material = Enum.Material.Fabric },
-	{ Name = "Window", Position = Vector3.new(14, 12, -34.6), Size = Vector3.new(12, 10, 0.4), Color = Color3.fromRGB(180, 230, 255), Material = Enum.Material.Glass },
-	{ Name = "WindowFrame", Position = Vector3.new(14, 12, -34.4), Size = Vector3.new(12.8, 10.8, 0.3), Color = Color3.fromRGB(250, 250, 250), Material = Enum.Material.SmoothPlastic, Hollow = true },
-	{ Name = "Door", Position = Vector3.new(0, 6, 34.6), Size = Vector3.new(7, 12, 0.6), Color = Color3.fromRGB(150, 100, 60), Material = Enum.Material.Wood },
-	{ Name = "Poster", Position = Vector3.new(-14, 12, -34.6), Size = Vector3.new(8, 6, 0.2), Color = Color3.fromRGB(255, 120, 60), Material = Enum.Material.SmoothPlastic },
-	{ Name = "Skateboard", Position = Vector3.new(38, 0.6, 30), Size = Vector3.new(6, 0.6, 2), Color = Color3.fromRGB(60, 200, 120), Material = Enum.Material.SmoothPlastic },
-	{ Name = "Basketball", Position = Vector3.new(-12, 1.2, 30), Size = Vector3.new(2.4, 2.4, 2.4), Color = Color3.fromRGB(230, 120, 50), Material = Enum.Material.SmoothPlastic, Shape = Enum.PartType.Ball },
-	{ Name = "Guitar", Position = Vector3.new(44, 3.5, 14), Size = Vector3.new(0.8, 7, 2.6), Color = Color3.fromRGB(200, 60, 60), Material = Enum.Material.SmoothPlastic },
-	{ Name = "Plant", Position = Vector3.new(-44, 2.5, 30), Size = Vector3.new(2.5, 5, 2.5), Color = Color3.fromRGB(60, 160, 70), Material = Enum.Material.Grass },
+-- AssetKey mixes (key = relative frequency).
+local Mix = {
+	Bed = { Pillow_A = 4, Blanket_A = 3, Shirt_A = 6, Hoodie_A = 3, Sock_A = 4, Book_A = 3, Plush_A = 2, TeddyBear_A = 1, Laptop_A = 1, Headphones_A = 1, Controller_A = 1, Magazine_A = 2, Backpack_A = 1 },
+	UnderBed = { Shoe_A = 4, Sock_A = 3, Magazine_A = 3, Book_A = 3, Paper_A = 2, PizzaBox_A = 2, ToyCar_A = 2, Controller_A = 1, Remote_A = 1, Can_A = 2, Notebook_A = 2 },
+	Desk = { Paper_A = 5, Notebook_A = 4, Book_A = 3, Book_C = 2, Pencil_A = 4, Cup_A = 2, Can_A = 2, Bottle_A = 2, Remote_A = 1, Controller_A = 1, Headphones_A = 1, Camera_A = 1, Cable_A = 2, Laptop_A = 1 },
+	DeskFloor = { CardboardBox_A = 3, StorageBin_A = 1, Book_B = 3, Paper_A = 3, Backpack_A = 1, Cable_A = 2, PizzaBox_A = 2, Bottle_A = 2, Controller_A = 1, Shirt_A = 2 },
+	Closet = { Shirt_A = 6, Hoodie_A = 5, Sock_A = 3, Shoe_A = 4, CardboardBox_A = 2, CardboardBox_B = 1, StorageBin_A = 1, Basket_A = 1, Backpack_A = 1, Blanket_A = 1 },
+	Books = { Book_A = 5, Book_B = 4, Book_C = 3, Magazine_A = 3, Notebook_A = 2, CardboardBox_A = 1, Paper_A = 2 },
+	Laundry = { Shirt_A = 6, Hoodie_A = 4, Sock_A = 5, Blanket_A = 1, Basket_A = 1, Shoe_A = 2, Pillow_A = 1 },
+	Toys = { ToyBlock_A = 6, ToyCar_A = 3, ToyDuck_A = 2, Plush_A = 3, TeddyBear_A = 2, Basketball_A = 1, CardboardBox_A = 1, StorageBin_A = 1, Controller_A = 1 },
+	DresserTop = { Sock_A = 3, Shirt_A = 3, Cup_A = 2, Bottle_A = 1, Book_A = 2, Remote_A = 1, Camera_A = 1, Headphones_A = 1, Plush_A = 1, Magazine_A = 2, Can_A = 1 },
+	Floor = { CardboardBox_A = 2, CardboardBox_B = 1, HeavyBox_A = 1, StorageBin_A = 1, Shirt_A = 3, Book_A = 3, ToyBlock_A = 2, Shoe_A = 2, PizzaBox_A = 1, Backpack_A = 1, Basketball_A = 1, Paper_A = 2, Can_A = 1, Hoodie_A = 1 },
+	Scatter = { Paper_A = 4, Sock_A = 3, Shirt_A = 2, Magazine_A = 2, Can_A = 2, Cup_A = 1, Pencil_A = 2, ToyBlock_A = 2, Book_A = 1, Remote_A = 1 },
+	ShelfBooks = { Book_A = 3, Book_B = 2, Book_C = 2, Notebook_A = 1 },
+	Hanging = { Shirt_A = 3, Hoodie_A = 1 },
+	-- Big, flat, light junk that buries the whole floor with as few physics bodies as possible
+	-- (never blocks walking). Small pieces cost the same physics per body but cover far less.
+	Carpet = { Shirt_A = 6, Hoodie_A = 4, Blanket_A = 2, PizzaBox_A = 3, Magazine_A = 3, Paper_A = 2, Book_B = 2, Notebook_A = 1, Shoe_A = 1, ToyCar_A = 1, Controller_A = 1 },
 }
 
---[[
-	ClutterClusters. Weight controls how much of the room's logical mess lands in this
-	pile. ChunkCount is the number of visible placeholder props. Palette drives the
-	placeholder look. Base is the y of the pile's bottom (e.g. on top of the bed).
-]]
-Room.Clusters = {
-	-- Bed
-	{ Id = "Bed_01", RegionId = "BedPile", Center = Vector3.new(-30, 5.2, -14), Size = Vector3.new(12, 6, 12), Weight = 3.6, ChunkCount = 24, Palette = "Mixed", TargetEligible = true },
-	{ Id = "Bed_02", RegionId = "BedPile", Center = Vector3.new(-30, 5.2, -25), Size = Vector3.new(12, 5, 8), Weight = 2.6, ChunkCount = 18, Palette = "Pillows", TargetEligible = true },
-	{ Id = "Bed_03", RegionId = "BedPile", Center = Vector3.new(-20, 0, -12), Size = Vector3.new(6, 5, 12), Weight = 2.4, ChunkCount = 18, Palette = "Clothes", TargetEligible = true },
-	-- Under bed (low and wide)
-	{ Id = "UnderBed_01", RegionId = "UnderBed", Center = Vector3.new(-30, 0, -26), Size = Vector3.new(12, 2.6, 6), Weight = 2.2, ChunkCount = 16, Palette = "Shoes", TargetEligible = true, Flat = true },
-	{ Id = "UnderBed_02", RegionId = "UnderBed", Center = Vector3.new(-30, 0, -9), Size = Vector3.new(12, 2.6, 6), Weight = 2.2, ChunkCount = 16, Palette = "Boxes", TargetEligible = true, Flat = true },
-	-- Desk
-	{ Id = "Desk_01", RegionId = "Desk", Center = Vector3.new(26, 3.4, -30), Size = Vector3.new(7, 4, 6), Weight = 2.0, ChunkCount = 16, Palette = "Paper", TargetEligible = true },
-	{ Id = "Desk_02", RegionId = "Desk", Center = Vector3.new(22, 0, -23), Size = Vector3.new(8, 5, 8), Weight = 3.0, ChunkCount = 22, Palette = "Electronics", TargetEligible = true },
-	{ Id = "Desk_03", RegionId = "Desk", Center = Vector3.new(38, 0, -22), Size = Vector3.new(8, 5, 8), Weight = 2.8, ChunkCount = 20, Palette = "Books", TargetEligible = true },
-	-- Closet
-	{ Id = "Closet_01", RegionId = "Closet", Center = Vector3.new(-37, 0, 2), Size = Vector3.new(8, 7, 8), Weight = 3.2, ChunkCount = 22, Palette = "Clothes", TargetEligible = true },
-	{ Id = "Closet_02", RegionId = "Closet", Center = Vector3.new(-37, 0, 11), Size = Vector3.new(8, 8, 8), Weight = 3.6, ChunkCount = 24, Palette = "Clothes", TargetEligible = true },
-	{ Id = "Closet_03", RegionId = "Closet", Center = Vector3.new(-37, 0, 20), Size = Vector3.new(8, 6, 8), Weight = 3.0, ChunkCount = 20, Palette = "Boxes", TargetEligible = true },
-	-- Bookshelf
-	{ Id = "Bookshelf_01", RegionId = "Bookshelf", Center = Vector3.new(38, 0, -12), Size = Vector3.new(7, 6, 8), Weight = 2.8, ChunkCount = 22, Palette = "Books", TargetEligible = true },
-	{ Id = "Bookshelf_02", RegionId = "Bookshelf", Center = Vector3.new(38, 0, -2), Size = Vector3.new(7, 6, 8), Weight = 2.8, ChunkCount = 22, Palette = "Books", TargetEligible = true },
-	-- Laundry corner
-	{ Id = "Laundry_01", RegionId = "LaundryCorner", Center = Vector3.new(-36, 0, 29), Size = Vector3.new(10, 7, 8), Weight = 3.4, ChunkCount = 24, Palette = "Clothes", TargetEligible = true },
-	{ Id = "Laundry_02", RegionId = "LaundryCorner", Center = Vector3.new(-26, 0, 30), Size = Vector3.new(8, 5, 6), Weight = 2.4, ChunkCount = 18, Palette = "Clothes", TargetEligible = true },
-	{ Id = "Laundry_03", RegionId = "LaundryCorner", Center = Vector3.new(-30, 0, 20), Size = Vector3.new(8, 5, 8), Weight = 2.6, ChunkCount = 18, Palette = "Mixed", TargetEligible = true },
-	-- Toy corner
-	{ Id = "Toy_01", RegionId = "ToyCorner", Center = Vector3.new(34, 0, 28), Size = Vector3.new(10, 6, 8), Weight = 3.2, ChunkCount = 24, Palette = "Toys", TargetEligible = true },
-	{ Id = "Toy_02", RegionId = "ToyCorner", Center = Vector3.new(24, 0, 28), Size = Vector3.new(8, 5, 6), Weight = 2.4, ChunkCount = 18, Palette = "Toys", TargetEligible = true },
-	{ Id = "Toy_03", RegionId = "ToyCorner", Center = Vector3.new(36, 0, 16), Size = Vector3.new(8, 5, 8), Weight = 2.8, ChunkCount = 20, Palette = "Boxes", TargetEligible = true },
-	-- Dresser
-	{ Id = "Dresser_01", RegionId = "Dresser", Center = Vector3.new(-2, 6.2, -32), Size = Vector3.new(12, 3.5, 4.5), Weight = 2.0, ChunkCount = 16, Palette = "Mixed", TargetEligible = true },
-	{ Id = "Dresser_02", RegionId = "Dresser", Center = Vector3.new(-12, 0, -26), Size = Vector3.new(8, 5, 8), Weight = 2.8, ChunkCount = 20, Palette = "Clothes", TargetEligible = true },
-	{ Id = "Dresser_03", RegionId = "Dresser", Center = Vector3.new(6, 0, -25), Size = Vector3.new(8, 5, 8), Weight = 2.8, ChunkCount = 20, Palette = "Paper", TargetEligible = true },
-	-- Window
-	{ Id = "Window_01", RegionId = "WindowArea", Center = Vector3.new(14, 0, -24), Size = Vector3.new(9, 6, 8), Weight = 3.0, ChunkCount = 22, Palette = "Mixed", TargetEligible = true },
-	-- Center floor
-	{ Id = "Center_01", RegionId = "CenterFloor", Center = Vector3.new(0, 0, 0), Size = Vector3.new(10, 7, 10), Weight = 4.0, ChunkCount = 28, Palette = "Mixed", TargetEligible = true },
-	{ Id = "Center_02", RegionId = "CenterFloor", Center = Vector3.new(6, 0, -9), Size = Vector3.new(8, 5, 8), Weight = 2.8, ChunkCount = 20, Palette = "Toys", TargetEligible = true },
-	{ Id = "Center_03", RegionId = "CenterFloor", Center = Vector3.new(-5, 0, 10), Size = Vector3.new(8, 5, 8), Weight = 2.8, ChunkCount = 20, Palette = "Paper", TargetEligible = true },
-	-- Left floor
-	{ Id = "Left_01", RegionId = "LeftFloor", Center = Vector3.new(-20, 0, 2), Size = Vector3.new(9, 6, 9), Weight = 3.2, ChunkCount = 22, Palette = "Boxes", TargetEligible = true },
-	{ Id = "Left_02", RegionId = "LeftFloor", Center = Vector3.new(-19, 0, 13), Size = Vector3.new(8, 5, 8), Weight = 2.6, ChunkCount = 18, Palette = "Clothes", TargetEligible = true },
-	-- Right floor
-	{ Id = "Right_01", RegionId = "RightFloor", Center = Vector3.new(20, 0, 4), Size = Vector3.new(9, 6, 9), Weight = 3.2, ChunkCount = 22, Palette = "Electronics", TargetEligible = true },
-	{ Id = "Right_02", RegionId = "RightFloor", Center = Vector3.new(19, 0, 15), Size = Vector3.new(8, 5, 8), Weight = 2.6, ChunkCount = 18, Palette = "Shoes", TargetEligible = true },
+local function heap(id, region, mix, center, size, count, maxHeight)
+	return { Id = id, RegionId = region, Layout = "Heap", Mix = Mix[mix], Center = center, Size = size, Count = count, MaxHeight = maxHeight }
+end
+
+local function row(id, region, mix, from, to, baseY, depthX)
+	return { Id = id, RegionId = region, Layout = "Row", Mix = Mix[mix], From = from, To = to, BaseY = baseY, DepthX = depthX }
+end
+
+-- Tiles a floor rectangle with layered flat junk. Density = candidate objects per square stud.
+local function carpet(id, mix, center, size, density, maxHeight, exclusions, scaleMax)
+	return { Id = id, Layout = "Carpet", Mix = Mix[mix], Center = center, Size = size, Tile = 8, Density = density, MaxHeight = maxHeight, ScaleMin = 1.0, ScaleMax = scaleMax or 1.5, Exclusions = exclusions }
+end
+
+-- Center = base centre (y is the surface the pile rests on). Size = XZ footprint.
+Room.Piles = {
+	heap("Bed_Top", "BedPile", "Bed", Vector3.new(-30, 4.2, -16), Vector2.new(12, 18), 95, 5.5),
+	heap("Bed_Side", "BedPile", "Laundry", Vector3.new(-20.5, 0, -14), Vector2.new(5, 14), 40, 4.5),
+	heap("UnderBed_A", "UnderBed", "UnderBed", Vector3.new(-30, 0, -22), Vector2.new(11, 9), 38, 1.5),
+	heap("UnderBed_B", "UnderBed", "UnderBed", Vector3.new(-30, 0, -12), Vector2.new(11, 8), 34, 1.5),
+	heap("Desk_Top", "Desk", "Desk", Vector3.new(27.5, 3.4, -28.6), Vector2.new(9, 3.4), 45, 2.8),
+	heap("Desk_Floor_L", "Desk", "DeskFloor", Vector3.new(21, 0, -22), Vector2.new(8, 8), 40, 4.5),
+	heap("Desk_Floor_R", "Desk", "DeskFloor", Vector3.new(38, 0, -21), Vector2.new(8, 7), 36, 4.5),
+	heap("Closet_Floor", "Closet", "Closet", Vector3.new(-41, 0, 10), Vector2.new(5, 19), 95, 7.5),
+	heap("Closet_Front", "Closet", "Closet", Vector3.new(-35, 0, 4), Vector2.new(6, 8), 40, 4.5),
+	heap("Bookshelf_Floor_A", "Bookshelf", "Books", Vector3.new(38, 0, -11), Vector2.new(6, 7), 40, 4),
+	heap("Bookshelf_Floor_B", "Bookshelf", "Books", Vector3.new(38, 0, -1), Vector2.new(6, 7), 38, 4),
+	heap("Laundry_Main", "LaundryCorner", "Laundry", Vector3.new(-36, 0, 29), Vector2.new(10, 8), 70, 6),
+	heap("Laundry_B", "LaundryCorner", "Laundry", Vector3.new(-26, 0, 30), Vector2.new(8, 6), 38, 4.5),
+	heap("Laundry_C", "LaundryCorner", "Floor", Vector3.new(-30, 0, 21), Vector2.new(8, 7), 36, 4.5),
+	heap("Toy_Main", "ToyCorner", "Toys", Vector3.new(34, 0, 28), Vector2.new(11, 8), 80, 5.5),
+	heap("Toy_B", "ToyCorner", "Toys", Vector3.new(25, 0, 29), Vector2.new(8, 6), 38, 4),
+	heap("Toy_C", "ToyCorner", "Floor", Vector3.new(37, 0, 17), Vector2.new(8, 7), 36, 4.5),
+	heap("Dresser_Top", "Dresser", "DresserTop", Vector3.new(-2, 6, -32), Vector2.new(12, 4), 35, 3),
+	heap("Dresser_Floor_L", "Dresser", "Floor", Vector3.new(-13, 0, -26), Vector2.new(8, 8), 40, 4.5),
+	heap("Dresser_Floor_R", "Dresser", "Laundry", Vector3.new(6, 0, -25), Vector2.new(7, 7), 34, 4),
+	heap("Window_Pile", "WindowArea", "Floor", Vector3.new(15, 0, -25), Vector2.new(9, 8), 45, 5),
+	heap("Center_Main", "CenterFloor", "Floor", Vector3.new(0, 0, -3), Vector2.new(10, 10), 70, 5.5),
+	heap("Center_B", "CenterFloor", "Toys", Vector3.new(8, 0, -12), Vector2.new(7, 7), 34, 4),
+	heap("Center_C", "CenterFloor", "Books", Vector3.new(-7, 0, 8), Vector2.new(7, 7), 34, 4),
+	heap("Left_A", "LeftFloor", "Floor", Vector3.new(-19, 0, 2), Vector2.new(8, 8), 42, 5),
+	heap("Left_B", "LeftFloor", "Laundry", Vector3.new(-18, 0, 14), Vector2.new(7, 7), 34, 4),
+	heap("Right_A", "RightFloor", "Floor", Vector3.new(19, 0, 3), Vector2.new(8, 8), 42, 5),
+	heap("Right_B", "RightFloor", "DeskFloor", Vector3.new(19, 0, 14), Vector2.new(7, 7), 34, 4),
+	heap("Scatter_Mid", "CenterFloor", "Scatter", Vector3.new(0, 0, 2), Vector2.new(36, 30), 90, 1.2),
+	heap("Scatter_Back", "Dresser", "Scatter", Vector3.new(0, 0, -20), Vector2.new(30, 8), 40, 1.2),
+	heap("Scatter_Left", "LeftFloor", "Scatter", Vector3.new(-22, 0, -4), Vector2.new(10, 12), 45, 1.2),
+	heap("Scatter_Right", "RightFloor", "Scatter", Vector3.new(24, 0, -6), Vector2.new(10, 12), 45, 1.2),
+	-- Extra mounds in what used to be open floor.
+	heap("Mound_MidLeft", "LeftFloor", "Floor", Vector3.new(-12, 0, -10), Vector2.new(8, 8), 45, 4.5),
+	heap("Mound_MidRight", "RightFloor", "Toys", Vector3.new(11, 0, 7), Vector2.new(7, 7), 40, 4),
+	heap("Mound_Closetside", "LeftFloor", "Laundry", Vector3.new(-27, 0, -2), Vector2.new(7, 7), 40, 4),
+	heap("Mound_Shelfside", "RightFloor", "Books", Vector3.new(29, 0, -12), Vector2.new(7, 7), 40, 4),
+	-- The whole floor, buried: layered flat junk everywhere the heaps and furniture aren't.
+	-- A small doormat by the entrance stays clear so the spawn reads as a doorway.
+	carpet("Carpet", "Carpet", Vector3.new(0, 0, 0), Vector2.new(88, 68), 0.32, 1.8, {
+		{ Center = Vector2.new(0, 31.5), Size = Vector2.new(6, 5) },
+	}, 1.8),
+	-- Bookshelf rows (shelf tops) and clothes hanging on the closet rail.
+	row("Shelf_1", "Bookshelf", "ShelfBooks", Vector3.new(43, 0, -13.6), Vector3.new(43, 0, 1.6), 3.7, 43),
+	row("Shelf_2", "Bookshelf", "ShelfBooks", Vector3.new(43, 0, -13.6), Vector3.new(43, 0, 1.6), 6.7, 43),
+	row("Shelf_3", "Bookshelf", "ShelfBooks", Vector3.new(43, 0, -13.6), Vector3.new(43, 0, 1.6), 9.7, 43),
+	row("Shelf_4", "Bookshelf", "ShelfBooks", Vector3.new(43, 0, -13.6), Vector3.new(43, 0, 1.6), 12.7, 43),
+	row("Closet_Rail", "Closet", "Hanging", Vector3.new(-42.2, 0, 0.5), Vector3.new(-42.2, 0, 19.5), 8.9, -42.2),
 }
 
---[[
-	TargetSockets. Offset is relative to the owning cluster's Center (bottom-center of the
-	pile). Every socket sits inside its cluster's footprint so it is exposed as that pile
-	shrinks. Difficulty is informational for now (future rooms may weight selection).
-]]
+-- Golden Key hiding places. Offset is XZ from the pile's Center, on the pile's surface.
+local function socket(id, pile, x, z, difficulty)
+	return { Id = id, PileId = pile, Offset = Vector2.new(x, z), Difficulty = difficulty or 2 }
+end
+
 Room.Sockets = {
-	{ Id = "S_Bed_01a", ClusterId = "Bed_01", Offset = Vector3.new(-2, 0.6, 1), Difficulty = 2 },
-	{ Id = "S_Bed_01b", ClusterId = "Bed_01", Offset = Vector3.new(3, 0.6, -3), Difficulty = 2 },
-	{ Id = "S_Bed_02a", ClusterId = "Bed_02", Offset = Vector3.new(0, 0.6, 1), Difficulty = 2 },
-	{ Id = "S_Bed_03a", ClusterId = "Bed_03", Offset = Vector3.new(0.5, 0.6, -2), Difficulty = 2 },
-	{ Id = "S_UnderBed_01a", ClusterId = "UnderBed_01", Offset = Vector3.new(-3, 0.5, 0), Difficulty = 3 },
-	{ Id = "S_UnderBed_01b", ClusterId = "UnderBed_01", Offset = Vector3.new(3, 0.5, 0.5), Difficulty = 3 },
-	{ Id = "S_UnderBed_02a", ClusterId = "UnderBed_02", Offset = Vector3.new(0, 0.5, 0), Difficulty = 3 },
-	{ Id = "S_Desk_01a", ClusterId = "Desk_01", Offset = Vector3.new(0, 0.5, 0.5), Difficulty = 2 },
-	{ Id = "S_Desk_02a", ClusterId = "Desk_02", Offset = Vector3.new(-1.5, 0.6, 1), Difficulty = 2 },
-	{ Id = "S_Desk_02b", ClusterId = "Desk_02", Offset = Vector3.new(2, 0.6, -2), Difficulty = 2 },
-	{ Id = "S_Desk_03a", ClusterId = "Desk_03", Offset = Vector3.new(0, 0.6, 0), Difficulty = 2 },
-	{ Id = "S_Closet_01a", ClusterId = "Closet_01", Offset = Vector3.new(1, 0.6, -1), Difficulty = 2 },
-	{ Id = "S_Closet_02a", ClusterId = "Closet_02", Offset = Vector3.new(-1, 0.6, 1), Difficulty = 2 },
-	{ Id = "S_Closet_02b", ClusterId = "Closet_02", Offset = Vector3.new(2, 0.6, 2), Difficulty = 2 },
-	{ Id = "S_Closet_03a", ClusterId = "Closet_03", Offset = Vector3.new(0, 0.6, 0), Difficulty = 2 },
-	{ Id = "S_Bookshelf_01a", ClusterId = "Bookshelf_01", Offset = Vector3.new(0, 0.6, -1), Difficulty = 2 },
-	{ Id = "S_Bookshelf_02a", ClusterId = "Bookshelf_02", Offset = Vector3.new(-1, 0.6, 1), Difficulty = 2 },
-	{ Id = "S_Laundry_01a", ClusterId = "Laundry_01", Offset = Vector3.new(-2, 0.6, 0), Difficulty = 2 },
-	{ Id = "S_Laundry_01b", ClusterId = "Laundry_01", Offset = Vector3.new(2.5, 0.6, -1), Difficulty = 2 },
-	{ Id = "S_Laundry_02a", ClusterId = "Laundry_02", Offset = Vector3.new(0, 0.6, 0), Difficulty = 2 },
-	{ Id = "S_Laundry_03a", ClusterId = "Laundry_03", Offset = Vector3.new(1, 0.6, 1), Difficulty = 2 },
-	{ Id = "S_Toy_01a", ClusterId = "Toy_01", Offset = Vector3.new(-2, 0.6, 1), Difficulty = 2 },
-	{ Id = "S_Toy_01b", ClusterId = "Toy_01", Offset = Vector3.new(2, 0.6, -1), Difficulty = 2 },
-	{ Id = "S_Toy_02a", ClusterId = "Toy_02", Offset = Vector3.new(0, 0.6, 0), Difficulty = 2 },
-	{ Id = "S_Toy_03a", ClusterId = "Toy_03", Offset = Vector3.new(0, 0.6, 0), Difficulty = 2 },
-	{ Id = "S_Dresser_01a", ClusterId = "Dresser_01", Offset = Vector3.new(-3, 0.5, 0), Difficulty = 2 },
-	{ Id = "S_Dresser_02a", ClusterId = "Dresser_02", Offset = Vector3.new(0, 0.6, 0), Difficulty = 2 },
-	{ Id = "S_Dresser_03a", ClusterId = "Dresser_03", Offset = Vector3.new(1, 0.6, -1), Difficulty = 2 },
-	{ Id = "S_Window_01a", ClusterId = "Window_01", Offset = Vector3.new(0, 0.6, 0), Difficulty = 2 },
-	{ Id = "S_Window_01b", ClusterId = "Window_01", Offset = Vector3.new(-2.5, 0.6, 2), Difficulty = 2 },
-	{ Id = "S_Center_01a", ClusterId = "Center_01", Offset = Vector3.new(-2, 0.6, -2), Difficulty = 1 },
-	{ Id = "S_Center_01b", ClusterId = "Center_01", Offset = Vector3.new(2.5, 0.6, 2), Difficulty = 1 },
-	{ Id = "S_Center_02a", ClusterId = "Center_02", Offset = Vector3.new(0, 0.6, 0), Difficulty = 1 },
-	{ Id = "S_Center_03a", ClusterId = "Center_03", Offset = Vector3.new(0, 0.6, 0), Difficulty = 1 },
-	{ Id = "S_Left_01a", ClusterId = "Left_01", Offset = Vector3.new(0, 0.6, -2), Difficulty = 2 },
-	{ Id = "S_Left_02a", ClusterId = "Left_02", Offset = Vector3.new(1, 0.6, 1), Difficulty = 2 },
-	{ Id = "S_Right_01a", ClusterId = "Right_01", Offset = Vector3.new(-2, 0.6, 1), Difficulty = 2 },
-	{ Id = "S_Right_02a", ClusterId = "Right_02", Offset = Vector3.new(0, 0.6, 0), Difficulty = 2 },
+	socket("S_Bed_01", "Bed_Top", -3, -5), socket("S_Bed_02", "Bed_Top", 2.5, 3), socket("S_Bed_03", "Bed_Top", 0, -1),
+	socket("S_BedSide_01", "Bed_Side", 0, -3),
+	socket("S_UnderBed_01", "UnderBed_A", -3, 0, 3), socket("S_UnderBed_02", "UnderBed_A", 3, 1, 3), socket("S_UnderBed_03", "UnderBed_B", 0, 0, 3),
+	socket("S_Desk_01", "Desk_Top", -1.5, 0), socket("S_Desk_02", "Desk_Floor_L", 0, 1), socket("S_Desk_03", "Desk_Floor_R", 0, 0),
+	socket("S_Closet_01", "Closet_Floor", 0, -5), socket("S_Closet_02", "Closet_Floor", 0, 3), socket("S_Closet_03", "Closet_Front", 0, 0),
+	socket("S_Books_01", "Bookshelf_Floor_A", 0, 0), socket("S_Books_02", "Bookshelf_Floor_B", 0.5, -0.5),
+	socket("S_Laundry_01", "Laundry_Main", -2, 0), socket("S_Laundry_02", "Laundry_Main", 2.5, -1), socket("S_Laundry_03", "Laundry_B", 0, 0), socket("S_Laundry_04", "Laundry_C", 0, 0),
+	socket("S_Toy_01", "Toy_Main", -2.5, 0.5), socket("S_Toy_02", "Toy_Main", 2.5, -1), socket("S_Toy_03", "Toy_B", 0, 0), socket("S_Toy_04", "Toy_C", 0, 0),
+	socket("S_Dresser_01", "Dresser_Top", -3, 0), socket("S_Dresser_02", "Dresser_Floor_L", 0, 0), socket("S_Dresser_03", "Dresser_Floor_R", 0, 0),
+	socket("S_Window_01", "Window_Pile", 0, 0), socket("S_Window_02", "Window_Pile", -2.5, 2),
+	socket("S_Center_01", "Center_Main", -2, -2, 1), socket("S_Center_02", "Center_Main", 2.5, 2, 1), socket("S_Center_03", "Center_B", 0, 0, 1), socket("S_Center_04", "Center_C", 0, 0, 1),
+	socket("S_Left_01", "Left_A", 0, -1), socket("S_Left_02", "Left_B", 0, 0),
+	socket("S_Right_01", "Right_A", 0, 1), socket("S_Right_02", "Right_B", 0, 0),
+}
+
+-- Open floor where resume/dev tools pile pre-displaced objects (never contains sockets).
+Room.DumpZones = {
+	{ Center = Vector3.new(-13, 0, 31), Size = Vector2.new(9, 5) },
+	{ Center = Vector3.new(13, 0, 31), Size = Vector2.new(8, 5) },
+	{ Center = Vector3.new(-11, 0, 21), Size = Vector2.new(6, 5) },
+	{ Center = Vector3.new(11, 0, 21), Size = Vector2.new(6, 5) },
 }
 
 return Room

@@ -26,23 +26,32 @@ return {
 	-- choice the queue auto-selects their highest unlocked room so groups never stall.
 	QueueSelectionTimeout = 25,
 
-	-- Searching
-	SearchDistance = 8,
-	SearchLineOfSight = true,
-	BaseMessPerTick = 3, -- mess removed per tick at Search Power 1.0
-	SearchLeniencyDistance = 3, -- extra tolerance on top of reach for validation
-	SearchRemoteRateLimit = 8, -- max SearchStart/Stop calls per second
+	-- Physical grab / throw
+	GrabDistance = 9, -- studs from the character to the closest point of the object
+	GrabLeniency = 2.5, -- extra server tolerance for latency
+	GrabRateLimit = 6, -- grab + throw requests per second
+	HoldDistance = 3, -- studs in front of the character (plus object radius)
+	HoldMaxDistance = 12, -- server snaps a held object back if a client drags it farther
+	HoldBaseResponsiveness = 40, -- AlignPosition responsiveness at GrabSpeed 1.0 / weight 1
+	HoldWeightFalloff = 0.18, -- responsiveness /= 1 + weight * falloff
+	ThrowUpwardBias = 0.25, -- extra lift so throws arc
+	ThrowGravityScale = 0.45, -- gravity felt by a thrown object until its first impact (floaty arcs)
+	ThrowWeightFalloff = 0.08, -- speed *= clamp(1.3 - weight * falloff, 0.55, 1.2)
+	SettleSpeed = 1.2, -- studs/second below which a thrown object counts as still
+	SettleTime = 1.2, -- seconds it must stay still before it anchors in place
+	MaxFlightTime = 8, -- force-anchor after this long no matter what
+	MoveDisplacementThreshold = 4, -- studs from OriginalCFrame that count as "moved" (Cash + progress)
+	RoomSettleSeconds = 10, -- max time a freshly built room gets to settle under physics
 
 	-- Economy
-	CashPerMess = 1,
 	MaxCashMultiplier = 4,
-	MaxTempSearchPowerMultiplier = 2.5,
-	TrashChuteRadius = 7,
-	SellPollInterval = 0.25,
-	AutoSellDelay = 0.4,
+	MaxTempStrengthMultiplier = 2.5,
+	MaxWeightCap = 10,
 
 	-- Progress / checkpoints
-	Checkpoints = { 0.25, 0.50, 0.75, 0.90 },
+	-- Fractions of unique objects moved. With thousands of objects a run finds the key long
+	-- before most of the room is touched, so checkpoints sit early.
+	Checkpoints = { 0.08, 0.16, 0.24, 0.32 },
 
 	-- Tuned by simulation: 4 players finish ~25% faster than solo, not 4x.
 	PartyMessMultiplier = {

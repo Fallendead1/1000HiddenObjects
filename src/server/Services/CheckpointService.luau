@@ -60,9 +60,9 @@ function CheckpointService.SaveCheckpoint(player: Player, match, percent: number
 		cp.RoomId = match.RoomId
 		cp.Percent = percent
 		cp.RoomCash = player:GetAttribute("RoomCash") or 0
-		cp.SearchPowerLevel = player:GetAttribute("SearchPowerLevel") or 1
-		cp.SearchSpeedLevel = player:GetAttribute("SearchSpeedLevel") or 1
-		cp.BagLevel = player:GetAttribute("BagLevel") or 1
+		cp.StrengthLevel = player:GetAttribute("StrengthLevel") or 1
+		cp.ThrowPowerLevel = player:GetAttribute("ThrowPowerLevel") or 1
+		cp.GrabSpeedLevel = player:GetAttribute("GrabSpeedLevel") or 1
 		cp.MoveSpeedLevel = player:GetAttribute("MoveSpeedLevel") or 1
 		cp.UpdatedAt = os.time()
 	end)
@@ -90,9 +90,9 @@ function CheckpointService.ClearForRoom(player: Player, roomId: number)
 			data.Checkpoint.RoomId = 0
 			data.Checkpoint.Percent = 0
 			data.Checkpoint.RoomCash = 0
-			data.Checkpoint.SearchPowerLevel = 1
-			data.Checkpoint.SearchSpeedLevel = 1
-			data.Checkpoint.BagLevel = 1
+			data.Checkpoint.StrengthLevel = 1
+			data.Checkpoint.ThrowPowerLevel = 1
+			data.Checkpoint.GrabSpeedLevel = 1
 			data.Checkpoint.MoveSpeedLevel = 1
 		end
 	end)

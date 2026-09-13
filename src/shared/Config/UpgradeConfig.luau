@@ -1,6 +1,11 @@
 --[[
 	Room upgrade definitions. Levels are 1-indexed; level 1 is the free starting value.
 	Order defines the order cards appear in the Upgrades menu.
+
+	Strength   -> maximum object Weight the player can grab.
+	ThrowPower -> launch speed (studs/second) of a thrown object before weight falloff.
+	GrabSpeed  -> held-object responsiveness multiplier (heavy items feel sluggish without it).
+	MoveSpeed  -> WalkSpeed.
 ]]
 
 export type UpgradeLevel = { Value: number, Cost: number }
@@ -16,69 +21,64 @@ export type UpgradeDef = {
 
 local Upgrades: { UpgradeDef } = {
 	{
-		Key = "SearchPower",
-		Name = "SEARCH POWER",
-		Description = "Clear more mess every search.",
-		Icon = "PW",
-		Attribute = "SearchPowerLevel",
-		Format = function(v) return string.format("%.2fx", v) end,
+		Key = "Strength",
+		Name = "STRENGTH",
+		Description = "Lift heavier objects.",
+		Icon = "ST",
+		Attribute = "StrengthLevel",
+		Format = function(v) return "Weight " .. tostring(math.floor(v)) end,
 		Levels = {
-			{ Value = 1.00, Cost = 0 },
-			{ Value = 1.20, Cost = 150 },
-			{ Value = 1.45, Cost = 600 },
-			{ Value = 1.75, Cost = 1800 },
-			{ Value = 2.15, Cost = 5000 },
-			{ Value = 2.70, Cost = 11000 },
-			{ Value = 3.40, Cost = 26000 },
-			{ Value = 4.25, Cost = 55000 },
+			{ Value = 2, Cost = 0 },
+			{ Value = 3, Cost = 60 },
+			{ Value = 4, Cost = 200 },
+			{ Value = 5, Cost = 450 },
+			{ Value = 6, Cost = 900 },
+			{ Value = 8, Cost = 1500 },
 		},
 	},
 	{
-		Key = "SearchSpeed",
-		Name = "SEARCH SPEED",
-		Description = "Search ticks happen faster.",
-		Icon = "SP",
-		Attribute = "SearchSpeedLevel",
-		Format = function(v) return string.format("%.2fs", v) end,
-		Levels = {
-			{ Value = 0.50, Cost = 0 },
-			{ Value = 0.46, Cost = 250 },
-			{ Value = 0.42, Cost = 900 },
-			{ Value = 0.38, Cost = 2800 },
-			{ Value = 0.34, Cost = 7000 },
-			{ Value = 0.30, Cost = 18000 },
-		},
-	},
-	{
-		Key = "BagSize",
-		Name = "BAG SIZE",
-		Description = "Carry more mess before selling.",
-		Icon = "BG",
-		Attribute = "BagLevel",
+		Key = "ThrowPower",
+		Name = "THROW POWER",
+		Description = "Throw objects farther.",
+		Icon = "TH",
+		Attribute = "ThrowPowerLevel",
 		Format = function(v) return tostring(math.floor(v)) end,
 		Levels = {
-			{ Value = 40, Cost = 0 },
-			{ Value = 80, Cost = 120 },
-			{ Value = 150, Cost = 500 },
-			{ Value = 275, Cost = 1700 },
-			{ Value = 500, Cost = 5500 },
-			{ Value = 900, Cost = 14000 },
-			{ Value = 1600, Cost = 38000 },
+			{ Value = 50, Cost = 0 },
+			{ Value = 60, Cost = 50 },
+			{ Value = 70, Cost = 150 },
+			{ Value = 82, Cost = 350 },
+			{ Value = 95, Cost = 700 },
+		},
+	},
+	{
+		Key = "GrabSpeed",
+		Name = "GRAB SPEED",
+		Description = "Handle heavy objects faster.",
+		Icon = "GR",
+		Attribute = "GrabSpeedLevel",
+		Format = function(v) return string.format("%.2fx", v) end,
+		Levels = {
+			{ Value = 1.0, Cost = 0 },
+			{ Value = 1.25, Cost = 40 },
+			{ Value = 1.5, Cost = 120 },
+			{ Value = 1.8, Cost = 300 },
+			{ Value = 2.2, Cost = 600 },
 		},
 	},
 	{
 		Key = "MoveSpeed",
 		Name = "MOVE SPEED",
-		Description = "Run between piles faster.",
+		Description = "Run around the room faster.",
 		Icon = "MV",
 		Attribute = "MoveSpeedLevel",
 		Format = function(v) return tostring(math.floor(v)) end,
 		Levels = {
 			{ Value = 16, Cost = 0 },
-			{ Value = 18, Cost = 300 },
-			{ Value = 20, Cost = 1200 },
-			{ Value = 22, Cost = 4000 },
-			{ Value = 24, Cost = 12000 },
+			{ Value = 18, Cost = 60 },
+			{ Value = 20, Cost = 180 },
+			{ Value = 22, Cost = 400 },
+			{ Value = 24, Cost = 800 },
 		},
 	},
 }
@@ -107,6 +107,16 @@ function UpgradeConfig.GetNextCost(key: string, level: number): number?
 	local def = ByKey[key]
 	local nextLevel = def.Levels[level + 1]
 	return nextLevel and nextLevel.Cost or nil
+end
+
+-- Lowest Strength level whose max weight covers `weight` (nil if no level can).
+function UpgradeConfig.StrengthLevelFor(weight: number): number?
+	for i, lvl in ipairs(ByKey.Strength.Levels) do
+		if lvl.Value >= weight then
+			return i
+		end
+	end
+	return nil
 end
 
 return UpgradeConfig

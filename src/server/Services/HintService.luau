@@ -1,6 +1,7 @@
 --[[
-	Free clue milestones (25/50/75/90/97%), paid hints and hot/cold assistance.
-	The exact socket is never sent to clients; region-level information only until 97%.
+	Free clue milestones (unique objects moved %), paid hints and hot/cold assistance.
+	Clues only ever point at areas; the key is revealed solely by moving its physical blockers.
+	Stages: 1 side, 2 area, 3 region highlight, 4 hot/cold, 5 outline the objects covering it.
 ]]
 
 local Players = game:GetService("Players")
@@ -27,47 +28,69 @@ local function fire(players: { Player }, eventName: string, payload)
 	end
 end
 
+local function stateConfig(): Configuration
+	return Services.MatchService.GetStateConfig()
+end
+
 local function getTargetSide(match): string
-	local localPos = match.Runtime.Origin:PointToObjectSpace(match.TargetCluster.Center)
+	local localPos = match.Runtime.Origin:PointToObjectSpace(match.TargetSocket.Position)
 	return localPos.X < 0 and "LEFT" or "RIGHT"
 end
 
+local function getRegionName(match): string
+	local region = match.Runtime.Regions[match.TargetSocket.RegionId]
+	return region and region.Name or match.TargetSocket.RegionId
+end
+
 local function getTargetAreaLabel(match): string
-	local regionId = match.TargetCluster.RegionId
 	for _, area in ipairs(match.Config.HintAreas or {}) do
-		if table.find(area.Regions, regionId) then
+		if table.find(area.Regions, match.TargetSocket.RegionId) then
 			return area.Label
 		end
 	end
-	local region = match.Runtime.Regions[regionId]
-	return region and region.Name or regionId
+	return getRegionName(match)
 end
 
-local function getRegionName(match): string
-	local region = match.Runtime.Regions[match.TargetCluster.RegionId]
-	return region and region.Name or match.TargetCluster.RegionId
+-- Stage 5: outline whatever is physically covering the key right now.
+function HintService.RefreshOutline(match)
+	if not match or match.HintStage < 5 or match.TargetRevealed then
+		stateConfig():SetAttribute("OutlinedObjects", "")
+		return
+	end
+	local ids = {}
+	for _, root in ipairs(Services.MatchService.GetCoveringObjects()) do
+		table.insert(ids, root:GetAttribute("ObjectId"))
+	end
+	stateConfig():SetAttribute("OutlinedObjects", table.concat(ids, ","))
 end
 
--- Deliver the clue for a given stage index (1-based into HintMilestones).
 local function deliverStage(match, stage: number, players: { Player }, silent: boolean?)
-	local milestones = match.Config.HintMilestones
-	local percent = math.floor((milestones[stage] or 0) * 100)
+	local percent = math.floor((match.Config.HintMilestones[stage] or 0) * 100)
+	local target = match.Config.TargetName
 	if stage == 1 then
-		fire(players, "Clue", { Stage = stage, Percent = percent, Text = string.format("The %s is on the %s side of the room.", match.Config.TargetName, getTargetSide(match)) })
+		fire(players, "Clue", { Stage = stage, Percent = percent, Text = string.format("The %s is on the %s side of the room.", target, getTargetSide(match)) })
 	elseif stage == 2 then
 		fire(players, "Clue", { Stage = stage, Percent = percent, Text = string.format("Search around the %s side.", getTargetAreaLabel(match)) })
 	elseif stage == 3 then
 		fire(players, "Clue", { Stage = stage, Percent = percent, Text = string.format("It's somewhere in the %s area!", getRegionName(match)) })
-		fire(players, "RegionHighlight", { RegionId = match.TargetCluster.RegionId, Duration = MonetizationConfig.Effects.RegionHighlightDuration })
+		fire(players, "RegionHighlight", { RegionId = match.TargetSocket.RegionId, Duration = MonetizationConfig.Effects.RegionHighlightDuration })
 	elseif stage == 4 then
 		hotColdEnabled = true
 		fire(players, "Clue", { Stage = stage, Percent = percent, Text = "Hot / Cold tracking enabled. Get close to feel the warmth!" })
 	elseif stage == 5 then
-		Services.MatchService.GetStateConfig():SetAttribute("OutlinedClusterId", match.TargetCluster.Id)
-		fire(players, "Clue", { Stage = stage, Percent = percent, Text = "Almost there! The correct pile is outlined." })
+		HintService.RefreshOutline(match)
+		fire(players, "Clue", { Stage = stage, Percent = percent, Text = "Almost there! The objects hiding it are outlined." })
 	end
 	if not silent then
 		Services.AnalyticsService.Log("hint_used", players[1], { Stage = stage, RoomId = match.RoomId, Free = true })
+	end
+end
+
+local function setStage(match, stage: number)
+	match.HintStage = stage
+	stateConfig():SetAttribute("HintStage", stage)
+	if stage >= 4 then
+		hotColdEnabled = true
 	end
 end
 
@@ -81,13 +104,11 @@ function HintService.Init()
 			Services.NotificationService.Send(player, "Warning", "Hints are only available while searching.")
 			return
 		end
-		if kind == "Free" then
-			HintService.UseFreeSuperHint(player, match)
-		elseif kind == "Quick" then
+		if kind == "Quick" then
 			Services.MonetizationService.PromptPurchase(player, "QuickHint")
-		elseif kind == "Super" then
+		elseif kind == "Super" or kind == "Free" then
 			if (player:GetAttribute("VIPFreeHints") or 0) > 0 then
-				HintService.UseFreeSuperHint(player, match)
+				HintService.UseFreeSuperHint(player)
 			else
 				Services.MonetizationService.PromptPurchase(player, "SuperHint")
 			end
@@ -100,22 +121,14 @@ function HintService.Start()
 		while true do
 			task.wait(GameConfig.HotCold.PollInterval)
 			local match = Services.MatchService.GetMatch()
-			if match and match.State == "Searching" and hotColdEnabled and not match.TargetFound then
-				local center = match.TargetCluster.Center
+			if match and match.State == "Searching" and hotColdEnabled and match.TargetSocket then
+				local center = match.TargetSocket.Position
 				for _, player in ipairs(match.Players) do
 					local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
 					local state = ""
 					if root then
 						local d = (root.Position - center).Magnitude
-						if d <= GameConfig.HotCold.VeryHot then
-							state = "VERY HOT"
-						elseif d <= GameConfig.HotCold.Hot then
-							state = "HOT"
-						elseif d <= GameConfig.HotCold.Warm then
-							state = "WARM"
-						else
-							state = "COLD"
-						end
+						state = d <= GameConfig.HotCold.VeryHot and "VERY HOT" or d <= GameConfig.HotCold.Hot and "HOT" or d <= GameConfig.HotCold.Warm and "WARM" or "COLD"
 					end
 					if player:GetAttribute("HotCold") ~= state then
 						player:SetAttribute("HotCold", state)
@@ -130,76 +143,67 @@ function HintService.ResetForMatch(match)
 	hotColdEnabled = false
 	if match then
 		match.HintStage = 0
-		Services.MatchService.GetStateConfig():SetAttribute("HintStage", 0)
+		stateConfig():SetAttribute("HintStage", 0)
 	end
+	stateConfig():SetAttribute("OutlinedObjects", "")
 	for _, player in ipairs(Players:GetPlayers()) do
 		player:SetAttribute("HotCold", "")
 	end
 end
 
--- Silently bring the hint stage up to the current progress (used on checkpoint resume).
-function HintService.ApplyStagesForProgress(match, progress: number, silent: boolean)
-	local milestones = match.Config.HintMilestones
-	for stage, threshold in ipairs(milestones) do
+-- Silently bring the hint stage up to the current progress (checkpoint resume).
+function HintService.ApplyStagesForProgress(match, progress: number)
+	for stage, threshold in ipairs(match.Config.HintMilestones) do
 		if progress >= threshold and match.HintStage < stage then
-			match.HintStage = stage
-			Services.MatchService.GetStateConfig():SetAttribute("HintStage", stage)
-			if stage == 4 then
-				hotColdEnabled = true
-			elseif stage == 5 then
-				Services.MatchService.GetStateConfig():SetAttribute("OutlinedClusterId", match.TargetCluster.Id)
-			end
+			setStage(match, stage)
 		end
 	end
+	HintService.RefreshOutline(match)
 end
 
-function HintService.OnProgress(match, oldProgress: number, newProgress: number)
-	local milestones = match.Config.HintMilestones
-	for stage, threshold in ipairs(milestones) do
-		if newProgress >= threshold and match.HintStage < stage then
-			match.HintStage = stage
-			Services.MatchService.GetStateConfig():SetAttribute("HintStage", stage)
+function HintService.OnProgress(match, progress: number)
+	for stage, threshold in ipairs(match.Config.HintMilestones) do
+		if progress >= threshold and match.HintStage < stage then
+			setStage(match, stage)
 			deliverStage(match, stage, match.Players)
 		end
 	end
 end
 
--- Quick Hint: immediately deliver the next milestone clue to the buyer (advances the team stage).
-function HintService.GrantQuickHint(player: Player)
+-- Quick Hint: deliver the next milestone clue now (advances the team's stage).
+function HintService.GrantQuickHint(player: Player): boolean
 	local match = Services.MatchService.GetMatchForPlayer(player)
 	if not match or match.State ~= "Searching" then
 		return false
 	end
-	local milestones = match.Config.HintMilestones
 	local nextStage = match.HintStage + 1
-	if nextStage > #milestones then
+	if nextStage > #match.Config.HintMilestones then
 		Services.NotificationService.Send(player, "Info", "All clues already revealed!")
 		return false
 	end
-	match.HintStage = nextStage
-	Services.MatchService.GetStateConfig():SetAttribute("HintStage", nextStage)
+	setStage(match, nextStage)
 	deliverStage(match, nextStage, match.Players, true)
 	Services.NotificationService.SendMany(match.Players, "Premium", string.format("%s used a Quick Hint!", player.Name))
 	Services.AnalyticsService.Log("hint_used", player, { Kind = "Quick", RoomId = match.RoomId })
 	return true
 end
 
--- Super Hint: highlight the correct region for the buyer for 15 seconds.
-function HintService.GrantSuperHint(player: Player)
+-- Super Hint: highlight the correct region for the buyer.
+function HintService.GrantSuperHint(player: Player): boolean
 	local match = Services.MatchService.GetMatchForPlayer(player)
 	if not match or match.State ~= "Searching" then
 		return false
 	end
-	fire({ player }, "RegionHighlight", { RegionId = match.TargetCluster.RegionId, Duration = MonetizationConfig.Effects.SuperHintDuration, Super = true })
+	fire({ player }, "RegionHighlight", { RegionId = match.TargetSocket.RegionId, Duration = MonetizationConfig.Effects.SuperHintDuration, Super = true })
 	fire({ player }, "Clue", { Stage = 0, Percent = 0, Text = string.format("SUPER HINT: search the %s area!", getRegionName(match)) })
 	Services.AnalyticsService.Log("hint_used", player, { Kind = "Super", RoomId = match.RoomId })
 	return true
 end
 
-function HintService.UseFreeSuperHint(player: Player, match)
+function HintService.UseFreeSuperHint(player: Player)
 	local free = player:GetAttribute("VIPFreeHints") or 0
 	if free <= 0 then
-		Services.NotificationService.Send(player, "Warning", "No free hints left this match.")
+		Services.NotificationService.Send(player, "Warning", "No free hints left this room.")
 		return
 	end
 	player:SetAttribute("VIPFreeHints", free - 1)

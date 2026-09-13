@@ -17,7 +17,7 @@ local banner: Frame
 local bannerLabel: TextLabel
 local bannerToken = 0
 local activeRegionParts: { BasePart } = {}
-local outlineHighlight: Highlight? = nil
+local outlineBoxes: { SelectionBox } = {}
 local outlineThread: thread? = nil
 
 function HintController.ShowClue(text: string, duration: number?)
@@ -86,37 +86,49 @@ function HintController.HighlightRegion(regionId: string, duration: number, supe
 	end)
 end
 
+-- Final anti-frustration stage: pulse a subtle box around each object still covering the key.
 local function updateOutline()
-	local clusterId = matchState:GetAttribute("OutlinedClusterId") or ""
-	if outlineHighlight then
-		outlineHighlight:Destroy()
-		outlineHighlight = nil
+	for _, box in ipairs(outlineBoxes) do
+		box:Destroy()
 	end
+	outlineBoxes = {}
 	if outlineThread then
 		task.cancel(outlineThread)
 		outlineThread = nil
 	end
-	if clusterId == "" then
+	local ids = matchState:GetAttribute("OutlinedObjects") or ""
+	if ids == "" then
 		return
 	end
-	local model = Controllers.ClutterVisualController.GetClusterModel(clusterId)
-	if not model then
+	local room = workspace:FindFirstChild("Room" .. (matchState:GetAttribute("RoomNumber") or ""))
+	local folder = room and room:FindFirstChild("Clutter")
+	if not folder then
 		task.delay(1, updateOutline)
 		return
 	end
-	local h = Instance.new("Highlight")
-	h.Adornee = model
-	h.FillTransparency = 1
-	h.OutlineColor = Color3.fromRGB(255, 200, 40)
-	h.OutlineTransparency = 0.2
-	h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-	h.Parent = model
-	outlineHighlight = h
+	for id in string.gmatch(ids, "[^,]+") do
+		local root = folder:FindFirstChild(id)
+		if root and root:IsA("BasePart") then
+			local box = Instance.new("SelectionBox")
+			box.Adornee = root
+			box.Color3 = Color3.fromRGB(255, 200, 40)
+			box.LineThickness = 0.04
+			box.SurfaceTransparency = 1
+			box.Transparency = 0.2
+			box.Parent = workspace.CurrentCamera
+			table.insert(outlineBoxes, box)
+		end
+	end
+	local boxes = outlineBoxes
 	outlineThread = task.spawn(function()
-		while h.Parent do
-			UI.Tween(h, { OutlineTransparency = 0.85 }, 0.7)
+		while true do
+			for _, b in ipairs(boxes) do
+				UI.Tween(b, { Transparency = 0.85 }, 0.7)
+			end
 			task.wait(0.7)
-			UI.Tween(h, { OutlineTransparency = 0.1 }, 0.7)
+			for _, b in ipairs(boxes) do
+				UI.Tween(b, { Transparency = 0.15 }, 0.7)
+			end
 			task.wait(0.7)
 		end
 	end)
@@ -139,7 +151,7 @@ function HintController.Init()
 		end
 	end)
 
-	matchState:GetAttributeChangedSignal("OutlinedClusterId"):Connect(updateOutline)
+	matchState:GetAttributeChangedSignal("OutlinedObjects"):Connect(updateOutline)
 	matchState:GetAttributeChangedSignal("State"):Connect(function()
 		if matchState:GetAttribute("State") ~= "Searching" then
 			bannerToken += 1
