@@ -471,6 +471,7 @@ end
 -- ===== Blur behind menus =====
 local blur: BlurEffect? = nil
 local blurUsers = 0
+local blurToken = 0
 function UI.Blur(on: boolean)
 	blurUsers = math.max(0, blurUsers + (on and 1 or -1))
 	if not blur then
@@ -479,8 +480,19 @@ function UI.Blur(on: boolean)
 		blur.Size = 0
 		blur.Parent = Lighting
 	end
+	local effect = blur :: BlurEffect
 	local target = (blurUsers > 0 and not reduceMotion()) and 14 or 0
-	UI.Tween(blur :: BlurEffect, { Size = target }, target > 0 and 0.25 or 0.2)
+	if target > 0 then
+		effect.Enabled = true
+	end
+	-- Switched off once cleared: a zero-size blur still costs a full-screen pass on some phones.
+	blurToken += 1
+	local token = blurToken
+	UI.Tween(effect, { Size = target }, target > 0 and 0.25 or 0.2).Completed:Once(function()
+		if token == blurToken and target == 0 then
+			effect.Enabled = false
+		end
+	end)
 end
 
 -- ===== Buttons =====

@@ -127,7 +127,18 @@ local function spawnSound(key: string, parent: Instance): Sound?
 	return clone
 end
 
+local lastPlayed: { [string]: number } = {} -- by sound file, for MinInterval
+
 function AudioController.Play(key: string)
+	local def = AudioConfig.SFX[key]
+	local template = templates[key]
+	if def and def.MinInterval and template then
+		local now = os.clock()
+		if now - (lastPlayed[template.SoundId] or -math.huge) < def.MinInterval then
+			return
+		end
+		lastPlayed[template.SoundId] = now
+	end
 	local s = spawnSound(key, SoundService)
 	if s then
 		s:Play()

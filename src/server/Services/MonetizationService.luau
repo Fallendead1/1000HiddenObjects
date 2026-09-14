@@ -23,6 +23,7 @@ local MonetizationService = {}
 local passCache: { [Player]: { [string]: boolean } } = {}
 local priceCache: { [string]: { Price: number?, Name: string?, FetchedAt: number } } = {}
 local purchaseLimiter = RateLimiter.new(2, 3)
+local shopOpenLimiter = RateLimiter.new(1, 3) -- shop_open analytics only; the shop data is always returned
 local devGrants: { [Player]: { [string]: boolean } } = {}
 
 local function isMockMode(): boolean
@@ -410,7 +411,9 @@ function MonetizationService.Init()
 	end)
 
 	Remotes.Function("GetShopInfo").OnServerInvoke = function(player)
-		Services.AnalyticsService.Log("shop_open", player)
+		if shopOpenLimiter:Allow(player) then
+			Services.AnalyticsService.Log("shop_open", player)
+		end
 		return MonetizationService.GetShopInfo()
 	end
 

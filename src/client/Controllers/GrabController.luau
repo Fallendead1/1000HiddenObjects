@@ -421,6 +421,22 @@ local function valueText(root: BasePart): string
 	return string.format("$%d in any bin", value)
 end
 
+-- The card grows to fit its longest line, so bin names and "Requires Strength Lv. N" never clip.
+local TextService = game:GetService("TextService")
+local cardFitFor = ""
+local function fitCard()
+	local key = cardName.Text .. "|" .. cardStats.Text .. "|" .. cardAction.Text
+	if key == cardFitFor then
+		return
+	end
+	cardFitFor = key
+	local width = 300
+	for _, label in ipairs({ cardName, cardStats, cardAction }) do
+		width = math.max(width, TextService:GetTextSize(label.Text, label.TextSize, label.Font, Vector2.new(2000, 100)).X + 30)
+	end
+	card.Size = UDim2.fromOffset(math.min(width, 560), 86)
+end
+
 local function updateVisuals()
 	local target = heldRoot or hovered
 	highlight.Adornee = target
@@ -462,6 +478,9 @@ local function updateVisuals()
 		end
 	else
 		card.Visible = os.clock() < tooHeavyUntil
+	end
+	if card.Visible then
+		fitCard()
 	end
 	Controllers.CameraController.SetCrosshair(crosshair)
 end
@@ -697,7 +716,9 @@ function GrabController.Start()
 		Controllers.BinController.SetHeld(heldRoot)
 		hovered = (state == "Idle") and findAimed() or nil
 		updateVisuals()
-		Controllers.HUDController.SetMobileAction(state == "Holding" and "THROW" or (hovered and "GRAB" or nil))
+		-- Touch: the button says HEAVY (red) while aiming at something you can't lift yet.
+		local hoverAction = hovered and ((hovered:GetAttribute("Weight") or 1) > maxWeight() and "HEAVY" or "GRAB") or nil
+		Controllers.HUDController.SetMobileAction(state == "Holding" and "THROW" or hoverAction)
 	end)
 end
 

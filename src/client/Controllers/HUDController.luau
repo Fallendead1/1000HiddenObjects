@@ -449,7 +449,7 @@ function HUDController.SetMobileAction(text: string?)
 	mobileActionButton.Visible = text ~= nil
 	if text and mobileActionButton.Text ~= text then
 		mobileActionButton.Text = text
-		mobileActionButton.BackgroundColor3 = text == "THROW" and UI.Colors.Orange or UI.Colors.Green
+		mobileActionButton.BackgroundColor3 = (text == "THROW" and UI.Colors.Orange) or (text == "HEAVY" and UI.Colors.Red) or UI.Colors.Green
 	end
 end
 

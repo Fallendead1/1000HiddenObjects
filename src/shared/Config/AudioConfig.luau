@@ -4,6 +4,8 @@
 	  <number>               -> rbxassetid://<number> (final uploaded asset; always used)
 	  "rbxasset://sounds/.." -> built-in Roblox engine sound (placeholder until final SFX exist)
 	Pitch may be a number or { min, max } for random variation per play.
+	MinInterval (seconds): the same sound file never plays again sooner than this, whichever key
+	asks (refusal sounds share one file, so a denied upgrade + its warning toast buzz once).
 
 	Studio override (no code change): a Sound named <Key> inside SoundService.GameSounds
 	(e.g. SoundService.GameSounds.Deposit) replaces a PLACEHOLDER's SoundId/Volume at runtime.
@@ -45,12 +47,12 @@ return {
 		ChunkBurst = { Id = "rbxasset://sounds/action_jump_land.mp3", Volume = 0.6, Pitch = { 0.55, 0.7 } },
 		KeyRattle = { Id = "rbxasset://sounds/volume_slider.ogg", Volume = 0.35, Pitch = { 2.6, 3.0 } },
 		BinHover = { Id = "rbxasset://sounds/volume_slider.ogg", Volume = 0.2, Pitch = 1.9 },
-		TooHeavy = { Id = DENIED, Volume = 0.5, Pitch = 1 },
+		TooHeavy = { Id = DENIED, Volume = 0.5, Pitch = 1, MinInterval = 1 }, -- repeated tries on a heavy object buzz once a second at most
 		UpgradePurchase = { Id = PURCHASE, Volume = 0.6, Pitch = 1 },
-		UpgradeDenied = { Id = DENIED, Volume = 0.5, Pitch = 1 },
+		UpgradeDenied = { Id = DENIED, Volume = 0.5, Pitch = 1, MinInterval = 0.35 },
 		-- Fallback: whose Studio sound to use if this final asset can't load.
 		Purchase = { Id = PURCHASE, Volume = 0.6, Pitch = 1, Fallback = "UpgradePurchase" },
-		Denied = { Id = DENIED, Volume = 0.5, Pitch = 1, Fallback = "UpgradeDenied" },
+		Denied = { Id = DENIED, Volume = 0.5, Pitch = 1, Fallback = "UpgradeDenied", MinInterval = 0.35 },
 		LevelUp = { Id = LEVEL_UP, Volume = 0.7, Pitch = 1, Fallback = "VictorySting" },
 		Hint = { Id = "rbxasset://sounds/volume_slider.ogg", Volume = 0.6, Pitch = 2 },
 		HotColdPing = { Id = "rbxasset://sounds/volume_slider.ogg", Volume = 0.4, Pitch = { 1.8, 2.2 } },
