@@ -108,6 +108,31 @@ function UI.Skin(inst: GuiObject, key: string): ImageLabel?
 			inst.BackgroundTransparency = 1
 		end
 	end)
+	-- A TextButton draws its own text UNDER its children, so the skin would hide it: show the
+	-- text on a child label above the skin instead, kept in sync with the button's properties.
+	if inst:IsA("TextButton") or inst:IsA("TextLabel") then
+		local b = inst :: any
+		local label = UI.New("TextLabel", { Name = "SkinText", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 2 }, inst) :: TextLabel
+		local function sync()
+			label.Text = b.Text
+			label.RichText = b.RichText
+			label.Font = b.Font
+			label.TextSize = b.TextSize
+			label.TextScaled = b.TextScaled
+			label.TextColor3 = b.TextColor3
+			label.TextWrapped = b.TextWrapped
+			label.TextXAlignment = b.TextXAlignment
+			label.TextYAlignment = b.TextYAlignment
+			if b.TextTransparency < 1 then
+				label.TextTransparency = b.TextTransparency
+				b.TextTransparency = 1
+			end
+		end
+		sync()
+		for _, prop in ipairs({ "Text", "Font", "TextSize", "TextScaled", "TextColor3", "TextTransparency", "TextWrapped", "TextXAlignment", "TextYAlignment" }) do
+			inst:GetPropertyChangedSignal(prop):Connect(sync)
+		end
+	end
 	return skin
 end
 

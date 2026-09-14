@@ -1,0 +1,15 @@
+DataStoreService: StudioAccessToApisNotAllowed: Studio access to APIs is not allowed. API: GetSortedAsync, Data Store: TopObjectFinders_v1
+DataStoreService: StudioAccessToApisNotAllowed: Studio access to APIs is not allowed. API: GetAsync, Data Store: PlayerData_v1
+[MiniMartBuilder] Plugin loaded. Use the Mini Mart toolbar to build.
+[LeaderboardService] OrderedDataStore unavailable, using memory fallback
+[QueueService] 4 matchmaking queues registered
+[1000 Hidden Objects] Server started. Role=Combined DevelopmentMode=true
+[DataService] Failed to load profile for Yeno_mediaX 502: API Services rejected request with error. Error code: 7 Reason: Studio access to APIs is not allowed.
+[MiniMartBuilder] Plugin loaded. Use the Mini Mart toolbar to build.
+[ClutterBuilder] The Messy Bedroom: 1816 physics bodies (1225 in heaps/rows, 591 floor carpet), 246 junk chunks holding 1608 more objects, 17 treasures, built in 0.88s
+[MatchService] 1816 objects released to physics, settled in 3.9s
+=== ROOM VALIDATION: The Messy Bedroom (001) ===
+Movable objects: 1816 | AssetKeys used: 37 | Sockets: 36 exposable / 36 | Regions: 12 | Total parts: 5762
+Bins: 5 | Junk chunks: 246 holding 1608 objects | Treasures: 17 | Real objects in room: 3178
+RESULT: PASS
+[Analytics] match_start Yeno_mediaX PartySize=1 Resume=0 RoomId=1 Objects=3178
