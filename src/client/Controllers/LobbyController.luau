@@ -49,6 +49,24 @@ local wallFolder: Folder? = nil
 local WALL_SEGMENTS = 28
 local WALL_HEIGHT = 5
 
+-- Floating signs fade in only when the camera is close, so far-away text never turns into
+-- tiny, jagged noise. Each sign draws inside a CanvasGroup that one loop fades.
+local faders: { { Group: CanvasGroup, Position: Vector3, Near: number, Far: number } } = {}
+
+local function fadeWithDistance(bb: BillboardGui, position: Vector3, near: number, far: number): CanvasGroup
+	bb.AlwaysOnTop = false
+	bb.LightInfluence = 0
+	bb.MaxDistance = far + 5
+	local group = Instance.new("CanvasGroup")
+	group.Name = "Fade"
+	group.BackgroundTransparency = 1
+	group.Size = UDim2.fromScale(1, 1)
+	group.GroupTransparency = 1
+	group.Parent = bb
+	table.insert(faders, { Group = group, Position = position, Near = near, Far = far })
+	return group
+end
+
 local StateStyle = {
 	Empty = { Color = UI.Colors.Green, Pulse = 1.2 },
 	Selecting = { Color = UI.Colors.Cyan, Pulse = 2 },
@@ -176,12 +194,11 @@ local function buildPlate(zone: BasePart, groundY: number): () -> ()
 	local bb = Instance.new("BillboardGui")
 	bb.Name = "QueuePlate_" .. (zone:GetAttribute("QueueId") or "")
 	bb.Size = UDim2.fromScale(5.5, 2.4)
-	bb.MaxDistance = 70
-	bb.LightInfluence = 0
 	bb.Adornee = anchor
 	bb.Parent = player:WaitForChild("PlayerGui")
+	local group = fadeWithDistance(bb, anchor.WorldPosition, 14, 24)
 	local function line(y: number, h: number, color: Color3, font: Enum.Font, maxSize: number): TextLabel
-		local label = UI.Label({ Text = "", TextScaled = true, Font = font, TextColor3 = color, Size = UDim2.new(1, 0, h, 0), Position = UDim2.fromScale(0, y) }, bb)
+		local label = UI.Label({ Text = "", TextScaled = true, Font = font, TextColor3 = color, Size = UDim2.new(1, 0, h, 0), Position = UDim2.fromScale(0, y) }, group)
 		UI.New("UITextSizeConstraint", { MaxTextSize = maxSize }, label)
 		UI.Stroke(label, Color3.new(0, 0, 0), 2, 0.2)
 		return label
@@ -235,15 +252,19 @@ local function attachQueueZone(zone: BasePart)
 	local walls, rims, groundY = buildWall(zone)
 	local refreshPlate = buildPlate(zone, groundY)
 
-	-- Floating text over the circle, sized in studs so it shrinks with distance.
-	local bb = UI.Billboard(zone, UDim2.fromScale(12, 4.4), Vector3.new(0, 6.5, 0), 140)
+	-- Floating sign over the circle (world-sized, fades in when you're close): a big clean count
+	-- and a rounded status tag outlined in the circle's colour.
+	local bb = UI.Billboard(zone, UDim2.fromScale(8, 3.4), Vector3.new(0, 6, 0), 60)
 	bb.Name = "QueueSign_" .. (zone:GetAttribute("QueueId") or "")
-	local countLabel = UI.Label({ Text = "0/4", TextScaled = true, Size = UDim2.new(1, 0, 0.58, 0) }, bb)
-	UI.New("UITextSizeConstraint", { MaxTextSize = 90 }, countLabel)
-	UI.Stroke(countLabel, Color3.new(0, 0, 0), 3, 0.15)
-	local countdown = UI.Label({ Text = "", TextScaled = true, Size = UDim2.new(1, 0, 0.34, 0), Position = UDim2.fromScale(0, 0.62) }, bb)
-	UI.New("UITextSizeConstraint", { MaxTextSize = 44 }, countdown)
-	UI.Stroke(countdown, Color3.new(0, 0, 0), 3, 0.15)
+	local group = fadeWithDistance(bb, zone.Position + Vector3.new(0, 6, 0), 36, 52)
+	local countLabel = UI.Label({ Text = "0/4", TextScaled = true, TextColor3 = UI.Colors.Text, Size = UDim2.new(1, 0, 0.56, 0) }, group)
+	UI.New("UITextSizeConstraint", { MaxTextSize = 96 }, countLabel)
+	UI.Stroke(countLabel, Color3.fromRGB(20, 24, 40), 3, 0)
+	local tag = UI.Frame({ Size = UDim2.new(0.94, 0, 0.36, 0), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0.62, 0), BackgroundColor3 = Color3.fromRGB(20, 24, 40), BackgroundTransparency = 0.2 }, group)
+	UI.New("UICorner", { CornerRadius = UDim.new(0.5, 0) }, tag)
+	local tagStroke = UI.Stroke(tag, WallColors.Open, 2, 0)
+	local countdown = UI.Label({ Text = "", TextScaled = true, TextColor3 = UI.Colors.Text, Size = UDim2.new(0.9, 0, 0.7, 0), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5) }, tag)
+	UI.New("UITextSizeConstraint", { MaxTextSize = 34 }, countdown)
 
 	local lastCount, lastCd = zone:GetAttribute("Count") or 0, -1
 	local lastWallColor: Color3? = nil
@@ -252,7 +273,7 @@ local function attachQueueZone(zone: BasePart)
 		countLabel.Text = countText
 		countdown.Text = status
 		local wallColor, blocked = wallState(zone)
-		countdown.TextColor3 = wallColor == WallColors.Open and UI.Colors.Text or wallColor
+		tagStroke.Color = wallColor
 		if wallColor ~= lastWallColor then
 			lastWallColor = wallColor
 			for _, w in ipairs(walls) do
@@ -377,11 +398,20 @@ local function attachCollectionBoard(part: BasePart)
 	refresh()
 end
 
+-- A small world-sized sign pill (fades in when you're close).
+local function signPill(part: BasePart, text: string, color: Color3, size: UDim2, height: number, near: number, far: number)
+	local offset = Vector3.new(0, part.Size.Y / 2 + height, 0)
+	local bb = UI.Billboard(part, size, offset, far)
+	local group = fadeWithDistance(bb, part.Position + offset, near, far)
+	local pill = UI.Frame({ Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.fromRGB(20, 24, 40), BackgroundTransparency = 0.15 }, group)
+	UI.New("UICorner", { CornerRadius = UDim.new(0.5, 0) }, pill)
+	UI.Stroke(pill, color, 2, 0)
+	local label = UI.Label({ Text = text, TextScaled = true, TextColor3 = color, Size = UDim2.new(0.86, 0, 0.66, 0), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5) }, pill)
+	UI.New("UITextSizeConstraint", { MaxTextSize = 48 }, label)
+end
+
 local function attachShopStand(part: BasePart)
-	local bb = UI.Billboard(part, UDim2.fromOffset(220, 80), Vector3.new(0, part.Size.Y / 2 + 4, 0), 90)
-	local panel = UI.Panel({ BackgroundTransparency = 0.1 }, bb)
-	UI.Stroke(panel, UI.Colors.Purple, 3)
-	UI.Label({ Text = "SHOP", TextSize = 44, TextColor3 = UI.Colors.Purple }, panel)
+	signPill(part, "SHOP", UI.Colors.Purple, UDim2.fromScale(4.5, 1.6), 3, 22, 34)
 	local prompt = Instance.new("ProximityPrompt")
 	prompt.ActionText = "Open Shop"
 	prompt.ObjectText = "Shop"
@@ -435,10 +465,7 @@ local function attachLeaderboard(part: BasePart)
 end
 
 local function attachFutureDoor(part: BasePart)
-	local bb = UI.Billboard(part, UDim2.fromOffset(280, 64), Vector3.new(0, part.Size.Y / 2 + 2, 0), 80)
-	local panel = UI.Panel({ BackgroundTransparency = 0.1 }, bb)
-	UI.Stroke(panel, UI.Colors.Gold, 2)
-	UI.Label({ Text = part:GetAttribute("Label") or "MORE ROOMS COMING SOON", TextSize = 22, TextColor3 = UI.Colors.Gold }, panel)
+	signPill(part, part:GetAttribute("Label") or "MORE ROOMS COMING SOON", UI.Colors.Gold, UDim2.fromScale(7, 1.3), 1.5, 16, 26)
 end
 
 local function spinKey(model: Instance)
@@ -503,6 +530,13 @@ function LobbyController.Start()
 	-- One cheap loop pulses every circle's glow at a speed set by its state.
 	RunService.Heartbeat:Connect(function()
 		local t = os.clock()
+		local camera = workspace.CurrentCamera
+		if camera then
+			local eye = camera.CFrame.Position
+			for _, f in ipairs(faders) do
+				f.Group.GroupTransparency = math.clamp(((eye - f.Position).Magnitude - f.Near) / (f.Far - f.Near), 0, 1)
+			end
+		end
 		for _, v in ipairs(visuals) do
 			local wave = (math.sin(t * v.PulseSpeed * math.pi) + 1) / 2
 			if v.Disc then

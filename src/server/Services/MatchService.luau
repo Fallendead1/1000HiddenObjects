@@ -300,6 +300,35 @@ function MatchService.Init(role: string)
 	end)
 end
 
+-- Invisible walls around the lobby's footprint, rising well above its tallest point, so nobody
+-- walks or jumps off the edge. Fully transparent, so the camera never zooms in because of them.
+local function buildLobbyBounds(lobby: Model)
+	local box, size = lobby:GetBoundingBox()
+	local thickness = 2
+	local height = size.Y + 40
+	local centerY = box.Position.Y - size.Y / 2 + height / 2
+	local folder = Instance.new("Folder")
+	folder.Name = "LobbyBounds"
+	local function wall(x: number, z: number, sizeX: number, sizeZ: number)
+		local part = Instance.new("Part")
+		part.Name = "LobbyWall"
+		part.Anchored = true
+		part.CanCollide = true
+		part.CanTouch = false
+		part.CastShadow = false
+		part.Transparency = 1
+		part.Size = Vector3.new(sizeX, height, sizeZ)
+		part.CFrame = CFrame.new(x, centerY, z)
+		part.Parent = folder
+	end
+	local cx, cz, hx, hz = box.Position.X, box.Position.Z, size.X / 2, size.Z / 2
+	wall(cx + hx + thickness / 2, cz, thickness, size.Z + thickness * 2)
+	wall(cx - hx - thickness / 2, cz, thickness, size.Z + thickness * 2)
+	wall(cx, cz + hz + thickness / 2, size.X + thickness * 2, thickness)
+	wall(cx, cz - hz - thickness / 2, size.X + thickness * 2, thickness)
+	folder.Parent = workspace
+end
+
 function MatchService.Start(role: string)
 	if role == "Combined" or role == "Lobby" then
 		-- Workspace.Lobby is authored in Studio and is the only lobby; nothing is generated.
@@ -312,6 +341,7 @@ function MatchService.Start(role: string)
 			end
 			lobbySpawn = lobbySpawn or lobbyModel:FindFirstChild("LobbySpawn", true) :: BasePart?
 			Services.QueueService.DiscoverZones(lobbyModel)
+			buildLobbyBounds(lobbyModel :: Model)
 		else
 			warn("[MatchService] Workspace.Lobby not found - matchmaking circles disabled (DEV panel can still start rooms).")
 		end
