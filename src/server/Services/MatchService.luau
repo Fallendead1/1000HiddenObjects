@@ -787,6 +787,7 @@ function MatchService.CompleteMatch(finder: Player)
 
 	-- Save FIRST, then celebrate.
 	local starsByUser = {}
+	local newBestByUser = {} -- runs that set a best time (the results screen says NEW BEST only for these)
 	for _, player in ipairs(match.Players) do
 		local firstClear = false
 		Services.DataService.Update(player, function(data)
@@ -801,8 +802,9 @@ function MatchService.CompleteMatch(finder: Player)
 				data.FinderWins += 1
 			end
 			local key = tostring(roomId)
-			if elapsed >= GameConfig.MinimumLegitimateRoomTime and (not data.BestTimes[key] or elapsed < data.BestTimes[key]) then
+			if not match.DevCompleted and elapsed >= GameConfig.MinimumLegitimateRoomTime and (not data.BestTimes[key] or elapsed < data.BestTimes[key]) then
 				data.BestTimes[key] = math.floor(elapsed)
+				newBestByUser[tostring(player.UserId)] = true
 			end
 		end)
 		Services.CheckpointService.ClearForRoom(player, roomId)
@@ -812,7 +814,9 @@ function MatchService.CompleteMatch(finder: Player)
 		if data then
 			Services.LeaderboardService.SubmitObjectsFound(player, data.ObjectsFound)
 			Services.LeaderboardService.SubmitMostCleaned(player, data.TotalMessCleared)
-			Services.LeaderboardService.SubmitRoomTime(player, roomId, elapsed)
+			if not match.DevCompleted then
+				Services.LeaderboardService.SubmitRoomTime(player, roomId, elapsed)
+			end
 		end
 		Services.MonetizationService.CheckBadges(player)
 		Services.AnalyticsService.Log("room_complete", player, { RoomId = roomId, PartySize = match.PartySize, ElapsedTime = math.floor(elapsed), FirstClear = firstClear, Progress = match.Progress })
@@ -853,6 +857,7 @@ function MatchService.CompleteMatch(finder: Player)
 			Contributions = contributions,
 			RoomSearched = match.Progress,
 			Stars = starsByUser,
+			NewBest = newBestByUser,
 			TreasuresTotal = match.TreasuresTotal,
 			TreasuresCleaned = match.TreasuresCleaned,
 			NextRoomAvailable = RoomRegistry.Exists(roomId + 1),
@@ -942,6 +947,7 @@ function MatchService.ForceComplete(player: Player)
 	end
 	match.ClaimLock = true
 	match.TargetFound = true
+	match.DevCompleted = true -- a dev shortcut never counts as a best time or a Fastest entry
 	match.FinderUserId = player.UserId
 	MatchService.CompleteMatch(player)
 end

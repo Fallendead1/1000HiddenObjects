@@ -119,6 +119,8 @@ function UpgradeController.Init()
 		BorderSizePixel = 0,
 	}, menu.Content)
 	UI.GridLayout(scroll, UDim2.fromOffset(310, 206), 14)
+	-- Room for the cards' borders, which draw just outside them (the scroll clips its edges).
+	UI.New("UIPadding", { PaddingTop = UDim.new(0, 4), PaddingBottom = UDim.new(0, 4), PaddingLeft = UDim.new(0, 4), PaddingRight = UDim.new(0, 4) }, scroll)
 
 	for i, def in ipairs(UpgradeConfig.List) do
 		cards[def.Key] = buildCard(def, scroll, i)

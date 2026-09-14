@@ -57,7 +57,8 @@ function NotificationController.Init()
 	local player = game:GetService("Players").LocalPlayer
 	local function place()
 		local y = UI.GetOpenMenu() and 8 or (player:GetAttribute("InMatch") and 248 or 136)
-		UI.Tween(container, { Position = UDim2.new(0.5, 0, 0, y) }, 0.2)
+		-- The stack never runs past the bottom of the safe area (short phone screens).
+		UI.Tween(container, { Position = UDim2.new(0.5, 0, 0, y), Size = UDim2.new(0, 470, 1, -(y + 12)) }, 0.2)
 	end
 	player:GetAttributeChangedSignal("InMatch"):Connect(place)
 	UI.OnMenuChanged(function()

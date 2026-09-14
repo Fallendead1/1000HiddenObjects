@@ -31,8 +31,6 @@ local trackerRows: Frame
 local pendingXP = 0
 local xpFlushQueued = false
 
-local touch = UI.IsTouch()
-
 local function challenges(): { any }
 	local ok, list = pcall(HttpService.JSONDecode, HttpService, player:GetAttribute("DailyChallenges") or "[]")
 	return (ok and type(list) == "table") and list or {}
@@ -108,7 +106,7 @@ local function showXP(amount: number)
 		local frame = visibleBadge()
 		if frame and pendingXP > 0 then
 			local abs, size = frame.AbsolutePosition, frame.AbsoluteSize
-			local pos = UDim2.fromOffset((abs.X + size.X / 2) / UI.Scale, (abs.Y + size.Y + 34) / UI.Scale)
+			local pos = UI.FromAbsolute(Vector2.new(abs.X + size.X / 2, abs.Y + size.Y + 34))
 			Controllers.FXController.FloatingText(string.format("+%d XP", pendingXP), UI.Colors.Cyan, pos, 22)
 		end
 		pendingXP = 0
@@ -210,8 +208,10 @@ function ProgressionController.Init()
 	menuFooter = UI.Label({ Text = "", TextSize = 14, Font = UI.FontBody, TextColor3 = UI.Colors.TextDim, Size = UDim2.new(1, 0, 0, 22), Position = UDim2.new(0, 0, 1, -22) }, menu.Content)
 	menu.OnOpen(refreshChallenges)
 
-	-- In-match tracker (right side, under the boosts). Tap it for the full menu.
-	tracker = UI.Panel({ Size = UDim2.fromOffset(250, 94), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -12, 0, touch and 316 or 300), BackgroundTransparency = 0.12, Visible = false }, Controllers.HUDController.GetMatchFrame())
+	-- In-match tracker: right side under the boosts, or on touch in the left-side stack (the right
+	-- side belongs to the GRAB button there). Tap it for the full menu.
+	local stack = Controllers.HUDController.GetSideStack()
+	tracker = UI.Panel({ Size = UDim2.fromOffset(250, 94), AnchorPoint = stack and Vector2.zero or Vector2.new(1, 0), Position = UDim2.new(1, -12, 0, 300), BackgroundTransparency = 0.12, Visible = false, LayoutOrder = 3 }, stack or Controllers.HUDController.GetMatchFrame())
 	UI.Stroke(tracker, UI.Colors.Cyan, 2)
 	local trackerTitle = UI.Label({ Text = "DAILY CHALLENGES", TextSize = 13, TextWrapped = false, Size = UDim2.new(1, -16, 0, 18), Position = UDim2.fromOffset(8, 4), TextXAlignment = Enum.TextXAlignment.Left }, tracker)
 	UI.TextGradient(trackerTitle, UI.Colors.Cyan)
@@ -254,7 +254,29 @@ function ProgressionController.Init()
 	refreshChallenges()
 end
 
+-- Your own overhead tag (made by the server for everyone to see) would sit right over your view
+-- from the third-person camera: hide it on your own screen only.
+local function hideOwnTag(character: Model)
+	local head = character:WaitForChild("Head", 10)
+	if not head then
+		return
+	end
+	local function check(child: Instance)
+		if child.Name == "PlayerTag" and child:IsA("BillboardGui") then
+			child.Enabled = false
+		end
+	end
+	for _, c in ipairs(head:GetChildren()) do
+		check(c)
+	end
+	head.ChildAdded:Connect(check)
+end
+
 function ProgressionController.Start()
+	if player.Character then
+		task.spawn(hideOwnTag, player.Character)
+	end
+	player.CharacterAdded:Connect(hideOwnTag)
 	local acc = 0
 	RunService.Heartbeat:Connect(function(dt)
 		acc += dt

@@ -24,6 +24,7 @@ local player = Players.LocalPlayer
 local RoomSelectController = {}
 
 local root: Frame
+local dim: Frame
 local titleLabel: TextLabel
 local nameLabel: TextLabel
 local targetLabel: TextLabel
@@ -104,6 +105,12 @@ local function close()
 	root.Visible = false
 	activeZone = nil
 	sent = false
+	Controllers.HUDController.SetCounterVisible(true)
+	UI.Tween(dim, { BackgroundTransparency = 1 }, 0.15).Completed:Once(function()
+		if not root.Visible then
+			dim.Visible = false
+		end
+	end)
 end
 
 local function open(zone: BasePart)
@@ -125,7 +132,11 @@ local function open(zone: BasePart)
 	render()
 	UI.CloseAllMenus()
 	root.Visible = true
+	UI.FitScale(root, Vector2.new(400, 530)) -- phones: the whole panel shrinks to fit under the top bar
 	UI.PopIn(root, 0.85, 0.22)
+	dim.Visible = true
+	UI.Tween(dim, { BackgroundTransparency = 0.5 }, 0.2)
+	Controllers.HUDController.SetCounterVisible(false)
 end
 
 local function evaluate()
@@ -143,9 +154,12 @@ local function stepButton(text: string, parent: Instance, x: number): TextButton
 end
 
 function RoomSelectController.Init()
+	-- Dims the world and HUD behind the panel like a menu does (clicks still pass through).
+	dim = UI.Frame({ Name = "PartyDim", BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 1, Position = UDim2.fromOffset(0, -200), Size = UDim2.new(1, 0, 1, 200), Visible = false, ZIndex = 0 }, UI.Layers.Menus)
+
 	-- The panel, with the BACK button hanging under it.
 	root = UI.Frame({ Name = "PartySetup", BackgroundTransparency = 1, Size = UDim2.fromOffset(400, 530), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.52), Visible = false }, UI.Layers.Menus)
-	local panel = UI.Panel({ Size = UDim2.new(1, 0, 0, 456), BackgroundTransparency = 0.08 }, root)
+	local panel = UI.Panel({ Size = UDim2.new(1, 0, 0, 456), BackgroundTransparency = 0.03 }, root)
 	UI.Stroke(panel, UI.Colors.Gold, 3)
 	UI.Glow(panel, UI.Colors.Gold, 26, 0.55)
 

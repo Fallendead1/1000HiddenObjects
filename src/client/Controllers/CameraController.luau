@@ -110,7 +110,8 @@ function CameraController.Init()
 		Visible = false,
 	}, UI.Layers.World) :: TextButton
 
-	crosshair = UI.Frame({ Name = "Crosshair", Size = UDim2.fromOffset(8, 8), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), BackgroundColor3 = CrosshairColors.idle, Visible = false }, UI.Layers.HUD)
+	-- Full-screen layer: aiming uses the exact viewport centre, and so must the crosshair.
+	crosshair = UI.Frame({ Name = "Crosshair", Size = UDim2.fromOffset(8, 8), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), BackgroundColor3 = CrosshairColors.idle, Visible = false }, UI.Layers.World)
 	UI.Corner(crosshair, 99)
 	local crossStroke = UI.Stroke(crosshair, Color3.new(0, 0, 0), 1.5, 0.3)
 	-- Crosshair art (white, tinted per state) when it exists.

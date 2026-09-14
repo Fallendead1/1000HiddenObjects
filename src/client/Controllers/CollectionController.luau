@@ -93,6 +93,8 @@ function CollectionController.Init()
 		BorderSizePixel = 0,
 	}, menu.Content) :: ScrollingFrame
 	UI.GridLayout(grid, UDim2.fromOffset(96, 110), 8)
+	-- Room for the tiles' borders, which draw just outside them (the scroll clips its edges).
+	UI.New("UIPadding", { PaddingTop = UDim.new(0, 4), PaddingBottom = UDim.new(0, 4), PaddingLeft = UDim.new(0, 4), PaddingRight = UDim.new(0, 4) }, grid)
 
 	menu.OnOpen(function()
 		if not built then

@@ -35,6 +35,7 @@ local hotColdLabel: TextLabel
 local timerLabel: TextLabel
 local boostsFrame: Frame
 local teamFrame: Frame
+local sideStack: Frame? = nil
 local cashLabel: TextLabel
 local cashGlow: Instance
 local shownCash = 0
@@ -43,6 +44,7 @@ local progressBar
 local progressLabel: TextLabel
 local objectsLabel: TextLabel
 local finderLabel: TextLabel
+local counterGroup: Frame
 local resumeFrame: Frame
 local resumeLabel: TextLabel
 local roomTitleLabel: TextLabel
@@ -90,15 +92,22 @@ end
 local function buildLobbyHUD()
 	lobbyFrame = UI.Frame({ Name = "LobbyHUD", BackgroundTransparency = 1, Visible = false }, UI.Layers.HUD)
 
-	-- The collection counter: the one number that matters, in gold.
-	local top = UI.Panel({ Size = UDim2.fromOffset(300, 78), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 10), BackgroundTransparency = 0.08 }, lobbyFrame)
+	-- The collection counter: the one number that matters, in gold. Grouped so a panel that
+	-- covers the top of the screen (party setup) can tuck it away.
+	counterGroup = UI.Frame({ Name = "Counter", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1) }, lobbyFrame)
+	local top = UI.Panel({ Size = UDim2.fromOffset(300, 78), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 10), BackgroundTransparency = 0.08 }, counterGroup)
 	UI.Stroke(top, UI.Colors.Gold, 2.5)
 	UI.Glow(top, UI.Colors.Gold, 16, 0.8)
 	UI.Label({ Text = "OBJECTS FOUND", TextSize = 13, Font = UI.FontBody, TextColor3 = UI.Colors.TextDim, Size = UDim2.new(1, 0, 0, 18), Position = UDim2.fromOffset(0, 7) }, top)
 	objectsLabel = UI.Label({ Text = "0 / 1000", TextSize = 38, TextWrapped = false, Size = UDim2.new(1, 0, 0, 44), Position = UDim2.fromOffset(0, 26) }, top)
 	UI.TextGradient(objectsLabel, UI.Colors.Gold)
-	local finderPill = UI.Surface3D({ Size = UDim2.fromOffset(176, 30), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 94) }, lobbyFrame, UI.Colors.Gold, 15, 0.14)
-	finderLabel = UI.Label({ Text = "Finder Wins: 0", TextSize = 15, TextWrapped = false, Size = UDim2.new(1, -12, 0.86, 0), Position = UDim2.fromOffset(6, 0) }, finderPill)
+	local finderPill = UI.Surface3D({ Size = UDim2.fromOffset(196, 30), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 94) }, counterGroup, UI.Colors.Gold, 15, 0.14)
+	-- The trophy is the Collection icon (an emoji inside outlined text renders as a smudge).
+	local trophy = UI.Icon(finderPill, "Icon_Collection", "★", { TextSize = 16 })
+	trophy.Size = UDim2.fromOffset(22, 22)
+	trophy.AnchorPoint = Vector2.new(0, 0.5)
+	trophy.Position = UDim2.new(0, 10, 0.43, 0)
+	finderLabel = UI.Label({ Text = "Finder Wins: 0", TextSize = 15, TextWrapped = false, Size = UDim2.new(1, -44, 0.86, 0), Position = UDim2.fromOffset(34, 0) }, finderPill)
 
 	local buttons = tileGrid(lobbyFrame, 3, { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -10, 0.46, 0) })
 	HUDController.Buttons.Collection = menuTile(buttons, "COLLECTION", UI.Colors.Gold, 1, "1K", "Icon_Collection")
@@ -161,8 +170,15 @@ local function buildMatchHUD()
 	UI.Icon(weightIcon, "Icon_Weight", "", {})
 	weightLabel = UI.Label({ Text = "MAX WEIGHT: 2", TextSize = 14, Font = UI.FontBody, TextColor3 = UI.Colors.TextDim, Size = UDim2.new(1, -44, 0, 22), Position = UDim2.fromOffset(UI.Asset("Icon_Weight") and 40 or 14, 55), TextXAlignment = Enum.TextXAlignment.Left }, left)
 
+	-- Touch: the right side belongs to the GRAB button, so the streak, boosts, challenge tracker
+	-- and team stack down the left under the cash panel (empty ones take no room).
+	if touch then
+		sideStack = UI.Frame({ Name = "SideStack", BackgroundTransparency = 1, Size = UDim2.new(0, 250, 1, -112), Position = UDim2.fromOffset(12, 100) }, matchFrame)
+		UI.ListLayout(sideStack :: Frame, Enum.FillDirection.Vertical, 6, Enum.HorizontalAlignment.Left)
+	end
+
 	-- Deposit streak: shows while deposits keep coming within the streak window.
-	streakFrame = UI.Panel({ Size = UDim2.fromOffset(236, 32), Position = UDim2.fromOffset(12, 100), BackgroundTransparency = 0.08, Visible = false }, matchFrame)
+	streakFrame = UI.Panel({ Size = UDim2.fromOffset(236, 32), Position = UDim2.fromOffset(12, 100), BackgroundTransparency = 0.08, Visible = false, LayoutOrder = 1 }, sideStack or matchFrame)
 	UI.Stroke(streakFrame, UI.Colors.Orange, 2.5)
 	local streakIcon = UI.Frame({ Size = UDim2.fromOffset(22, 22), Position = UDim2.fromOffset(6, 5), BackgroundTransparency = 1 }, streakFrame)
 	UI.Icon(streakIcon, "Icon_Streak", "", {})
@@ -191,9 +207,15 @@ local function buildMatchHUD()
 	end)
 
 	local gridHeight = 2 * (TILE + 24) + 6
-	boostsFrame = UI.Frame({ BackgroundTransparency = 1, Size = UDim2.fromOffset(190, 84), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -12, 0, 18 + gridHeight) }, matchFrame)
-	UI.ListLayout(boostsFrame, Enum.FillDirection.Vertical, 5, Enum.HorizontalAlignment.Right)
-	teamFrame = UI.Frame({ BackgroundTransparency = 1, Size = UDim2.fromOffset(236, 120), Position = UDim2.fromOffset(12, 140) }, matchFrame)
+	if sideStack then
+		boostsFrame = UI.Frame({ BackgroundTransparency = 1, Size = UDim2.fromOffset(190, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 2 }, sideStack)
+		UI.ListLayout(boostsFrame, Enum.FillDirection.Vertical, 5, Enum.HorizontalAlignment.Left)
+		teamFrame = UI.Frame({ BackgroundTransparency = 1, Size = UDim2.fromOffset(236, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 4 }, sideStack)
+	else
+		boostsFrame = UI.Frame({ BackgroundTransparency = 1, Size = UDim2.fromOffset(190, 84), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -12, 0, 18 + gridHeight) }, matchFrame)
+		UI.ListLayout(boostsFrame, Enum.FillDirection.Vertical, 5, Enum.HorizontalAlignment.Right)
+		teamFrame = UI.Frame({ BackgroundTransparency = 1, Size = UDim2.fromOffset(236, 120), Position = UDim2.fromOffset(12, 140) }, matchFrame)
+	end
 	UI.ListLayout(teamFrame, Enum.FillDirection.Vertical, 4, Enum.HorizontalAlignment.Left)
 
 	hotColdFrame = UI.Panel({ Size = UDim2.fromOffset(230, 50), AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -122), Visible = false, BackgroundTransparency = 0.1 }, matchFrame)
@@ -211,7 +233,7 @@ end
 
 local function refreshLobby()
 	objectsLabel.Text = string.format("%d / %d", attr("ObjectsFound", 0), GameConfig.TotalObjects)
-	finderLabel.Text = string.format("🏆 Finder Wins: %d", attr("FinderWins", 0))
+	finderLabel.Text = string.format("Finder Wins: %d", attr("FinderWins", 0))
 	local cpRoom, cpPercent = attr("CheckpointRoomId", 0), attr("CheckpointPercent", 0)
 	resumeFrame.Visible = cpRoom > 0 and cpPercent > 0
 	if resumeFrame.Visible then
@@ -437,18 +459,30 @@ function HUDController.PulseCash()
 	end)
 end
 
--- Screen-space centre of the cash label (for coin fly-to effects), in scaled GUI space.
+-- Where the cash label sits (for coin fly-to effects), as an offset in the full-screen layers.
 function HUDController.GetCashLabelPosition(): UDim2
 	local absPos, absSize = cashLabel.AbsolutePosition, cashLabel.AbsoluteSize
-	return UDim2.fromOffset((absPos.X + 20) / UI.Scale, (absPos.Y + absSize.Y / 2) / UI.Scale)
+	return UI.FromAbsolute(Vector2.new(absPos.X + 20, absPos.Y + absSize.Y / 2))
 end
 
 function HUDController.GetMatchFrame(): Frame
 	return matchFrame
 end
 
+-- Touch only: the left-side column for match info (nil on desktop). See buildMatchHUD.
+function HUDController.GetSideStack(): Frame?
+	return sideStack
+end
+
 function HUDController.GetLobbyFrame(): Frame
 	return lobbyFrame
+end
+
+-- Party setup covers the top of the screen; the lobby counter steps aside meanwhile.
+function HUDController.SetCounterVisible(visible: boolean)
+	if counterGroup then
+		counterGroup.Visible = visible
+	end
 end
 
 return HUDController

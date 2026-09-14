@@ -144,9 +144,12 @@ local function showResults(payload)
 	results.Visible = true
 	results.BackgroundTransparency = 1
 	UI.Tween(results, { BackgroundTransparency = 0.45 }, 0.3)
+	-- Centred under the top bar, and shrunk as a whole on short (phone) screens.
+	resultsCard.Position = UDim2.new(0.5, 0, 0.5, UI.SafeTop / 2)
+	local fit = UI.FitScale(resultsCard, Vector2.new(520, 540))
 	local s = resultsCard:FindFirstChildOfClass("UIScale") or UI.New("UIScale", {}, resultsCard)
-	s.Scale = 0.85
-	UI.Tween(s, { Scale = 1 }, 0.3, Enum.EasingStyle.Back)
+	s.Scale = 0.85 * fit
+	UI.Tween(s, { Scale = fit }, 0.3, Enum.EasingStyle.Back)
 
 	resTitle.Text = string.format("ROOM #%s COMPLETE", payload.RoomNumber or "001")
 	resObject.Text = string.format("%s  -  %s  ✓", TargetData.FormatNumber(payload.ObjectNumber or 1), payload.TargetName or "")
@@ -158,9 +161,14 @@ local function showResults(payload)
 	end
 	resStats.Text = string.format("Time: %s\nFinder: %s\nTeam Size: %d\nYou Cleaned: %s objects\nRoom Cleaned: %s",
 		FormatUtil.Time(payload.Elapsed or 0), payload.FinderName or "?", payload.TeamSize or 1, FormatUtil.Comma(mine), FormatUtil.Percent(payload.RoomSearched or 0))
-	local best = player:GetAttribute("BestTimeRoom1") or 0
+	-- The server says whether this run set a best time (dev runs and too-fast runs never do).
+	local newBest = (payload.NewBest or {})[tostring(player.UserId)] == true
+	local best = player:GetAttribute("BestTimeRoom" .. tostring(payload.ObjectNumber or 1)) or 0
+	if newBest then
+		best = math.floor(payload.Elapsed or best)
+	end
 	if best > 0 then
-		resBest.Text = "Best time: " .. FormatUtil.Time(best) .. ((payload.Elapsed or 0) <= best + 1 and "  (NEW BEST!)" or "")
+		resBest.Text = "Best time: " .. FormatUtil.Time(best) .. (newBest and "  (NEW BEST!)" or "")
 	else
 		resBest.Text = ""
 	end

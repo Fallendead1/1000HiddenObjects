@@ -74,7 +74,9 @@ local function show(prompt: ProximityPrompt, inputType: Enum.ProximityPromptInpu
 	gui.ResetOnSpawn = false
 	gui.Active = touch
 	gui.Size = UDim2.fromOffset(keySize + tagWidth + 24, keySize + 12)
-	gui.StudsOffset = Vector3.new(0, 2.2, 0)
+	-- Float just above the top of the object, not at its centre (big parts would hide it).
+	local lift = adornee:IsA("BasePart") and (adornee :: BasePart).Size.Y / 2 + 1.4 or 1.5
+	gui.StudsOffsetWorldSpace = Vector3.new(0, lift, 0)
 	gui.Parent = player:WaitForChild("PlayerGui")
 	local root = UI.Frame({ BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1) }, gui)
 	local scale = UI.New("UIScale", { Scale = 0.5 }, root) :: UIScale

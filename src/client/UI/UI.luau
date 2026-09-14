@@ -54,6 +54,10 @@ for i, name in ipairs({ "World", "HUD", "Menus", "Overlay", "Notify", "Top" }) d
 	layer.Parent = gui
 	UI.Layers[name] = layer
 end
+-- HUD, menus and notifications live in the safe area under the Roblox top bar (its buttons would
+-- cover anything above it). World, Overlay and Top stay full screen for dims, flashes and fades.
+local SAFE_LAYERS = { UI.Layers.HUD, UI.Layers.Menus, UI.Layers.Notify }
+UI.SafeTop = 0
 
 local function reduceMotion(): boolean
 	return player:GetAttribute("Setting_ReduceVFX") == true
@@ -134,6 +138,10 @@ function UI.Icon(parent: Instance, key: string, fallbackText: string, labelProps
 end
 
 function UI.IsTouch(): boolean
+	-- Studio-only: set the workspace attribute DevForceTouch to preview the phone layout.
+	if workspace:GetAttribute("DevForceTouch") == true and game:GetService("RunService"):IsStudio() then
+		return true
+	end
 	return UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled and not UserInputService.MouseEnabled
 end
 
@@ -153,8 +161,19 @@ local function updateScale()
 	else
 		s = math.clamp(math.min(viewport.Y / 760, viewport.X / 1300), 0.62, 1.25)
 	end
+	-- Studio-only: workspace.DevForceScale emulates a phone's scale on a desktop viewport.
+	local forced = workspace:GetAttribute("DevForceScale")
+	if type(forced) == "number" and game:GetService("RunService"):IsStudio() then
+		s = forced
+	end
 	scale.Scale = s
 	UI.Scale = s
+	-- The top-bar inset is in screen pixels; layer offsets are in scaled units.
+	UI.SafeTop = GuiService:GetGuiInset().Y / s
+	for _, layer in ipairs(SAFE_LAYERS) do
+		layer.Position = UDim2.fromOffset(0, UI.SafeTop)
+		layer.Size = UDim2.new(1, 0, 1, -UI.SafeTop)
+	end
 end
 UI.Scale = 1
 updateScale()
@@ -167,6 +186,12 @@ workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
 		updateScale()
 	end
 end)
+-- The top bar can finish laying out after this module loads.
+pcall(function()
+	GuiService:GetPropertyChangedSignal("TopbarInset"):Connect(updateScale)
+end)
+task.delay(2, updateScale)
+workspace:GetAttributeChangedSignal("DevForceScale"):Connect(updateScale)
 
 -- ===== Primitive constructors =====
 
@@ -621,8 +646,9 @@ end
 -- Pop an element in with a springy scale.
 function UI.PopIn(inst: GuiObject, from: number?, time: number?)
 	local scaleObj = inst:FindFirstChild("PopScale") or UI.New("UIScale", { Name = "PopScale" }, inst)
-	;(scaleObj :: UIScale).Scale = from or 0.6
-	UI.Tween(scaleObj, { Scale = 1 }, time or 0.35, Enum.EasingStyle.Back)
+	local target = inst:GetAttribute("FitScale") or 1
+	;(scaleObj :: UIScale).Scale = (from or 0.6) * target
+	UI.Tween(scaleObj, { Scale = target }, time or 0.35, Enum.EasingStyle.Back)
 end
 
 -- Roll a number label from one value to another.
@@ -800,7 +826,9 @@ local backdrop = UI.New("TextButton", {
 	BackgroundColor3 = BLACK,
 	BackgroundTransparency = 1,
 	BorderSizePixel = 0,
-	Size = UDim2.fromScale(1, 1),
+	-- The Menus layer starts under the top bar; the dim reaches up to cover that strip too.
+	Position = UDim2.fromOffset(0, -200),
+	Size = UDim2.new(1, 0, 1, 200),
 	Visible = false,
 	ZIndex = 0,
 }, UI.Layers.Menus) :: TextButton
@@ -857,6 +885,16 @@ function UI.Menu(name: string, title: string, size: UDim2, accent: Color3?)
 	UI.Gradient(frame, Color3.fromRGB(48, 51, 70), Color3.fromRGB(16, 17, 26))
 	UI.New("UISizeConstraint", { MaxSize = Vector2.new(1100, 800), MinSize = Vector2.new(280, 200) }, frame)
 	local home = frame.Position
+	-- Never taller or wider than the safe area (the content scrolls): matters on phones.
+	local design = Vector2.new(size.X.Offset, size.Y.Offset)
+	local function fit()
+		local area = UI.Layers.Menus.AbsoluteSize / UI.Scale
+		if area.Y > 0 then
+			frame.Size = UDim2.fromOffset(math.min(design.X, area.X - 24), math.min(design.Y, area.Y - 24))
+		end
+	end
+	fit()
+	UI.Layers.Menus:GetPropertyChangedSignal("AbsoluteSize"):Connect(fit)
 
 	local titleBar = UI.Surface3D({ Name = "Header", Size = UDim2.new(1, 0, 0, 62) }, frame, accent or UI.Colors.Gold, 16, 0.1)
 	UI.Label({ Text = title, TextSize = 30, Size = UDim2.new(1, -150, 0.9, 0), Position = UDim2.fromOffset(75, 0), TextWrapped = false, TextScaled = false }, titleBar)
@@ -880,6 +918,7 @@ function UI.Menu(name: string, title: string, size: UDim2, accent: Color3?)
 		end
 		openMenu = name
 		isOpen = true
+		fit()
 		frame.Visible = true
 		setBackdrop(true)
 		if reduceMotion() then
@@ -1033,6 +1072,21 @@ end
 function UI.GetTopInset(): number
 	local inset = GuiService:GetGuiInset()
 	return inset.Y
+end
+
+-- How much a fixed-layout panel of `design` size must shrink to fit the safe area (1 = it fits).
+-- PopIn settles on this scale.
+function UI.FitScale(panel: GuiObject, design: Vector2): number
+	local area = UI.Layers.Menus.AbsoluteSize / UI.Scale
+	local f = area.Y > 0 and math.min(1, (area.X - 24) / design.X, (area.Y - 24) / design.Y) or 1
+	panel:SetAttribute("FitScale", f)
+	return f
+end
+
+-- A screen point (AbsolutePosition space) as an offset in the full-screen layers.
+function UI.FromAbsolute(point: Vector2): UDim2
+	local origin = gui.AbsolutePosition
+	return UDim2.fromOffset((point.X - origin.X) / UI.Scale, (point.Y - origin.Y) / UI.Scale)
 end
 
 -- Studio-only test hook: fire MainUI.DevOpenMenu with a menu name to open it ("" closes).
