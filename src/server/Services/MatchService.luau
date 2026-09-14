@@ -783,7 +783,7 @@ function MatchService.CompleteMatch(finder: Player)
 			Services.LeaderboardService.SubmitMostCleaned(player, data.TotalMessCleared)
 			Services.LeaderboardService.SubmitRoomTime(player, roomId, elapsed)
 		end
-		Services.MonetizationService.CheckBadges(player, firstClear, player == finder)
+		Services.MonetizationService.CheckBadges(player)
 		Services.AnalyticsService.Log("room_complete", player, { RoomId = roomId, PartySize = match.PartySize, ElapsedTime = math.floor(elapsed), FirstClear = firstClear, Progress = match.Progress })
 	end
 	Services.AnalyticsService.Log("target_found", finder, { RoomId = roomId, ElapsedTime = math.floor(elapsed) })

@@ -285,31 +285,49 @@ function MonetizationService.GetLivePrice(id: number, infoType: Enum.InfoType): 
 	return price
 end
 
-function MonetizationService.CheckBadges(player: Player, firstClear: boolean, isFinder: boolean)
+-- Badges already confirmed (or being awarded) this session, so Roblox isn't asked twice.
+local badgeChecked: { [Player]: { [number]: boolean } } = {}
+
+-- Awards every badge the player's saved progress qualifies for: collection milestones, the
+-- first finder win and each room's speed badge (from the saved best time). Runs after every
+-- room and on join, so badges created later still reach players who already earned them.
+function MonetizationService.CheckBadges(player: Player)
 	local data = Services.DataService.Get(player)
 	if not data then
 		return
 	end
-	local badges = MonetizationConfig.Badges
 	local toAward = {}
-	if firstClear then
-		if data.ObjectsFound >= 1 then table.insert(toAward, badges.FirstObject) end
-		if data.ObjectsFound >= 10 then table.insert(toAward, badges.TenObjects) end
-		if data.ObjectsFound >= 100 then table.insert(toAward, badges.HundredObjects) end
-		if data.ObjectsFound >= 500 then table.insert(toAward, badges.FiveHundredObjects) end
-		if data.ObjectsFound >= 1000 then table.insert(toAward, badges.ThousandObjects) end
+	for _, milestone in ipairs({ { 1, "FirstObject" }, { 10, "TenObjects" }, { 100, "HundredObjects" }, { 500, "FiveHundredObjects" }, { 1000, "ThousandObjects" } }) do
+		if data.ObjectsFound >= milestone[1] then
+			table.insert(toAward, milestone[2])
+		end
 	end
-	if isFinder and data.FinderWins >= 1 then
-		table.insert(toAward, badges.FirstFinderWin)
+	if data.FinderWins >= 1 then
+		table.insert(toAward, "FirstFinderWin")
 	end
-	for _, badgeId in ipairs(toAward) do
-		if badgeId ~= 0 then
+	for roomKey, speed in pairs(MonetizationConfig.SpeedBadges) do
+		local best = data.BestTimes[roomKey]
+		if best and best <= speed.Seconds then
+			table.insert(toAward, speed.Badge)
+		end
+	end
+	local checked = badgeChecked[player] or {}
+	badgeChecked[player] = checked
+	for _, key in ipairs(toAward) do
+		local badgeId = MonetizationConfig.Badges[key] or 0
+		if badgeId ~= 0 and not checked[badgeId] then
+			checked[badgeId] = true
 			task.spawn(function()
-				pcall(function()
+				local ok, err = pcall(function()
 					if not BadgeService:UserHasBadgeAsync(player.UserId, badgeId) then
 						BadgeService:AwardBadge(player.UserId, badgeId)
+						print("[Badges] Awarded", key, "to", player.Name)
 					end
 				end)
+				if not ok then
+					checked[badgeId] = nil -- try again after the next room
+					warn("[Badges] Could not award", key, err)
+				end
 			end)
 		end
 	end
@@ -399,6 +417,12 @@ function MonetizationService.Init()
 	local function onPlayer(player: Player)
 		passCache[player] = {}
 		task.spawn(refreshPasses, player)
+		-- Catch-up: badges earned before they existed (or while awarding failed) arrive on join.
+		task.spawn(function()
+			if Services.DataService.WaitFor(player, 15) then
+				MonetizationService.CheckBadges(player)
+			end
+		end)
 	end
 	Players.PlayerAdded:Connect(onPlayer)
 	for _, p in ipairs(Players:GetPlayers()) do
@@ -407,6 +431,7 @@ function MonetizationService.Init()
 	Players.PlayerRemoving:Connect(function(player)
 		passCache[player] = nil
 		devGrants[player] = nil
+		badgeChecked[player] = nil
 	end)
 end
 
