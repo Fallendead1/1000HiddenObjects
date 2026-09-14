@@ -231,7 +231,7 @@ function ProgressionController.Init()
 		if name == "XP" then
 			showXP(payload.Amount or 0)
 		elseif name == "LevelUp" then
-			Controllers.AudioController.Play("VictorySting")
+			Controllers.AudioController.Play("LevelUp")
 			celebrate(UI.Colors.Cyan)
 			banner("LEVEL " .. tostring(payload.Level or "?") .. "!", (payload.NewTitle and "NEW TITLE: " or "") .. string.upper(payload.Title or ""), UI.Colors.Cyan)
 		elseif name == "ChallengeDone" then

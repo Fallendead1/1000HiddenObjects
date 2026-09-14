@@ -58,7 +58,9 @@ function NotificationController.Show(kind: string, text: string, duration: numbe
 	UI.Tween(glow, { [glow:IsA("UIStroke") and "Transparency" or "ImageTransparency"] = 0.85 }, 0.8)
 
 	if kind ~= "Info" then
-		Controllers.AudioController.Play("Notification")
+		-- Purchases get the buy sound, refusals the denied sound.
+		local sound = (kind == "Premium" and "Purchase") or ((kind == "Warning" or kind == "Error") and "Denied") or "Notification"
+		Controllers.AudioController.Play(sound)
 	end
 
 	task.delay(duration or 4, function()

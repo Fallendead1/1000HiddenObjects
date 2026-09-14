@@ -1,3 +1,4 @@
+local ContentProvider = game:GetService("ContentProvider")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local SoundService = game:GetService("SoundService")
@@ -33,6 +34,33 @@ local function resolvePitch(pitch: any): number
 	return tonumber(pitch) or 1
 end
 
+-- A final numeric id in AudioConfig wins; otherwise a Studio override
+-- (SoundService.GameSounds.<Key>) replaces the placeholder.
+local function pickSound(key: string, def): (string?, number?)
+	local final = def ~= nil and type(def.Id) == "number" and def.Id ~= 0
+	if not final then
+		local overrides = SoundService:FindFirstChild("GameSounds")
+		local override = overrides and overrides:FindFirstChild(key)
+		if override and override:IsA("Sound") and override.SoundId ~= "" then
+			return override.SoundId, override.Volume
+		end
+	end
+	return def and resolveId(def.Id), def and def.Volume
+end
+
+-- The Studio sound to use when a final asset can't load (for example its audio permission
+-- isn't granted to this experience yet): the key's own override, or its Fallback key's.
+local function fallbackSound(key: string, def): string?
+	local overrides = SoundService:FindFirstChild("GameSounds")
+	for _, k in ipairs({ key, def and def.Fallback }) do
+		local override = k and overrides and overrides:FindFirstChild(k)
+		if override and override:IsA("Sound") and override.SoundId ~= "" then
+			return override.SoundId
+		end
+	end
+	return nil
+end
+
 local function sfxEnabled(): boolean
 	return player:GetAttribute("Setting_SFX") ~= false
 end
@@ -54,21 +82,29 @@ function AudioController.Init()
 	musicGroup.Name = "Music"
 	musicGroup.Parent = SoundService
 
-	-- Studio overrides: SoundService.GameSounds.<Key> (a Sound) replaces the config placeholder.
-	local overrides = SoundService:FindFirstChild("GameSounds")
 	for key, def in pairs(AudioConfig.SFX) do
-		local override = overrides and overrides:FindFirstChild(key)
-		local id = (override and override:IsA("Sound") and override.SoundId ~= "") and override.SoundId or resolveId(def.Id)
+		local id, volume = pickSound(key, def)
 		if id then
 			local s = Instance.new("Sound")
 			s.Name = key
 			s.SoundId = id
-			s.Volume = (override and override:IsA("Sound")) and override.Volume or def.Volume or 0.5
+			s.Volume = volume or 0.5
 			s.Looped = def.Looped == true
 			s.SoundGroup = sfxGroup
 			s:SetAttribute("Pitch", type(def.Pitch) == "table" and 0 or (def.Pitch or 1))
 			s.Parent = SoundService
 			templates[key] = s
+			if type(def.Id) == "number" then
+				task.spawn(function()
+					ContentProvider:PreloadAsync({ s }, function(_, status)
+						local fallback = status == Enum.AssetFetchStatus.Failure and fallbackSound(key, def)
+						if fallback then
+							warn(string.format("[Audio] %s (%s) could not load - using the Studio sound instead. Check that audio's permissions allow this experience.", key, id))
+							s.SoundId = fallback
+						end
+					end)
+				end)
+			end
 		end
 	end
 
@@ -159,28 +195,31 @@ function AudioController.SetMusic(key: string?)
 	if currentMusicKey == key then
 		return
 	end
+	local def = key and AudioConfig.Music[key]
+	local id, volume
+	if key then
+		id, volume = pickSound(key, def)
+	end
+	-- The lobby and the rooms share one track: keep it playing instead of restarting it.
+	if currentMusic and id and currentMusic.SoundId == id then
+		currentMusicKey = key
+		currentMusic.Volume = volume or currentMusic.Volume
+		return
+	end
 	if currentMusic then
 		currentMusic:Stop()
 		currentMusic:Destroy()
 		currentMusic = nil
 	end
 	currentMusicKey = key
-	if not key then
-		return
-	end
-	local def = AudioConfig.Music[key]
-	local overrides = SoundService:FindFirstChild("GameSounds")
-	local override = overrides and overrides:FindFirstChild(key)
-	local useOverride = override ~= nil and override:IsA("Sound") and override.SoundId ~= ""
-	local id = useOverride and override.SoundId or (def and resolveId(def.Id))
 	if not id then
 		return
 	end
 	local s = Instance.new("Sound")
 	s.Name = key
 	s.SoundId = id
-	s.Volume = useOverride and override.Volume or (def and def.Volume) or 0.3
-	s.Looped = def.Looped ~= false
+	s.Volume = volume or 0.3
+	s.Looped = not def or def.Looped ~= false
 	s.SoundGroup = musicGroup
 	s.Parent = SoundService
 	s:Play()

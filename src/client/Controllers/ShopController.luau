@@ -64,8 +64,9 @@ local function buildCard(info, order: number)
 end
 
 local function render()
+	-- Everything but the list layout (cards and the "Loading..." line alike).
 	for _, c in ipairs(listFrame:GetChildren()) do
-		if c:IsA("Frame") then
+		if c:IsA("GuiObject") then
 			c:Destroy()
 		end
 	end
