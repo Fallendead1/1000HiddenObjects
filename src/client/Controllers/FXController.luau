@@ -102,8 +102,9 @@ function FXController.SetVignette(color: Color3?, transparency: number, time: nu
 end
 
 function FXController.FloatingText(text: string, color: Color3, anchorPos: UDim2?, size: number?)
-	local label = UI.Label({ Text = text, TextSize = size or 30, TextColor3 = color, Size = UDim2.fromOffset(340, 44), AnchorPoint = Vector2.new(0.5, 0.5), Position = anchorPos or UDim2.new(0.5, 0, 0.62, 0) }, UI.Layers.Overlay)
-	UI.Stroke(label, Color3.new(0, 0, 0), 2, 0.3)
+	local label = UI.Label({ Text = text, TextSize = size or 30, TextWrapped = false, Size = UDim2.fromOffset(460, 48), AnchorPoint = Vector2.new(0.5, 0.5), Position = anchorPos or UDim2.new(0.5, 0, 0.62, 0) }, UI.Layers.Overlay)
+	UI.Stroke(label, Color3.new(0, 0, 0), math.clamp((size or 30) * 0.1, 2, 4), 0)
+	UI.TextGradient(label, color)
 	UI.Tween(label, { Position = label.Position - UDim2.fromOffset(0, 80), TextTransparency = 1 }, 1.1)
 	task.delay(1.15, function()
 		label:Destroy()
@@ -124,12 +125,13 @@ local function worldCashPopup(position: Vector3, amount: number, tags: string?, 
 	bb.MaxDistance = 90
 	bb.Adornee = anchor
 	bb.Parent = player:WaitForChild("PlayerGui")
-	local label = UI.Label({ Text = "+$" .. amount, TextSize = gold and 36 or 30, TextColor3 = gold and UI.Colors.Gold or UI.Colors.Cash, Size = UDim2.new(1, 0, 0, 40) }, bb)
-	UI.Stroke(label, Color3.new(0, 0, 0), 2, 0.2)
+	local label = UI.Label({ Text = "+$" .. amount, TextSize = gold and 36 or 30, TextWrapped = false, Size = UDim2.new(1, 0, 0, 40) }, bb)
+	UI.Stroke(label, Color3.new(0, 0, 0), 3, 0)
+	UI.TextGradient(label, gold and UI.Colors.Gold or UI.Colors.Cash)
 	local tagLabel
 	if tags and tags ~= "" then
-		tagLabel = UI.Label({ Text = tags, TextSize = 18, TextColor3 = UI.Colors.Gold, Size = UDim2.new(1, 0, 0, 24), Position = UDim2.fromOffset(0, 40) }, bb)
-		UI.Stroke(tagLabel, Color3.new(0, 0, 0), 2, 0.2)
+		tagLabel = UI.Label({ Text = tags, TextSize = 18, TextWrapped = false, Size = UDim2.new(1, 0, 0, 24), Position = UDim2.fromOffset(0, 40) }, bb)
+		UI.TextGradient(tagLabel, UI.Colors.Gold)
 	end
 	UI.Tween(bb, { StudsOffset = Vector3.new(0, 3, 0) }, 1.2)
 	UI.Tween(label, { TextTransparency = 1 }, 1.2, Enum.EasingStyle.Quad, Enum.EasingDirection.In)

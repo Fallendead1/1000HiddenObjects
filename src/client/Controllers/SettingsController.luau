@@ -34,7 +34,7 @@ local function push()
 end
 
 function SettingsController.Init()
-	menu = UI.Menu("Settings", "SETTINGS", UDim2.fromOffset(420, 340))
+	menu = UI.Menu("Settings", "SETTINGS", UDim2.fromOffset(420, 360), UI.Colors.Locked)
 	local list = UI.Frame({ BackgroundTransparency = 1 }, menu.Content)
 	UI.ListLayout(list, Enum.FillDirection.Vertical, 6)
 	UI.Padding(list, 8)

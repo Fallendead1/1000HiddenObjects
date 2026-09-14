@@ -44,7 +44,8 @@ local nextButton: TextButton
 
 local function setCeremony(big: string, small: string, color: Color3?, size: number?)
 	ceremonyBig.Text = big
-	ceremonyBig.TextColor3 = color or UI.Colors.Gold
+	ceremonyBig.TextColor3 = Color3.new(1, 1, 1)
+	UI.TextGradient(ceremonyBig, color or UI.Colors.Gold)
 	ceremonyBig.TextSize = size or 64
 	ceremonySmall.Text = small
 	local s = ceremonyBig:FindFirstChildOfClass("UIScale") or UI.New("UIScale", {}, ceremonyBig)
@@ -170,8 +171,7 @@ local function showResults(payload)
 		end
 	end
 	for i, c in ipairs(payload.Contributions or {}) do
-		local row = UI.Frame({ Size = UDim2.new(1, 0, 0, 24), BackgroundColor3 = UI.Colors.PanelLight, LayoutOrder = i }, resContrib)
-		UI.Corner(row, 6)
+		local row = UI.Panel({ Size = UDim2.new(1, 0, 0, 26), BackgroundColor3 = UI.Colors.PanelLight, LayoutOrder = i }, resContrib)
 		UI.Label({ Text = c.Name, TextSize = 15, Font = UI.FontBody, TextColor3 = c.UserId == player.UserId and UI.Colors.Gold or UI.Colors.Text, Size = UDim2.new(0.6, 0, 1, 0), Position = UDim2.fromOffset(10, 0), TextXAlignment = Enum.TextXAlignment.Left }, row)
 		UI.Label({ Text = tostring(c.Objects or 0) .. " cleaned", TextSize = 15, Font = UI.FontBody, TextColor3 = UI.Colors.TextDim, Size = UDim2.new(0.4, -10, 1, 0), Position = UDim2.new(0.6, 0, 0, 0), TextXAlignment = Enum.TextXAlignment.Right }, row)
 	end
@@ -187,15 +187,15 @@ local function showResults(payload)
 	for i, s in ipairs(ProgressionConfig.Stars) do
 		local has = bit32.band(owned, s.Bit) ~= 0
 		local new = bit32.band(stars.New or 0, s.Bit) ~= 0
-		local cell = UI.Frame({ Size = UDim2.new(1 / 3, -7, 1, 0), BackgroundColor3 = UI.Colors.PanelLight, LayoutOrder = i }, resStars)
-		UI.Corner(cell, 10)
-		UI.Stroke(cell, has and UI.Colors.Gold or UI.Colors.Stroke, 2, has and 0 or 0.5)
-		local star = UI.Label({ Text = has and "★" or "☆", TextSize = 34, TextColor3 = has and UI.Colors.Gold or UI.Colors.TextDim, Size = UDim2.new(1, 0, 0, 36), Position = UDim2.fromOffset(0, 2) }, cell)
+		-- Earned stars sit on gold studded cells, missing ones on dark glass.
+		local cell = has and UI.Surface3D({ Size = UDim2.new(1 / 3, -7, 1, 0), LayoutOrder = i }, resStars, UI.Colors.Gold, 10, 0.08)
+			or UI.Panel({ Size = UDim2.new(1 / 3, -7, 1, 0), BackgroundColor3 = UI.Colors.PanelLight, LayoutOrder = i }, resStars)
+		local star = UI.Label({ Text = has and "★" or "☆", TextSize = 34, TextColor3 = has and UI.Colors.Text or UI.Colors.TextDim, Size = UDim2.new(1, 0, 0, 36), Position = UDim2.fromOffset(0, 2) }, cell)
 		local caption = s.Text
 		if s.Key == "Treasure" then
 			caption = string.format("%s (%d/%d)", s.Text, payload.TreasuresCleaned or 0, payload.TreasuresTotal or 0)
 		end
-		UI.Label({ Text = new and "NEW! " .. caption or caption, TextSize = 12, Font = UI.FontBody, TextWrapped = true, TextColor3 = new and UI.Colors.Gold or UI.Colors.TextDim, Size = UDim2.new(1, -8, 0, 30), Position = UDim2.fromOffset(4, 38) }, cell)
+		UI.Label({ Text = new and "NEW! " .. caption or caption, TextSize = 12, TextWrapped = true, TextColor3 = has and UI.Colors.Text or UI.Colors.TextDim, Size = UDim2.new(1, -8, 0, 30), Position = UDim2.fromOffset(4, 38) }, cell)
 		if new then
 			UI.Glow(cell, UI.Colors.Gold, 14, 0.5)
 			task.delay(0.4 + i * 0.35, function()
@@ -218,7 +218,7 @@ end
 function ResultsController.Init()
 	ceremony = UI.Frame({ Name = "Ceremony", BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 1, Visible = false }, UI.Layers.Top)
 	ceremonyBig = UI.Label({ Text = "", TextSize = 64, TextColor3 = UI.Colors.Gold, Size = UDim2.new(1, 0, 0, 110), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.42) }, ceremony)
-	UI.Stroke(ceremonyBig, Color3.new(0, 0, 0), 3, 0.2)
+	UI.Stroke(ceremonyBig, Color3.new(0, 0, 0), 5, 0)
 	ceremonySmall = UI.Label({ Text = "", TextSize = 26, Size = UDim2.new(1, 0, 0, 40), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.53) }, ceremony)
 	UI.Stroke(ceremonySmall, Color3.new(0, 0, 0), 2, 0.2)
 	ceremonyIcon = UI.Frame({ Size = UDim2.fromOffset(120, 120), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.24), BackgroundColor3 = UI.Colors.Gold, Visible = false }, ceremony)
@@ -234,14 +234,17 @@ function ResultsController.Init()
 	UI.Stroke(resultsCard, UI.Colors.Gold, 3)
 	UI.Glow(resultsCard, UI.Colors.Gold, 34, 0.5)
 	UI.New("UISizeConstraint", { MaxSize = Vector2.new(520, 540), MinSize = Vector2.new(300, 420) }, resultsCard)
-	resTitle = UI.Label({ Text = "ROOM #001 COMPLETE", TextSize = 32, TextColor3 = UI.Colors.Green, Size = UDim2.new(1, 0, 0, 44), Position = UDim2.fromOffset(0, 14) }, resultsCard)
-	local icon = UI.Frame({ Size = UDim2.fromOffset(84, 84), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 62), BackgroundColor3 = UI.Colors.Gold }, resultsCard)
-	UI.Corner(icon, 18)
-	UI.Stroke(icon, Color3.new(1, 1, 1), 3)
+	local header = UI.Surface3D({ Size = UDim2.new(1, 0, 0, 58) }, resultsCard, UI.Colors.Green, 14, 0.1)
+	resTitle = UI.Label({ Text = "ROOM #001 COMPLETE", TextSize = 30, TextWrapped = false, Size = UDim2.new(1, -20, 0.9, 0), Position = UDim2.fromOffset(10, 0) }, header)
+	local icon = UI.Surface3D({ Size = UDim2.fromOffset(84, 84), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 68) }, resultsCard, UI.Colors.Gold, 18, 0.1)
 	UI.Glow(icon, UI.Colors.Gold, 22, 0.45)
 	UI.Pulse(icon, 0.05, 2.5)
-	UI.Icon(icon, "Icon_Key", "K", { TextSize = 50, TextColor3 = UI.Colors.PanelDark })
-	resObject = UI.Label({ Text = "#001 - Golden Key", TextSize = 24, TextColor3 = UI.Colors.Gold, Size = UDim2.new(1, 0, 0, 32), Position = UDim2.fromOffset(0, 152) }, resultsCard)
+	local keyIcon = UI.Icon(icon, "Icon_Key", "K", { TextSize = 50 })
+	keyIcon.Size = UDim2.fromScale(0.74, 0.66)
+	keyIcon.AnchorPoint = Vector2.new(0.5, 0.5)
+	keyIcon.Position = UDim2.fromScale(0.5, 0.45)
+	resObject = UI.Label({ Text = "#001 - Golden Key", TextSize = 24, TextWrapped = false, Size = UDim2.new(1, 0, 0, 32), Position = UDim2.fromOffset(0, 156) }, resultsCard)
+	UI.TextGradient(resObject, UI.Colors.Gold)
 	resStats = UI.Label({ Text = "", TextSize = 18, Font = UI.FontBody, TextColor3 = UI.Colors.TextDim, Size = UDim2.new(0.5, -20, 0, 110), Position = UDim2.fromOffset(20, 192), TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top }, resultsCard)
 	resBest = UI.Label({ Text = "", TextSize = 16, Font = UI.FontBody, TextColor3 = UI.Colors.Cyan, Size = UDim2.new(0.5, -20, 0, 22), Position = UDim2.fromOffset(20, 300), TextXAlignment = Enum.TextXAlignment.Left }, resultsCard)
 	resContrib = UI.Frame({ BackgroundTransparency = 1, Size = UDim2.new(0.5, -20, 0, 130), Position = UDim2.new(0.5, 0, 0, 192) }, resultsCard)

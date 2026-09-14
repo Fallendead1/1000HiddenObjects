@@ -45,19 +45,19 @@ local function addLabel(mouth: Instance)
 	if not def then
 		return
 	end
-	local gui = UI.Billboard(mouth, UDim2.fromOffset(200, 64), Vector3.new(0, mouth.Size.Y / 2 + 1.8, 0), 90)
+	local gui = UI.Billboard(mouth, UDim2.fromOffset(214, 66), Vector3.new(0, mouth.Size.Y / 2 + 1.8, 0), 90)
 	gui.Name = "BinLabel"
-	local panel = UI.Frame({ Size = UDim2.fromScale(1, 1), BackgroundColor3 = UI.Colors.Panel, BackgroundTransparency = 0.15 }, gui)
-	UI.Corner(panel, 12)
-	local stroke = UI.Stroke(panel, def.Color, 2)
-	UI.Skin(panel, "Panel")
+	local panel = UI.Panel({ Size = UDim2.fromScale(1, 1), BackgroundTransparency = 0.12 }, gui)
+	local stroke = UI.Stroke(panel, def.Color, 2.5)
 	local scale = UI.New("UIScale", {}, panel) :: UIScale
-	local badge = UI.Frame({ Size = UDim2.fromOffset(48, 48), Position = UDim2.fromOffset(8, 8), BackgroundColor3 = def.Color }, panel)
-	UI.Corner(badge, 24)
-	UI.Icon(badge, def.IconKey, string.sub(def.Name, 1, 1), { TextSize = 24, TextColor3 = UI.Colors.PanelDark })
-	local title = UI.Label({ Text = def.Name, TextSize = 17, TextColor3 = def.Color, Size = UDim2.new(1, -66, 0, 24), Position = UDim2.fromOffset(62, 8), TextXAlignment = Enum.TextXAlignment.Left, TextWrapped = false }, panel)
-	UI.Stroke(title, Color3.new(0, 0, 0), 1.5, 0.3)
-	local bonus = UI.Label({ Text = categoryText(def), TextSize = 11, Font = UI.FontBody, TextColor3 = UI.Colors.TextDim, Size = UDim2.new(1, -66, 0, 24), Position = UDim2.fromOffset(62, 32), TextXAlignment = Enum.TextXAlignment.Left }, panel)
+	local badge = UI.Surface3D({ Size = UDim2.fromOffset(50, 50), Position = UDim2.fromOffset(7, 7) }, panel, def.Color, 25, 0.12)
+	local icon = UI.Icon(badge, def.IconKey, string.sub(def.Name, 1, 1), { TextSize = 24 })
+	icon.Size = UDim2.fromScale(0.74, 0.66)
+	icon.AnchorPoint = Vector2.new(0.5, 0.5)
+	icon.Position = UDim2.fromScale(0.5, 0.45)
+	local title = UI.Label({ Text = def.Name, TextSize = 16, Size = UDim2.new(1, -70, 0, 24), Position = UDim2.fromOffset(64, 8), TextXAlignment = Enum.TextXAlignment.Left, TextWrapped = false }, panel)
+	UI.TextGradient(title, def.Color)
+	local bonus = UI.Label({ Text = categoryText(def), TextSize = 11, Font = UI.FontBody, TextColor3 = UI.Colors.TextDim, Size = UDim2.new(1, -70, 0, 26), Position = UDim2.fromOffset(64, 33), TextXAlignment = Enum.TextXAlignment.Left }, panel)
 	labels[mouth] = { Gui = gui, Stroke = stroke, Bonus = bonus, Type = def.Type, Scale = scale }
 	mouth.AncestryChanged:Connect(function()
 		if not mouth:IsDescendantOf(workspace) and labels[mouth] then

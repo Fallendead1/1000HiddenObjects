@@ -18,12 +18,11 @@ local tiles: { [number]: { Frame: Frame, Icon: Frame, Name: TextLabel, Number: T
 local built = false
 
 local function buildTile(number: number)
-	local tile = UI.Frame({ Size = UDim2.fromOffset(96, 110), BackgroundColor3 = UI.Colors.PanelLight, LayoutOrder = number }, grid)
-	UI.Corner(tile, 10)
-	UI.Stroke(tile, UI.Colors.Stroke, 1)
+	local tile = UI.Panel({ Size = UDim2.fromOffset(96, 110), BackgroundColor3 = UI.Colors.PanelLight, LayoutOrder = number }, grid)
 	local numberLabel = UI.Label({ Text = TargetData.FormatNumber(number), TextSize = 14, Font = UI.FontBody, TextColor3 = UI.Colors.TextDim, Size = UDim2.new(1, 0, 0, 18), Position = UDim2.fromOffset(0, 4) }, tile)
 	local icon = UI.Frame({ Size = UDim2.fromOffset(52, 52), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 24), BackgroundColor3 = UI.Colors.Locked }, tile)
 	UI.Corner(icon, 8)
+	UI.Stroke(icon, Color3.new(0, 0, 0), 2)
 	local glyph = UI.Label({ Text = "?", TextSize = 28, TextColor3 = UI.Colors.TextDim }, icon)
 	local image = UI.Image({ Size = UDim2.new(1, -8, 1, -8), Position = UDim2.fromOffset(4, 4), Visible = false }, icon)
 	local nameLabel = UI.Label({ Text = "???", TextSize = 13, Font = UI.FontBody, Size = UDim2.new(1, -6, 0, 26), Position = UDim2.fromOffset(3, 80), TextTruncate = Enum.TextTruncate.AtEnd }, tile)
@@ -47,7 +46,7 @@ local function refresh()
 			tile.Name.Text = def.Name
 			tile.Name.TextColor3 = UI.Colors.Text
 			tile.Check.Visible = true
-			tile.Frame.BackgroundColor3 = UI.Colors.Panel
+			UI.Stroke(tile.Frame, UI.Colors.Gold, 2.5)
 		elseif def then
 			-- Known but unfound object: silhouette.
 			tile.Icon.BackgroundColor3 = UI.Colors.Locked
@@ -82,7 +81,8 @@ end
 
 function CollectionController.Init()
 	menu = UI.Menu("Collection", "1000 HIDDEN OBJECTS", UDim2.fromOffset(760, 560))
-	header = UI.Label({ Text = "0 / 1000 FOUND", TextSize = 26, TextColor3 = UI.Colors.Gold, Size = UDim2.new(1, 0, 0, 36) }, menu.Content)
+	header = UI.Label({ Text = "0 / 1000 FOUND", TextSize = 26, TextWrapped = false, Size = UDim2.new(1, 0, 0, 36) }, menu.Content)
+	UI.TextGradient(header, UI.Colors.Gold)
 	grid = UI.New("ScrollingFrame", {
 		BackgroundTransparency = 1,
 		Size = UDim2.new(1, 0, 1, -44),

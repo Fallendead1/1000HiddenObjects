@@ -54,18 +54,15 @@ end
 -- ===== Level badge =====
 
 local function makeBadge(parent: Instance, anchor: Vector2, position: UDim2)
-	local frame = UI.Panel({ Size = UDim2.fromOffset(240, 44), AnchorPoint = anchor, Position = position, BackgroundTransparency = 0.1 }, parent)
-	UI.Stroke(frame, UI.Colors.Cyan, 2)
+	local frame = UI.Panel({ Size = UDim2.fromOffset(254, 50), AnchorPoint = anchor, Position = position, BackgroundTransparency = 0.08 }, parent)
+	UI.Stroke(frame, UI.Colors.Cyan, 2.5)
 	UI.Glow(frame, UI.Colors.Cyan, 14, 0.8)
-	local circle = UI.Frame({ Size = UDim2.fromOffset(36, 36), Position = UDim2.fromOffset(4, 4), BackgroundColor3 = UI.Colors.Cyan }, frame)
-	UI.Corner(circle, 18)
-	UI.Stroke(circle, Color3.new(1, 1, 1), 2)
-	local level = UI.Label({ Text = "1", TextSize = 18, TextColor3 = UI.Colors.PanelDark }, circle)
-	local title = UI.Label({ Text = "", TextSize = 14, Size = UDim2.new(1, -52, 0, 18), Position = UDim2.fromOffset(46, 4), TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd }, frame)
-	local bar = UI.ProgressBar(frame, UDim2.new(1, -54, 0, 13), UDim2.fromOffset(46, 25), UI.Colors.Cyan)
+	local circle = UI.Surface3D({ Size = UDim2.fromOffset(44, 44), Position = UDim2.fromOffset(3, 3) }, frame, UI.Colors.Cyan, 22, 0.12)
+	local level = UI.Label({ Text = "1", TextSize = 20, TextWrapped = false, Size = UDim2.new(1, 0, 0.88, 0) }, circle)
+	local title = UI.Label({ Text = "", TextSize = 14, TextWrapped = false, Size = UDim2.new(1, -62, 0, 18), Position = UDim2.fromOffset(54, 5), TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd }, frame)
+	local bar = UI.ProgressBar(frame, UDim2.new(1, -62, 0, 17), UDim2.fromOffset(54, 26), UI.Colors.Cyan)
 	UI.Shine(bar.Fill, 3.4)
-	local xpText = UI.Label({ Text = "", TextSize = 11, Font = UI.FontBody, Size = UDim2.fromScale(1, 1), ZIndex = 3 }, bar.Frame)
-	UI.Stroke(xpText, Color3.new(0, 0, 0), 1, 0.4)
+	local xpText = UI.Label({ Text = "", TextSize = 11, TextWrapped = false, Size = UDim2.fromScale(1, 1), ZIndex = 3 }, bar.Frame)
 	-- Tap the badge to open the challenges.
 	local hit = UI.New("TextButton", { Text = "", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 6 }, frame) :: TextButton
 	hit.Activated:Connect(function()
@@ -121,10 +118,11 @@ end
 -- Big centred two-line banner (level up, challenge complete) that pops in and fades.
 local function banner(big: string, small: string, color: Color3)
 	local holder = UI.Frame({ BackgroundTransparency = 1, Size = UDim2.fromOffset(640, 120), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.3) }, UI.Layers.Overlay)
-	local top = UI.Label({ Text = big, TextSize = 56, TextColor3 = color, Size = UDim2.new(1, 0, 0, 70) }, holder)
-	UI.Stroke(top, Color3.new(0, 0, 0), 3, 0.2)
-	local bottom = UI.Label({ Text = small, TextSize = 24, TextColor3 = UI.Colors.Gold, Size = UDim2.new(1, 0, 0, 36), Position = UDim2.fromOffset(0, 72) }, holder)
-	UI.Stroke(bottom, Color3.new(0, 0, 0), 2, 0.2)
+	local top = UI.Label({ Text = big, TextSize = 56, TextWrapped = false, Size = UDim2.new(1, 0, 0, 70) }, holder)
+	UI.Stroke(top, Color3.new(0, 0, 0), 4.5, 0)
+	UI.TextGradient(top, color)
+	local bottom = UI.Label({ Text = small, TextSize = 24, TextWrapped = false, Size = UDim2.new(1, 0, 0, 36), Position = UDim2.fromOffset(0, 72) }, holder)
+	UI.TextGradient(bottom, UI.Colors.Gold)
 	UI.PopIn(holder, 0.4, 0.35)
 	task.delay(2.6, function()
 		UI.Tween(top, { TextTransparency = 1 }, 0.4)
@@ -150,18 +148,18 @@ end
 
 local function challengeRow(parent: Instance, c, order: number)
 	local done = c.Done == true
-	local row = UI.Frame({ Size = UDim2.new(1, 0, 0, 88), BackgroundColor3 = UI.Colors.PanelLight, LayoutOrder = order }, parent)
-	UI.Corner(row, 10)
-	UI.Stroke(row, done and UI.Colors.Green or UI.Colors.Cyan, 2, done and 0 or 0.5)
+	local row = UI.Panel({ Size = UDim2.new(1, 0, 0, 92), BackgroundColor3 = UI.Colors.PanelLight, LayoutOrder = order }, parent)
+	UI.Stroke(row, done and UI.Colors.Green or UI.Colors.Stroke, 2.5)
 	if done then
 		UI.Glow(row, UI.Colors.Green, 12, 0.7)
 	end
-	UI.Label({ Text = c.Text or "", TextSize = 18, TextWrapped = true, Size = UDim2.new(1, -170, 0, 40), Position = UDim2.fromOffset(14, 4), TextXAlignment = Enum.TextXAlignment.Left }, row)
-	UI.Label({ Text = done and "DONE ✓" or ("REWARD\n" .. (c.Reward or "")), TextSize = 14, Font = UI.FontBody, TextWrapped = true, TextColor3 = done and UI.Colors.Green or UI.Colors.Gold, Size = UDim2.new(0, 150, 0, 40), Position = UDim2.new(1, -160, 0, 4), TextXAlignment = Enum.TextXAlignment.Right }, row)
-	local bar = UI.ProgressBar(row, UDim2.new(1, -28, 0, 22), UDim2.fromOffset(14, 52), done and UI.Colors.Green or UI.Colors.Cyan)
+	UI.Label({ Text = c.Text or "", TextSize = 17, TextWrapped = true, Size = UDim2.new(1, -190, 0, 44), Position = UDim2.fromOffset(14, 5), TextXAlignment = Enum.TextXAlignment.Left }, row)
+	-- The reward on a studded chip (gold while open, green once done).
+	local chip = UI.Surface3D({ Size = UDim2.fromOffset(164, 38), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -12, 0, 8) }, row, done and UI.Colors.Green or UI.Colors.Gold, 10, 0.12)
+	UI.Label({ Text = done and "DONE ✓" or (c.Reward or ""), TextSize = 13, TextWrapped = true, Size = UDim2.new(1, -10, 0.88, 0), Position = UDim2.fromOffset(5, 0) }, chip)
+	local bar = UI.ProgressBar(row, UDim2.new(1, -28, 0, 24), UDim2.fromOffset(14, 56), done and UI.Colors.Green or UI.Colors.Cyan)
 	bar.Set(math.clamp((c.Progress or 0) / math.max(1, c.Goal or 1), 0, 1))
-	local text = UI.Label({ Text = string.format("%d / %d   ·   +100 XP", c.Progress or 0, c.Goal or 0), TextSize = 13, Font = UI.FontBody, Size = UDim2.fromScale(1, 1), ZIndex = 3 }, bar.Frame)
-	UI.Stroke(text, Color3.new(0, 0, 0), 1, 0.4)
+	UI.Label({ Text = string.format("%d / %d   ·   +100 XP", c.Progress or 0, c.Goal or 0), TextSize = 13, TextWrapped = false, Size = UDim2.fromScale(1, 1), ZIndex = 3 }, bar.Frame)
 end
 
 local function refreshChallenges()
@@ -203,9 +201,9 @@ end
 
 function ProgressionController.Init()
 	makeBadge(Controllers.HUDController.GetLobbyFrame(), Vector2.new(0, 0), UDim2.fromOffset(12, 12))
-	makeBadge(Controllers.HUDController.GetMatchFrame(), Vector2.new(0.5, 0), UDim2.new(0.5, 0, 0, 116))
+	makeBadge(Controllers.HUDController.GetMatchFrame(), Vector2.new(0.5, 0), UDim2.new(0.5, 0, 0, 122))
 
-	menu = UI.Menu("Challenges", "DAILY CHALLENGES", UDim2.fromOffset(560, 440))
+	menu = UI.Menu("Challenges", "DAILY CHALLENGES", UDim2.fromOffset(560, 440), UI.Colors.Cyan)
 	menuHeader = UI.Label({ Text = "", TextSize = 17, TextColor3 = UI.Colors.Cyan, Size = UDim2.new(1, 0, 0, 24) }, menu.Content)
 	menuRows = UI.Frame({ BackgroundTransparency = 1, Size = UDim2.new(1, 0, 1, -58), Position = UDim2.fromOffset(0, 30) }, menu.Content)
 	UI.ListLayout(menuRows, Enum.FillDirection.Vertical, 8, Enum.HorizontalAlignment.Center)
@@ -213,9 +211,10 @@ function ProgressionController.Init()
 	menu.OnOpen(refreshChallenges)
 
 	-- In-match tracker (right side, under the boosts). Tap it for the full menu.
-	tracker = UI.Panel({ Size = UDim2.fromOffset(250, 92), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -12, 0, touch and 360 or 330), BackgroundTransparency = 0.15, Visible = false }, Controllers.HUDController.GetMatchFrame())
-	UI.Stroke(tracker, UI.Colors.Cyan, 1, 0.3)
-	UI.Label({ Text = "DAILY CHALLENGES", TextSize = 13, TextColor3 = UI.Colors.Cyan, Size = UDim2.new(1, -16, 0, 18), Position = UDim2.fromOffset(8, 4), TextXAlignment = Enum.TextXAlignment.Left }, tracker)
+	tracker = UI.Panel({ Size = UDim2.fromOffset(250, 94), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -12, 0, touch and 316 or 300), BackgroundTransparency = 0.12, Visible = false }, Controllers.HUDController.GetMatchFrame())
+	UI.Stroke(tracker, UI.Colors.Cyan, 2)
+	local trackerTitle = UI.Label({ Text = "DAILY CHALLENGES", TextSize = 13, TextWrapped = false, Size = UDim2.new(1, -16, 0, 18), Position = UDim2.fromOffset(8, 4), TextXAlignment = Enum.TextXAlignment.Left }, tracker)
+	UI.TextGradient(trackerTitle, UI.Colors.Cyan)
 	trackerRows = UI.Frame({ BackgroundTransparency = 1, Size = UDim2.new(1, -16, 1, -26), Position = UDim2.fromOffset(8, 23) }, tracker)
 	UI.ListLayout(trackerRows, Enum.FillDirection.Vertical, 2, Enum.HorizontalAlignment.Left)
 	local hit = UI.New("TextButton", { Text = "", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 6 }, tracker) :: TextButton

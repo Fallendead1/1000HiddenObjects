@@ -738,6 +738,7 @@ function MatchService.RevealTarget()
 	prompt.KeyboardKeyCode = Enum.KeyCode.E
 	prompt.GamepadKeyCode = Enum.KeyCode.ButtonX
 	prompt.HoldDuration = 0
+	prompt.Style = Enum.ProximityPromptStyle.Custom -- drawn by the client's PromptController
 	prompt.MaxActivationDistance = 10
 	prompt.RequiresLineOfSight = false
 	prompt.Parent = model.PrimaryPart

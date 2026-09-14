@@ -44,7 +44,8 @@ end
 
 local function setText(big: string, small: string, bigColor: Color3?, bigSize: number?)
 	bigLabel.Text = big
-	bigLabel.TextColor3 = bigColor or UI.Colors.Text
+	bigLabel.TextColor3 = Color3.new(1, 1, 1)
+	UI.TextGradient(bigLabel, bigColor or UI.Colors.Text)
 	bigLabel.TextSize = bigSize or 56
 	smallLabel.Text = small
 	bigLabel.TextTransparency = 0

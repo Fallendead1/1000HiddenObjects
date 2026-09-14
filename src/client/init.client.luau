@@ -45,6 +45,7 @@ local order = {
 	"ProgressionController",
 	"TutorialController",
 	"LobbyController",
+	"PromptController",
 	"RoomSelectController",
 	"DevPanelController",
 }

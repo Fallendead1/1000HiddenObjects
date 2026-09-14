@@ -26,8 +26,8 @@ function HintController.ShowClue(text: string, duration: number?)
 	local token = bannerToken
 	bannerLabel.Text = text
 	banner.Visible = true
-	banner.Position = UDim2.new(0.5, 0, 0, 110)
-	UI.Tween(banner, { Position = UDim2.new(0.5, 0, 0, 140) }, 0.3, Enum.EasingStyle.Back)
+	banner.Position = UDim2.new(0.5, 0, 0, 150)
+	UI.Tween(banner, { Position = UDim2.new(0.5, 0, 0, 180) }, 0.3, Enum.EasingStyle.Back)
 	UI.PopIn(banner, 0.85, 0.35)
 	local prop = bannerGlow:IsA("UIStroke") and "Transparency" or "ImageTransparency"
 	;(bannerGlow :: any)[prop] = 0.05
@@ -35,7 +35,7 @@ function HintController.ShowClue(text: string, duration: number?)
 	Controllers.AudioController.Play("Hint")
 	task.delay(duration or 7, function()
 		if bannerToken == token then
-			UI.Tween(banner, { Position = UDim2.new(0.5, 0, 0, 110) }, 0.25).Completed:Once(function()
+			UI.Tween(banner, { Position = UDim2.new(0.5, 0, 0, 150) }, 0.25).Completed:Once(function()
 				if bannerToken == token then
 					banner.Visible = false
 				end
@@ -140,11 +140,13 @@ local function updateOutline()
 end
 
 function HintController.Init()
-	banner = UI.Panel({ Size = UDim2.fromOffset(520, 56), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 140), Visible = false, BackgroundTransparency = 0.05 }, UI.Layers.HUD)
-	banner.BackgroundColor3 = UI.Colors.PanelDark
-	UI.Stroke(banner, UI.Colors.Cyan, 2)
+	banner = UI.Panel({ Size = UDim2.fromOffset(580, 60), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 180), Visible = false, BackgroundTransparency = 0.05 }, UI.Layers.HUD)
+	UI.Stroke(banner, UI.Colors.Cyan, 2.5)
 	bannerGlow = UI.Glow(banner, UI.Colors.Cyan, 20, 0.6)
-	bannerLabel = UI.Label({ Text = "", TextSize = 20, TextColor3 = UI.Colors.Cyan, Size = UDim2.new(1, -20, 1, 0), Position = UDim2.fromOffset(10, 0) }, banner)
+	local tag = UI.Surface3D({ Size = UDim2.fromOffset(74, 42), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 9, 0.5, 0) }, banner, UI.Colors.Cyan, 10, 0.12)
+	UI.Label({ Text = "CLUE", TextSize = 16, TextWrapped = false, Size = UDim2.new(1, 0, 0.88, 0) }, tag)
+	bannerLabel = UI.Label({ Text = "", TextSize = 18, Size = UDim2.new(1, -104, 1, 0), Position = UDim2.fromOffset(94, 0), TextXAlignment = Enum.TextXAlignment.Left }, banner)
+	UI.TextGradient(bannerLabel, UI.Colors.Cyan)
 
 	Remotes.Event("MatchUpdate").OnClientEvent:Connect(function(eventName, payload)
 		if eventName == "Clue" then

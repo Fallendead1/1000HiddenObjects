@@ -68,9 +68,17 @@ function ProgressionService.RefreshTag(player: Player)
 		label.Name = "Text"
 		label.BackgroundTransparency = 1
 		label.Size = UDim2.fromScale(1, 1)
-		label.Font = Enum.Font.FredokaOne
+		label.Font = Enum.Font.GothamBlack
 		label.TextScaled = true
-		label.TextStrokeTransparency = 0.25
+		label.TextColor3 = Color3.new(1, 1, 1)
+		local outline = Instance.new("UIStroke")
+		outline.Color = Color3.new(0, 0, 0)
+		outline.Thickness = 2
+		outline.Parent = label
+		local gradient = Instance.new("UIGradient")
+		gradient.Name = "Gradient"
+		gradient.Rotation = 90
+		gradient.Parent = label
 		label.Parent = tag
 		tag.Parent = head
 	else
@@ -79,7 +87,12 @@ function ProgressionService.RefreshTag(player: Player)
 	local level = player:GetAttribute("CleanerLevel") or 1
 	local vip = Services.MonetizationService.OwnsPass(player, "VIP")
 	label.Text = string.format("%sLV %d · %s", vip and "VIP · " or "", level, string.upper(player:GetAttribute("CleanerTitle") or ProgressionConfig.TitleFor(level)))
-	label.TextColor3 = vip and Color3.fromRGB(255, 205, 50) or Color3.fromRGB(235, 240, 255)
+	-- Gold gradient for VIP pass owners, a cool white for everyone else.
+	local gradient = label:FindFirstChild("Gradient")
+	if gradient and gradient:IsA("UIGradient") then
+		gradient.Color = vip and ColorSequence.new(Color3.fromRGB(255, 236, 110), Color3.fromRGB(255, 160, 0))
+			or ColorSequence.new(Color3.fromRGB(255, 255, 255), Color3.fromRGB(185, 225, 255))
+	end
 end
 
 function ProgressionService.Publish(player: Player)

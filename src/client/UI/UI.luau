@@ -1,6 +1,11 @@
 --[[
 	Client UI toolkit: one ScreenGui with layered containers, styled element constructors,
 	a menu manager (one menu open at a time) and responsive scaling for phone/desktop.
+
+	The look (see UIConfig): bold white Gotham text with black outlines, "studded 3D" surfaces
+	(gradient face over a darker lip, light inner edge, studs pattern, soft sheen), dark glassy
+	panels with black borders. Buttons spring on hover/press with a ripple; menus slide up over a
+	dimmed, blurred world. Everything animated respects Reduce VFX.
 ]]
 
 local Players = game:GetService("Players")
@@ -8,6 +13,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local GuiService = game:GetService("GuiService")
+local Lighting = game:GetService("Lighting")
 
 local UIConfig = require(ReplicatedStorage.Shared.Config.UIConfig)
 
@@ -16,8 +22,13 @@ local playerGui = player:WaitForChild("PlayerGui")
 
 local UI = {}
 UI.Colors = UIConfig.Colors
+UI.Variants = UIConfig.Variants
+UI.Images = UIConfig.Images
 UI.Font = UIConfig.Font
 UI.FontBody = UIConfig.FontBody
+
+local BLACK = Color3.new(0, 0, 0)
+local WHITE = Color3.new(1, 1, 1)
 
 local gui = Instance.new("ScreenGui")
 gui.Name = "MainUI"
@@ -44,12 +55,18 @@ for i, name in ipairs({ "World", "HUD", "Menus", "Overlay", "Notify", "Top" }) d
 	UI.Layers[name] = layer
 end
 
+local function reduceMotion(): boolean
+	return player:GetAttribute("Setting_ReduceVFX") == true
+end
+
+local function luminance(c: Color3): number
+	return 0.299 * c.R + 0.587 * c.G + 0.114 * c.B
+end
+
 -- ===== Studio-authored art (added in Studio, no code change needed) =====
 -- ReplicatedStorage.GameAssets.UIImages is a Configuration whose string attributes map a UI
--- key to an image ("rbxassetid://123"). Frames (Panel, Button, BarTrack, BarFill) are white
--- 9-slice images tinted in code; an optional "<Key>_Slice" Rect attribute overrides the
--- default slice centre (64, 64, 192, 192 on a 256 x 256 image). Missing keys fall back to the
--- flat built-in style, so the game always works without art.
+-- key to an image ("rbxassetid://123"): icons, the Glow blob, Rays, Logo... Missing keys fall
+-- back to text glyphs, so the game always works without art.
 local imageRegistry: Instance? = nil
 local function registry(): Instance?
 	if not imageRegistry then
@@ -74,8 +91,8 @@ local function sliceOf(key: string): Rect
 	return typeof(rect) == "Rect" and rect or Rect.new(64, 64, 192, 192)
 end
 
--- Put a tinted 9-slice skin behind a frame/button when the art exists. The element keeps its
--- BackgroundColor3/BackgroundTransparency API: the skin follows both.
+-- A tinted 9-slice skin from the registry (kept for older art; the core elements no longer
+-- need it).
 function UI.Skin(inst: GuiObject, key: string): ImageLabel?
 	local image = UI.Asset(key)
 	if not image then
@@ -92,47 +109,7 @@ function UI.Skin(inst: GuiObject, key: string): ImageLabel?
 		Size = UDim2.fromScale(1, 1),
 		ZIndex = 0,
 	}, inst) :: ImageLabel
-	inst:SetAttribute("SkinTransparency", inst.BackgroundTransparency)
 	inst.BackgroundTransparency = 1
-	for _, child in ipairs(inst:GetChildren()) do
-		if child:IsA("UIStroke") and child.ApplyStrokeMode == Enum.ApplyStrokeMode.Border then
-			child.Enabled = false
-		end
-	end
-	inst:GetPropertyChangedSignal("BackgroundColor3"):Connect(function()
-		skin.ImageColor3 = inst.BackgroundColor3
-	end)
-	inst:GetPropertyChangedSignal("BackgroundTransparency"):Connect(function()
-		if inst.BackgroundTransparency < 1 then
-			skin.ImageTransparency = inst.BackgroundTransparency
-			inst.BackgroundTransparency = 1
-		end
-	end)
-	-- A TextButton draws its own text UNDER its children, so the skin would hide it: show the
-	-- text on a child label above the skin instead, kept in sync with the button's properties.
-	if inst:IsA("TextButton") or inst:IsA("TextLabel") then
-		local b = inst :: any
-		local label = UI.New("TextLabel", { Name = "SkinText", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 2 }, inst) :: TextLabel
-		local function sync()
-			label.Text = b.Text
-			label.RichText = b.RichText
-			label.Font = b.Font
-			label.TextSize = b.TextSize
-			label.TextScaled = b.TextScaled
-			label.TextColor3 = b.TextColor3
-			label.TextWrapped = b.TextWrapped
-			label.TextXAlignment = b.TextXAlignment
-			label.TextYAlignment = b.TextYAlignment
-			if b.TextTransparency < 1 then
-				label.TextTransparency = b.TextTransparency
-				b.TextTransparency = 1
-			end
-		end
-		sync()
-		for _, prop in ipairs({ "Text", "Font", "TextSize", "TextScaled", "TextColor3", "TextTransparency", "TextWrapped", "TextXAlignment", "TextYAlignment" }) do
-			inst:GetPropertyChangedSignal(prop):Connect(sync)
-		end
-	end
 	return skin
 end
 
@@ -152,17 +129,8 @@ function UI.Icon(parent: Instance, key: string, fallbackText: string, labelProps
 	end
 	local props = labelProps and table.clone(labelProps) or {}
 	props.Text = fallbackText
-	local label = UI.New("TextLabel", {
-		BackgroundTransparency = 1,
-		Font = UIConfig.Font,
-		TextColor3 = UIConfig.Colors.Text,
-		TextSize = 18,
-		Size = UDim2.fromScale(1, 1),
-	}, parent) :: TextLabel
-	for k, v in pairs(props) do
-		(label :: any)[k] = v
-	end
-	return label
+	props.Size = props.Size or UDim2.fromScale(1, 1)
+	return UI.Label(props, parent)
 end
 
 function UI.IsTouch(): boolean
@@ -181,9 +149,9 @@ local function updateScale()
 	local viewport = camera.ViewportSize
 	local s
 	if UI.IsTouch() then
-		s = math.clamp(viewport.Y / 560, 0.75, 1.15)
+		s = math.clamp(viewport.Y / 560, 0.62, 1.15)
 	else
-		s = math.clamp(math.min(viewport.Y / 760, viewport.X / 1300), 0.7, 1.25)
+		s = math.clamp(math.min(viewport.Y / 760, viewport.X / 1300), 0.62, 1.25)
 	end
 	scale.Scale = s
 	UI.Scale = s
@@ -215,19 +183,56 @@ function UI.New(className: string, props: { [string]: any }?, parent: Instance?)
 	return inst
 end
 
+-- Studded surfaces built by this module, so colour/corner changes can restyle every layer.
+type Surface = { Base: Frame, Face: Frame, Gradient: UIGradient, Edge: UIStroke, Corners: { UICorner } }
+local surfaces: { [Instance]: Surface } = setmetatable({}, { __mode = "k" }) :: any
+
 function UI.Corner(inst: GuiObject, radius: number?): UICorner
-	return UI.New("UICorner", { CornerRadius = UDim.new(0, radius or UIConfig.Corner) }, inst) :: UICorner
+	local r = UDim.new(0, radius or UIConfig.Corner)
+	local surface = surfaces[inst]
+	if surface then
+		for _, c in ipairs(surface.Corners) do
+			c.CornerRadius = r
+		end
+		return surface.Corners[1]
+	end
+	local corner = inst:FindFirstChildOfClass("UICorner") or UI.New("UICorner", {}, inst)
+	;(corner :: UICorner).CornerRadius = r
+	return corner :: UICorner
 end
 
+-- Text gets an outline, frames a border. Calling it again on the same element restyles the
+-- existing stroke instead of stacking a second one; on a studded surface it styles the rim.
 function UI.Stroke(inst: GuiObject, color: Color3?, thickness: number?, transparency: number?): UIStroke
-	-- Text labels get a text outline; everything else gets a border.
-	local mode = inst:IsA("TextLabel") and Enum.ApplyStrokeMode.Contextual or Enum.ApplyStrokeMode.Border
-	return UI.New("UIStroke", {
-		Color = color or UI.Colors.Stroke,
-		Thickness = thickness or UIConfig.StrokeThickness,
-		Transparency = transparency or 0,
-		ApplyStrokeMode = mode,
-	}, inst) :: UIStroke
+	local target = surfaces[inst] and surfaces[inst].Base or inst
+	local isText = target:IsA("TextLabel") or target:IsA("TextBox")
+	local name = isText and "Outline" or "Border"
+	local stroke = target:FindFirstChild(name)
+	if not (stroke and stroke:IsA("UIStroke")) then
+		stroke = UI.New("UIStroke", {
+			Name = name,
+			ApplyStrokeMode = isText and Enum.ApplyStrokeMode.Contextual or Enum.ApplyStrokeMode.Border,
+			LineJoinMode = Enum.LineJoinMode.Round,
+		}, target)
+	end
+	local s = stroke :: UIStroke
+	s.Color = color or UI.Colors.Stroke
+	s.Thickness = thickness or UIConfig.StrokeThickness
+	s.Transparency = transparency or 0
+	if isText then
+		-- The outline fades with its text (tweened TextTransparency never leaves a ghost outline).
+		local label = target :: TextLabel
+		label:SetAttribute("OutlineBase", s.Transparency)
+		if not label:GetAttribute("OutlineBound") then
+			label:SetAttribute("OutlineBound", true)
+			label:GetPropertyChangedSignal("TextTransparency"):Connect(function()
+				local base = label:GetAttribute("OutlineBase") or 0
+				s.Transparency = base + (1 - base) * label.TextTransparency
+			end)
+		end
+		s.Transparency = s.Transparency + (1 - s.Transparency) * label.TextTransparency
+	end
+	return s
 end
 
 function UI.Padding(inst: GuiObject, all: number | { number }): UIPadding
@@ -278,14 +283,31 @@ function UI.Frame(props: { [string]: any }?, parent: Instance?): Frame
 	return UI.New("Frame", base, parent) :: Frame
 end
 
+-- A vertical colour gradient on any element (for text: the text itself).
+function UI.Gradient(inst: GuiObject, top: Color3, bottom: Color3, rotation: number?): UIGradient
+	local g = inst:FindFirstChild("Gradient") or UI.New("UIGradient", { Name = "Gradient" }, inst)
+	;(g :: UIGradient).Color = ColorSequence.new(top, bottom)
+	;(g :: UIGradient).Rotation = rotation or 90
+	return g :: UIGradient
+end
+
+-- Gradient text in the colour family of `color` (e.g. cash: lime -> green).
+function UI.TextGradient(label: TextLabel, color: Color3): UIGradient
+	local v = UI.VariantFor(color)
+	return UI.Gradient(label, v.Top:Lerp(WHITE, 0.25), v.Bottom)
+end
+
+-- Dark glassy panel: the given colour shaded top -> bottom, black border, rounded.
 function UI.Panel(props: { [string]: any }?, parent: Instance?): Frame
 	local frame = UI.Frame(props, parent)
 	UI.Corner(frame)
-	UI.Stroke(frame)
-	UI.Skin(frame, "Panel")
+	UI.Stroke(frame, BLACK, UIConfig.StrokeThickness)
+	UI.Gradient(frame, WHITE, Color3.fromRGB(150, 152, 168))
 	return frame
 end
 
+-- Display-font labels get a black outline when their text is light (the pack's text look).
+-- Pass NoOutline = true to skip it.
 function UI.Label(props: { [string]: any }?, parent: Instance?): TextLabel
 	local base = {
 		BackgroundTransparency = 1,
@@ -297,12 +319,20 @@ function UI.Label(props: { [string]: any }?, parent: Instance?): TextLabel
 		Size = UDim2.fromScale(1, 1),
 		BorderSizePixel = 0,
 	}
+	local noOutline = false
 	if props then
 		for k, v in pairs(props) do
-			base[k] = v
+			if k == "NoOutline" then
+				noOutline = v
+			else
+				base[k] = v
+			end
 		end
 	end
 	local label = UI.New("TextLabel", base, parent) :: TextLabel
+	if not noOutline and label.Font == UI.Font and luminance(label.TextColor3) > 0.45 then
+		UI.Stroke(label, BLACK, label.TextScaled and 2 or math.clamp(label.TextSize * 0.1, 1.5, 4), 0)
+	end
 	return label
 end
 
@@ -327,38 +357,188 @@ function UI.Tween(inst: Instance, props: { [string]: any }, time: number?, style
 	return tween
 end
 
+-- ===== Studded 3D surfaces =====
+
+local derivedVariants: { [string]: any } = {}
+local variantByColor: { [string]: any } = {}
+local function colorKey(c: Color3): string
+	return string.format("%d,%d,%d", math.floor(c.R * 255 + 0.5), math.floor(c.G * 255 + 0.5), math.floor(c.B * 255 + 0.5))
+end
+for _, v in pairs(UIConfig.Variants) do
+	for _, c in ipairs(v.Match or {}) do
+		variantByColor[colorKey(c)] = v
+	end
+end
+
+-- The studded look for a UI colour (unknown colours get a look derived from them).
+function UI.VariantFor(color: Color3)
+	local key = colorKey(color)
+	local v = variantByColor[key] or derivedVariants[key]
+	if not v then
+		v = { Top = color:Lerp(WHITE, 0.2), Bottom = color, Base = color:Lerp(BLACK, 0.5), Edge = color:Lerp(WHITE, 0.45) }
+		derivedVariants[key] = v
+	end
+	return v
+end
+
+local function applyVariant(s: Surface, v)
+	s.Base.BackgroundColor3 = v.Base
+	s.Gradient.Color = ColorSequence.new(v.Top, v.Bottom)
+	s.Edge.Color = v.Edge
+end
+
+-- A darker base that shows as a lip under a gradient face with a light inner edge, a studs
+-- pattern and a soft light-rays sheen. Layers sit first in `host`, so everything added later
+-- draws on top.
+local function buildSurface(host: GuiObject, radius: number, v, lip: number?): Surface
+	local z = host.ZIndex
+	local corners = {}
+	local function corner(parent: Instance)
+		local c = UI.New("UICorner", { CornerRadius = UDim.new(0, radius) }, parent) :: UICorner
+		table.insert(corners, c)
+	end
+	local base = UI.New("Frame", { Name = "Base", BorderSizePixel = 0, BackgroundColor3 = v.Base, Size = UDim2.fromScale(1, 1), ZIndex = z }, host) :: Frame
+	corner(base)
+	UI.New("UIStroke", { Name = "Border", Color = BLACK, Thickness = UIConfig.StrokeThickness, LineJoinMode = Enum.LineJoinMode.Round, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, base)
+	local face = UI.New("Frame", { Name = "Face", BorderSizePixel = 0, BackgroundColor3 = WHITE, Size = UDim2.new(1, 0, 1 - (lip or 0.1), 0), ZIndex = z }, host) :: Frame
+	corner(face)
+	local gradient = UI.New("UIGradient", { Name = "Gradient", Rotation = 90, Color = ColorSequence.new(v.Top, v.Bottom) }, face) :: UIGradient
+	local edge = UI.New("UIStroke", { Name = "Edge", Color = v.Edge, Thickness = 1.5, Transparency = 0.15, LineJoinMode = Enum.LineJoinMode.Round, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, face) :: UIStroke
+	local studs = UI.New("ImageLabel", { Name = "Studs", BackgroundTransparency = 1, Image = UIConfig.Images.Studs, ScaleType = Enum.ScaleType.Tile, TileSize = UDim2.fromOffset(26, 26), ImageTransparency = 0.62, Size = UDim2.fromScale(1, 1), ZIndex = z }, face)
+	corner(studs)
+	local rays = UI.New("ImageLabel", { Name = "Rays", BackgroundTransparency = 1, Image = UIConfig.Images.Rays, ScaleType = Enum.ScaleType.Stretch, ImageTransparency = 0.55, Size = UDim2.fromScale(1, 1), ZIndex = z }, face)
+	corner(rays)
+	local s: Surface = { Base = base, Face = face, Gradient = gradient, Edge = edge, Corners = corners }
+	surfaces[host] = s
+	return s
+end
+
+-- A non-interactive studded tile (header bars, badges, capsules, cards).
+function UI.Surface3D(props: { [string]: any }?, parent: Instance?, color: Color3?, radius: number?, lip: number?): Frame
+	local p = props and table.clone(props) or {}
+	p.BackgroundTransparency = 1
+	local frame = UI.Frame(p, parent)
+	buildSurface(frame, radius or UIConfig.Corner, UI.VariantFor(color or UI.Colors.Gold), lip)
+	return frame
+end
+
+function UI.SetSurfaceColor(inst: GuiObject, color: Color3)
+	local s = surfaces[inst]
+	if s then
+		applyVariant(s, UI.VariantFor(color))
+	end
+end
+
+-- A section title on a black band that fades out at both ends.
+function UI.SectionTitle(parent: Instance, text: string, props: { [string]: any }?): Frame
+	local p = { Size = UDim2.new(1, 0, 0, 32), BackgroundColor3 = BLACK, BackgroundTransparency = 0 }
+	for k, v in pairs(props or {}) do
+		p[k] = v
+	end
+	local band = UI.Frame(p, parent)
+	UI.New("UIGradient", {
+		Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.5, 0.35), NumberSequenceKeypoint.new(1, 1) }),
+	}, band)
+	UI.Label({ Text = text, TextSize = 20, Size = UDim2.new(1, -20, 1, 0), Position = UDim2.fromOffset(10, 0) }, band)
+	return band
+end
+
+-- ===== Blur behind menus =====
+local blur: BlurEffect? = nil
+local blurUsers = 0
+function UI.Blur(on: boolean)
+	blurUsers = math.max(0, blurUsers + (on and 1 or -1))
+	if not blur then
+		blur = Instance.new("BlurEffect")
+		blur.Name = "UIBlur"
+		blur.Size = 0
+		blur.Parent = Lighting
+	end
+	local target = (blurUsers > 0 and not reduceMotion()) and 14 or 0
+	UI.Tween(blur :: BlurEffect, { Size = target }, target > 0 and 0.25 or 0.2)
+end
+
+-- ===== Buttons =====
+
 local clickSoundHook: ((string) -> ())? = nil
 function UI.SetClickSound(fn: (string) -> ())
 	clickSoundHook = fn
 end
 
+-- A soft white circle that grows from the press point and fades (clipped to the face).
+function UI.Ripple(button: GuiObject, at: Vector3 | Vector2 | nil)
+	if reduceMotion() then
+		return
+	end
+	local host = (surfaces[button] and surfaces[button].Face) or button
+	local holder = host:FindFirstChild("RippleHolder")
+	if not holder then
+		holder = UI.New("Frame", { Name = "RippleHolder", BackgroundTransparency = 1, ClipsDescendants = true, Size = UDim2.fromScale(1, 1), ZIndex = host.ZIndex }, host)
+	end
+	local absPos, absSize = host.AbsolutePosition, host.AbsoluteSize
+	if absSize.X <= 0 or absSize.Y <= 0 then
+		return
+	end
+	local rx, ry = 0.5, 0.5
+	if at then
+		rx = math.clamp((at.X - absPos.X) / absSize.X, 0, 1)
+		ry = math.clamp((at.Y - absPos.Y) / absSize.Y, 0, 1)
+	end
+	local ripple = UI.New("Frame", { Name = "Ripple", AnchorPoint = Vector2.new(0.5, 0.5), BackgroundColor3 = WHITE, BackgroundTransparency = 0.5, BorderSizePixel = 0, Position = UDim2.fromScale(rx, ry), Size = UDim2.fromOffset(0, 0), ZIndex = host.ZIndex }, holder)
+	UI.New("UICorner", { CornerRadius = UDim.new(1, 0) }, ripple)
+	local d = math.max(absSize.X, absSize.Y) * 1.6 / UI.Scale
+	UI.Tween(ripple, { Size = UDim2.fromOffset(d, d), BackgroundTransparency = 1 }, 0.45).Completed:Once(function()
+		ripple:Destroy()
+	end)
+end
+
+-- Hover lifts, press squashes (with a ripple), release springs back; a small rotation kick
+-- and the click sound on activation.
 function UI.PressEffect(button: GuiButton)
-	local scaleObj = button:FindFirstChildOfClass("UIScale") or UI.New("UIScale", {}, button) :: UIScale
-	-- Hover: lift a little and light up a soft white edge.
-	local hoverGlow = UI.New("UIStroke", { Name = "HoverGlow", Color = Color3.new(1, 1, 1), Thickness = 3, Transparency = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, button) :: UIStroke
-	local hovering = false
+	local scaleObj = button:FindFirstChild("PressScale") or UI.New("UIScale", { Name = "PressScale" }, button)
+	local hovering, pressed = false, false
+	local function to(target: number, info: TweenInfo)
+		TweenService:Create(scaleObj, info, { Scale = target }):Play()
+	end
+	local hoverInfo = TweenInfo.new(0.18, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+	local leaveInfo = TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	local pressInfo = TweenInfo.new(0.08, Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
+	local releaseInfo = TweenInfo.new(0.4, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out)
 	button.MouseEnter:Connect(function()
 		hovering = true
-		if button.Active then
-			UI.Tween(scaleObj, { Scale = 1.05 }, 0.12)
-			UI.Tween(hoverGlow, { Transparency = 0.35 }, 0.12)
+		if not pressed and button.Active then
+			to(1.06, hoverInfo)
 		end
 	end)
-	button.MouseButton1Down:Connect(function()
-		UI.Tween(scaleObj, { Scale = 0.94 }, 0.08)
-	end)
-	local function release()
-		UI.Tween(scaleObj, { Scale = hovering and button.Active and 1.05 or 1 }, 0.14, Enum.EasingStyle.Back)
-	end
-	button.MouseButton1Up:Connect(release)
 	button.MouseLeave:Connect(function()
 		hovering = false
-		UI.Tween(scaleObj, { Scale = 1 }, 0.14, Enum.EasingStyle.Back)
-		UI.Tween(hoverGlow, { Transparency = 1 }, 0.15)
+		if not pressed then
+			to(1, leaveInfo)
+		end
+	end)
+	button.InputBegan:Connect(function(input)
+		if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) and button.Active then
+			pressed = true
+			to(0.9, pressInfo)
+			UI.Ripple(button, input.Position)
+		end
+	end)
+	button.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			pressed = false
+			to(hovering and button.Active and 1.06 or 1, releaseInfo)
+		end
 	end)
 	button.Activated:Connect(function()
 		if clickSoundHook then
 			clickSoundHook("UIClick")
+		end
+		if not reduceMotion() and button.Active then
+			local kick = TweenService:Create(button, TweenInfo.new(0.06, Enum.EasingStyle.Sine), { Rotation = math.random(0, 1) == 0 and -3 or 3 })
+			kick:Play()
+			kick.Completed:Once(function()
+				TweenService:Create(button, TweenInfo.new(0.3, Enum.EasingStyle.Elastic), { Rotation = 0 }):Play()
+			end)
 		end
 	end)
 end
@@ -367,17 +547,13 @@ end
 -- One RenderStepped loop drives every shine sweep and pulse. Everything is skipped while the
 -- player has Reduce VFX on.
 
-local function reduceMotion(): boolean
-	return player:GetAttribute("Setting_ReduceVFX") == true
-end
-
 type Shine = { Overlay: GuiObject, Gradient: UIGradient, Period: number, Phase: number, Owner: GuiObject }
 type Pulse = { Scale: UIScale, Amount: number, Speed: number, Phase: number, Owner: GuiObject }
 local shines: { Shine } = {}
 local pulses: { Pulse } = {}
 
 -- Soft coloured glow around an element: the "Glow" image (a soft white radial blob) when it
--- exists, else a soft stroke. Sits under the element's skin and content.
+-- exists, else a soft stroke. Sits under the element's content.
 function UI.Glow(inst: GuiObject, color: Color3, spread: number?, transparency: number?): GuiObject | UIStroke
 	local image = UI.Asset("Glow")
 	local s = spread or 20
@@ -402,26 +578,16 @@ function UI.Glow(inst: GuiObject, color: Color3, spread: number?, transparency: 
 	}, inst) :: UIStroke
 end
 
--- A light streak that sweeps across the element every `period` seconds, following its shape
--- (it reuses the element's 9-slice skin when there is one).
+-- A light streak that sweeps across the element (its studded face when it has one) every
+-- `period` seconds.
 function UI.Shine(inst: GuiObject, period: number?): GuiObject
-	local skin = inst:FindFirstChild("Skin")
-	local overlay: GuiObject
-	if skin and skin:IsA("ImageLabel") then
-		local clone = skin:Clone()
-		clone.Name = "Shine"
-		clone.ImageColor3 = Color3.new(1, 1, 1)
-		clone.ImageTransparency = 0.15
-		clone.ZIndex = 1
-		overlay = clone
-	else
-		overlay = UI.New("Frame", { Name = "Shine", BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0, Size = UDim2.fromScale(1, 1), ZIndex = 1 }) :: Frame
-		local corner = inst:FindFirstChildOfClass("UICorner")
-		if corner then
-			corner:Clone().Parent = overlay
-		end
+	local host = (surfaces[inst] and surfaces[inst].Face) or inst
+	local overlay = UI.New("Frame", { Name = "Shine", BackgroundColor3 = WHITE, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1), ZIndex = host.ZIndex }) :: Frame
+	local corner = host:FindFirstChildOfClass("UICorner")
+	if corner then
+		corner:Clone().Parent = overlay
 	end
-	overlay.Parent = inst
+	overlay.Parent = host
 	local gradient = UI.New("UIGradient", {
 		Rotation = 20,
 		Transparency = NumberSequence.new({
@@ -509,10 +675,22 @@ game:GetService("RunService").RenderStepped:Connect(function()
 	end
 end)
 
+local function restyleButton(button: TextButton)
+	local s = surfaces[button]
+	if s then
+		local disabled = button:GetAttribute("Disabled") == true
+		applyVariant(s, disabled and UIConfig.Variants.Locked or UI.VariantFor(button.BackgroundColor3))
+	end
+end
+
+-- A studded 3D button. Its API is a normal TextButton: set Text / TextSize / TextColor3 /
+-- BackgroundColor3 and the visuals follow (the text is drawn on the face by a child label).
 function UI.Button(props: { [string]: any }?, parent: Instance?): TextButton
 	local color = props and props.Color or UI.Colors.Green
+	local radius = props and props.Corner or UIConfig.CornerSmall
 	local base = {
 		BackgroundColor3 = color,
+		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
 		Font = UI.Font,
 		TextColor3 = UI.Colors.Text,
@@ -524,17 +702,48 @@ function UI.Button(props: { [string]: any }?, parent: Instance?): TextButton
 	}
 	if props then
 		for k, v in pairs(props) do
-			if k ~= "Color" and k ~= "Corner" then
+			if k ~= "Color" and k ~= "Corner" and k ~= "Shine" then
 				base[k] = v
 			end
 		end
 	end
-	base.Shine = nil
+	base.BackgroundTransparency = 1
 	local button = UI.New("TextButton", base, parent) :: TextButton
-	UI.Corner(button, props and props.Corner or UIConfig.CornerSmall)
-	local stroke = UI.Stroke(button, Color3.new(0, 0, 0), 2, 0.6)
-	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-	UI.Skin(button, props and props.Corner and props.Corner >= 40 and "ButtonRound" or "Button")
+	buildSurface(button, radius, UI.VariantFor(color))
+
+	local label = UI.New("TextLabel", { Name = "Label", BackgroundTransparency = 1, Size = UDim2.new(1, -10, 0.9, 0), Position = UDim2.fromOffset(5, 0), ZIndex = button.ZIndex }, button) :: TextLabel
+	local outline = UI.Stroke(label, BLACK, 2, 0)
+	local function sync()
+		label.Text = button.Text
+		label.RichText = button.RichText
+		label.Font = button.Font
+		label.TextSize = button.TextSize
+		label.TextScaled = button.TextScaled
+		label.TextColor3 = button.TextColor3
+		label.TextWrapped = button.TextWrapped
+		label.TextXAlignment = button.TextXAlignment
+		label.TextYAlignment = button.TextYAlignment
+		outline.Thickness = button.TextScaled and 2 or math.clamp(button.TextSize * 0.1, 1.5, 4)
+		outline.Enabled = luminance(button.TextColor3) > 0.45
+		if button.TextTransparency < 1 then
+			label.TextTransparency = button.TextTransparency
+			outline.Transparency = button.TextTransparency
+			button.TextTransparency = 1
+		end
+	end
+	sync()
+	for _, prop in ipairs({ "Text", "RichText", "Font", "TextSize", "TextScaled", "TextColor3", "TextTransparency", "TextWrapped", "TextXAlignment", "TextYAlignment" }) do
+		button:GetPropertyChangedSignal(prop):Connect(sync)
+	end
+	button:GetPropertyChangedSignal("BackgroundColor3"):Connect(function()
+		restyleButton(button)
+	end)
+	button:GetPropertyChangedSignal("BackgroundTransparency"):Connect(function()
+		if button.BackgroundTransparency < 1 then
+			button.BackgroundTransparency = 1
+		end
+	end)
+
 	UI.PressEffect(button)
 	-- Call-to-action buttons get a periodic light sweep.
 	if props and props.Shine then
@@ -546,32 +755,19 @@ end
 function UI.SetButtonEnabled(button: TextButton, enabled: boolean, disabledText: string?)
 	button.Active = enabled
 	button.AutoButtonColor = false
-	local skin = button:FindFirstChild("Skin")
-	if enabled then
-		if skin then
-			skin.ImageTransparency = 0
-		else
-			button.BackgroundTransparency = 0
-		end
-		button.TextTransparency = 0
-	else
-		if skin then
-			skin.ImageTransparency = 0.5
-		else
-			button.BackgroundTransparency = 0.5
-		end
-		button.TextTransparency = 0.3
-		if disabledText then
-			button.Text = disabledText
-		end
+	button:SetAttribute("Disabled", not enabled)
+	restyleButton(button)
+	button.TextTransparency = enabled and 0 or 0.3
+	if not enabled and disabledText then
+		button.Text = disabledText
 	end
 end
 
--- Toggle switch used by Settings.
+-- On/off switch used by Settings: a studded ON (green) / OFF (grey) button.
 function UI.Toggle(parent: Instance, labelText: string, initial: boolean, onChange: (boolean) -> ())
-	local row = UI.Frame({ BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 52) }, parent)
-	UI.Label({ Text = labelText, TextXAlignment = Enum.TextXAlignment.Left, Size = UDim2.new(1, -110, 1, 0), TextSize = 22 }, row)
-	local button = UI.Button({ Text = initial and "ON" or "OFF", Color = initial and UI.Colors.Green or UI.Colors.Locked, Size = UDim2.fromOffset(96, 44), Position = UDim2.new(1, -96, 0.5, -22) }, row)
+	local row = UI.Frame({ BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 56) }, parent)
+	UI.Label({ Text = labelText, TextXAlignment = Enum.TextXAlignment.Left, Size = UDim2.new(1, -120, 1, 0), TextSize = 22 }, row)
+	local button = UI.Button({ Text = initial and "ON" or "OFF", Color = initial and UI.Colors.Green or UI.Colors.Locked, Size = UDim2.fromOffset(104, 46), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, 0, 0.5, 0), TextSize = 22 }, row)
 	local state = initial
 	local function render()
 		button.Text = state and "ON" or "OFF"
@@ -596,12 +792,12 @@ local menus: { [string]: any } = {}
 local openMenu: string? = nil
 local menuListeners: { (string?, string?) -> () } = {}
 
--- Dimmed backdrop behind an open menu; clicking it closes the menu.
+-- Dimmed (and blurred) backdrop behind an open menu; clicking it closes the menu.
 local backdrop = UI.New("TextButton", {
 	Name = "MenuBackdrop",
 	Text = "",
 	AutoButtonColor = false,
-	BackgroundColor3 = Color3.new(0, 0, 0),
+	BackgroundColor3 = BLACK,
 	BackgroundTransparency = 1,
 	BorderSizePixel = 0,
 	Size = UDim2.fromScale(1, 1),
@@ -611,10 +807,16 @@ local backdrop = UI.New("TextButton", {
 backdrop.Activated:Connect(function()
 	UI.CloseAllMenus()
 end)
+local backdropOn = false
 local function setBackdrop(on: boolean)
+	if on == backdropOn then
+		return
+	end
+	backdropOn = on
+	UI.Blur(on)
 	if on then
 		backdrop.Visible = true
-		UI.Tween(backdrop, { BackgroundTransparency = 0.55 }, 0.2)
+		UI.Tween(backdrop, { BackgroundTransparency = 0.45 }, 0.2)
 	else
 		UI.Tween(backdrop, { BackgroundTransparency = 1 }, 0.15).Completed:Once(function()
 			if not openMenu then
@@ -638,28 +840,30 @@ function UI.GetOpenMenu(): string?
 	return openMenu
 end
 
-function UI.Menu(name: string, title: string, size: UDim2)
+-- A centred menu: dark glass body, a studded header in `accent` with the title and a red close
+-- button. Opens by sliding up and springing in over the blurred world; closes by dropping away.
+function UI.Menu(name: string, title: string, size: UDim2, accent: Color3?)
 	local frame = UI.Frame({
 		Name = name .. "Menu",
 		Size = size,
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.5),
 		Visible = false,
+		BackgroundColor3 = WHITE,
+		BackgroundTransparency = 0.04,
 	}, UI.Layers.Menus)
 	UI.Corner(frame, 16)
-	UI.Stroke(frame, UI.Colors.Stroke, 3)
-	UI.Skin(frame, "Panel")
-	UI.Glow(frame, UI.Colors.Cyan, 28, 0.55)
+	UI.Stroke(frame, BLACK, 3)
+	UI.Gradient(frame, Color3.fromRGB(48, 51, 70), Color3.fromRGB(16, 17, 26))
 	UI.New("UISizeConstraint", { MaxSize = Vector2.new(1100, 800), MinSize = Vector2.new(280, 200) }, frame)
+	local home = frame.Position
 
-	local titleBar = UI.Frame({ Size = UDim2.new(1, 0, 0, 56), BackgroundColor3 = UI.Colors.PanelDark }, frame)
-	UI.Corner(titleBar, 16)
-	UI.Frame({ Size = UDim2.new(1, 0, 0, 16), Position = UDim2.new(0, 0, 1, -16), BackgroundColor3 = UI.Colors.PanelDark }, titleBar)
-	UI.Label({ Text = title, TextSize = 28, Size = UDim2.new(1, -140, 1, 0), Position = UDim2.fromOffset(20, 0), TextXAlignment = Enum.TextXAlignment.Left }, titleBar)
-	local close = UI.Button({ Text = "", Color = UI.Colors.Red, Size = UDim2.fromOffset(48, 40), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -8, 0.5, 0), TextSize = 22 }, titleBar)
-	UI.Icon(close, "Icon_Close", "X", { TextSize = 22 })
+	local titleBar = UI.Surface3D({ Name = "Header", Size = UDim2.new(1, 0, 0, 62) }, frame, accent or UI.Colors.Gold, 16, 0.1)
+	UI.Label({ Text = title, TextSize = 30, Size = UDim2.new(1, -150, 0.9, 0), Position = UDim2.fromOffset(75, 0), TextWrapped = false, TextScaled = false }, titleBar)
+	local close = UI.Button({ Name = "Close", Text = "", Color = UI.Colors.Red, Size = UDim2.fromOffset(48, 46), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -10, 0.45, 0), TextSize = 22 }, titleBar)
+	UI.Icon(close, "Icon_Close", "X", { TextSize = 24 })
 
-	local content = UI.Frame({ Name = "Content", BackgroundTransparency = 1, Size = UDim2.new(1, -24, 1, -72), Position = UDim2.fromOffset(12, 64) }, frame)
+	local content = UI.Frame({ Name = "Content", BackgroundTransparency = 1, Size = UDim2.new(1, -24, 1, -86), Position = UDim2.fromOffset(12, 74) }, frame)
 
 	local menu = {}
 	menu.Frame = frame
@@ -668,6 +872,7 @@ function UI.Menu(name: string, title: string, size: UDim2)
 	local isOpen = false
 	local onOpen: (() -> ())? = nil
 	local onClose: (() -> ())? = nil
+	local menuScale = UI.New("UIScale", { Name = "MenuScale" }, frame) :: UIScale
 
 	function menu.Open()
 		if openMenu and openMenu ~= name and menus[openMenu] then
@@ -677,9 +882,15 @@ function UI.Menu(name: string, title: string, size: UDim2)
 		isOpen = true
 		frame.Visible = true
 		setBackdrop(true)
-		local uiScale = frame:FindFirstChildOfClass("UIScale") or UI.New("UIScale", { Scale = 0.85 }, frame)
-		uiScale.Scale = 0.8
-		UI.Tween(uiScale, { Scale = 1 }, 0.28, Enum.EasingStyle.Back)
+		if reduceMotion() then
+			frame.Position = home
+			menuScale.Scale = 1
+		else
+			frame.Position = home + UDim2.fromOffset(0, 70)
+			menuScale.Scale = 0.92
+			UI.Tween(frame, { Position = home }, 0.32, Enum.EasingStyle.Back)
+			UI.Tween(menuScale, { Scale = 1 }, 0.32, Enum.EasingStyle.Back)
+		end
 		if onOpen then
 			onOpen()
 		end
@@ -697,17 +908,14 @@ function UI.Menu(name: string, title: string, size: UDim2)
 			openMenu = nil
 			setBackdrop(false)
 		end
-		-- Quick shrink-out, then hide (unless it was reopened meanwhile).
-		local uiScale = frame:FindFirstChildOfClass("UIScale")
-		if uiScale then
-			UI.Tween(uiScale, { Scale = 0.9 }, 0.1).Completed:Once(function()
-				if not isOpen then
-					frame.Visible = false
-				end
-			end)
-		else
-			frame.Visible = false
-		end
+		-- Quick drop-away, then hide (unless it was reopened meanwhile).
+		UI.Tween(menuScale, { Scale = 0.94 }, 0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+		UI.Tween(frame, { Position = home + UDim2.fromOffset(0, 50) }, 0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.In).Completed:Once(function()
+			if not isOpen then
+				frame.Visible = false
+				frame.Position = home
+			end
+		end)
 		if onClose then
 			onClose()
 		end
@@ -771,17 +979,27 @@ function UI.Surface(adornee: BasePart, face: Enum.NormalId, pixelsPerStud: numbe
 	}, playerGui) :: SurfaceGui
 end
 
+-- A rounded dark track with a gradient fill carrying the pack's moving-stripe pattern.
 function UI.ProgressBar(parent: Instance, size: UDim2, position: UDim2?, color: Color3?)
-	local bg = UI.Frame({ Size = size, Position = position or UDim2.new(), BackgroundColor3 = UI.Colors.PanelDark }, parent)
+	local bg = UI.Frame({ Name = "ProgressBar", Size = size, Position = position or UDim2.new(), BackgroundColor3 = UI.Colors.PanelDark, BackgroundTransparency = 0.1 }, parent)
 	UI.Corner(bg, 999)
-	UI.Stroke(bg, UI.Colors.Stroke, 2)
-	UI.Skin(bg, "BarTrack")
-	local fill = UI.Frame({ Size = UDim2.fromScale(0, 1), BackgroundColor3 = color or UI.Colors.Green }, bg)
+	UI.Stroke(bg, BLACK, UIConfig.StrokeThickness)
+	local fill = UI.Frame({ Name = "Fill", Size = UDim2.fromScale(0, 1), BackgroundColor3 = WHITE }, bg)
 	UI.Corner(fill, 999)
-	UI.Skin(fill, "BarFill")
+	local gradient = UI.Gradient(fill, WHITE, WHITE)
+	local edge = UI.New("UIStroke", { Name = "Edge", Color = WHITE, Thickness = 1.5, Transparency = 0.45, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, fill) :: UIStroke
+	local stripes = UI.New("ImageLabel", { Name = "Stripes", BackgroundTransparency = 1, Image = UIConfig.Images.Stripes, ScaleType = Enum.ScaleType.Tile, TileSize = UDim2.fromOffset(40, 40), ImageTransparency = 0.72, Size = UDim2.fromScale(1, 1) }, fill)
+	UI.New("UICorner", { CornerRadius = UDim.new(1, 0) }, stripes)
+	local function setColor(c: Color3)
+		local v = UI.VariantFor(c)
+		gradient.Color = ColorSequence.new(v.Top, v.Bottom)
+		edge.Color = v.Edge
+	end
+	setColor(color or UI.Colors.Green)
 	return {
 		Frame = bg,
 		Fill = fill,
+		SetColor = setColor,
 		Set = function(fraction: number, animate: boolean?)
 			fraction = math.clamp(fraction, 0, 1)
 			if animate then
@@ -815,6 +1033,20 @@ end
 function UI.GetTopInset(): number
 	local inset = GuiService:GetGuiInset()
 	return inset.Y
+end
+
+-- Studio-only test hook: fire MainUI.DevOpenMenu with a menu name to open it ("" closes).
+if game:GetService("RunService"):IsStudio() then
+	local hook = Instance.new("BindableEvent")
+	hook.Name = "DevOpenMenu"
+	hook.Parent = gui
+	hook.Event:Connect(function(name: string)
+		if menus[name] then
+			menus[name].Open()
+		else
+			UI.CloseAllMenus()
+		end
+	end)
 end
 
 return UI

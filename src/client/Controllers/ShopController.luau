@@ -1,3 +1,9 @@
+--[[
+	Shop: three tabs (Permanent game passes, timed Boosts, instant Help). Every card shows what
+	kind of purchase it is (FOREVER / 10 MIN BOOST / INSTANT), the price on its buy button and
+	OWNED for passes already bought. Purchases go through the server (RequestPurchase).
+]]
+
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -15,11 +21,19 @@ local ShopController = {}
 local menu
 local tabButtons: { [string]: TextButton } = {}
 local listFrame: ScrollingFrame
+local tabHint: TextLabel
 local currentTab = "Permanent"
 local products = nil
 local fetching = false
 
+local ROBUX = utf8.char(0xE002) -- the Robux icon glyph
+
 local TabColors = { Permanent = UI.Colors.Gold, Boosts = UI.Colors.Green, Help = UI.Colors.Cyan }
+local TabInfo = {
+	Permanent = { Ribbon = "FOREVER", Hint = "Permanent perks: buy once, keep them forever." },
+	Boosts = { Ribbon = "10 MIN BOOST", Hint = "Timed boosts: they stack and carry between rooms." },
+	Help = { Ribbon = "INSTANT", Hint = "Stuck? Get a clue right now." },
+}
 
 local function isDev(): boolean
 	return serverInfo:GetAttribute("IsStudio") == true and serverInfo:GetAttribute("DevelopmentMode") == true
@@ -27,29 +41,35 @@ end
 
 local function buildCard(info, order: number)
 	local owned = info.Kind == "Gamepass" and player:GetAttribute("Pass_" .. info.Key) == true
-	local card = UI.Panel({ Size = UDim2.new(1, -12, 0, 104), BackgroundColor3 = UI.Colors.PanelLight, LayoutOrder = order }, listFrame)
-	local icon = UI.Frame({ Size = UDim2.fromOffset(64, 64), Position = UDim2.fromOffset(14, 20), BackgroundColor3 = TabColors[info.Tab] or UI.Colors.Cyan }, card)
-	UI.Corner(icon, 12)
-	UI.Icon(icon, "Icon_Prod_" .. info.Key, info.Icon or "?", { TextSize = 20, TextColor3 = UI.Colors.PanelDark })
-	UI.Label({ Text = info.Name, TextSize = 22, Size = UDim2.new(1, -260, 0, 30), Position = UDim2.fromOffset(92, 12), TextXAlignment = Enum.TextXAlignment.Left }, card)
-	UI.Label({ Text = info.Description, TextSize = 15, Font = UI.FontBody, TextColor3 = UI.Colors.TextDim, Size = UDim2.new(1, -260, 0, 52), Position = UDim2.fromOffset(92, 42), TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top }, card)
+	local accent = TabColors[info.Tab] or UI.Colors.Cyan
+	local card = UI.Panel({ Size = UDim2.new(1, -14, 0, 112), BackgroundColor3 = UI.Colors.PanelLight, LayoutOrder = order }, listFrame)
+	UI.Stroke(card, owned and UI.Colors.Green or UI.Colors.Stroke, 2.5)
+
+	local icon = UI.Surface3D({ Size = UDim2.fromOffset(76, 76), Position = UDim2.fromOffset(14, 16) }, card, accent, 14, 0.1)
+	local glyph = UI.Icon(icon, "Icon_Prod_" .. info.Key, info.Icon or "?", { TextSize = 22 })
+	glyph.Size = UDim2.fromScale(0.8, 0.72)
+	glyph.AnchorPoint = Vector2.new(0.5, 0.5)
+	glyph.Position = UDim2.fromScale(0.5, 0.45)
+
+	UI.Label({ Text = info.Name, TextSize = 21, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd, Size = UDim2.new(1, -290, 0, 26), Position = UDim2.fromOffset(104, 12), TextXAlignment = Enum.TextXAlignment.Left }, card)
+	local ribbon = UI.Surface3D({ Size = UDim2.fromOffset(116, 22), Position = UDim2.fromOffset(104, 40) }, card, owned and UI.Colors.Green or accent, 11, 0.14)
+	UI.Label({ Text = owned and "OWNED" or TabInfo[info.Tab].Ribbon, TextSize = 12, TextWrapped = false, Size = UDim2.new(1, -8, 0.86, 0), Position = UDim2.fromOffset(4, 0) }, ribbon)
+	UI.Label({ Text = info.Description, TextSize = 13, Font = UI.FontBody, TextColor3 = UI.Colors.TextDim, Size = UDim2.new(1, -290, 0, 40), Position = UDim2.fromOffset(104, 66), TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top }, card)
 
 	local priceText
 	if info.Price then
-		priceText = string.format("%d R$", info.Price)
+		priceText = string.format("%s %d", ROBUX, info.Price)
 	elseif info.Configured then
-		priceText = "R$ --"
+		priceText = ROBUX .. " --"
 	else
-		priceText = string.format("~%d R$", info.SuggestedPrice)
+		priceText = string.format("~%s %d", ROBUX, info.SuggestedPrice)
 	end
-	UI.Label({ Text = priceText, TextSize = 22, TextColor3 = UI.Colors.Green, Size = UDim2.fromOffset(140, 30), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -14, 0, 12), TextXAlignment = Enum.TextXAlignment.Right }, card)
+	local button = UI.Button({ Text = owned and "OWNED ✓" or priceText, Color = UI.Colors.Green, Size = UDim2.fromOffset(160, 54), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -14, 0.5, 0), TextSize = 22, Shine = not owned and (3 + order * 0.5) or nil }, card)
 	if not info.Configured then
-		UI.Label({ Text = isDev() and "PRODUCT ID NOT SET (dev mock)" or "COMING SOON", TextSize = 12, Font = UI.FontBody, TextColor3 = UI.Colors.Orange, Size = UDim2.fromOffset(200, 16), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -14, 0, 40), TextXAlignment = Enum.TextXAlignment.Right }, card)
+		UI.Label({ Text = isDev() and "ID NOT SET (dev mock)" or "COMING SOON", TextSize = 11, Font = UI.FontBody, TextColor3 = UI.Colors.Orange, Size = UDim2.fromOffset(160, 14), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -14, 1, -18), TextXAlignment = Enum.TextXAlignment.Center }, card)
 	end
-
-	local button = UI.Button({ Text = owned and "OWNED" or "BUY", Color = owned and UI.Colors.Locked or UI.Colors.Green, Size = UDim2.fromOffset(130, 42), AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -14, 1, -12), TextSize = 20, Shine = not owned and (3 + order * 0.5) or nil }, card)
 	if owned then
-		UI.SetButtonEnabled(button, false, "OWNED")
+		UI.SetButtonEnabled(button, false, "OWNED ✓")
 	elseif not info.Configured and not isDev() then
 		UI.SetButtonEnabled(button, false, "SOON")
 	else
@@ -73,6 +93,7 @@ local function render()
 	for name, b in pairs(tabButtons) do
 		b.BackgroundColor3 = name == currentTab and TabColors[name] or UI.Colors.PanelLight
 	end
+	tabHint.Text = TabInfo[currentTab].Hint
 	if not products then
 		UI.Label({ Text = "Loading...", TextSize = 20, Size = UDim2.new(1, 0, 0, 60) }, listFrame)
 		return
@@ -104,29 +125,32 @@ local function fetch()
 end
 
 function ShopController.Init()
-	menu = UI.Menu("Shop", "SHOP", UDim2.fromOffset(620, 540))
+	menu = UI.Menu("Shop", "SHOP", UDim2.fromOffset(640, 560), UI.Colors.Purple)
 
-	local tabs = UI.Frame({ BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 44) }, menu.Content)
-	UI.ListLayout(tabs, Enum.FillDirection.Horizontal, 8, Enum.HorizontalAlignment.Center)
+	local tabs = UI.Frame({ BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 46) }, menu.Content)
+	UI.ListLayout(tabs, Enum.FillDirection.Horizontal, 10, Enum.HorizontalAlignment.Center)
 	for i, name in ipairs({ "Permanent", "Boosts", "Help" }) do
-		local b = UI.Button({ Text = string.upper(name), Color = UI.Colors.PanelLight, Size = UDim2.fromOffset(150, 40), TextSize = 18, LayoutOrder = i }, tabs)
+		local b = UI.Button({ Text = string.upper(name), Color = UI.Colors.PanelLight, Size = UDim2.fromOffset(160, 44), TextSize = 18, LayoutOrder = i }, tabs)
 		tabButtons[name] = b
 		b.Activated:Connect(function()
 			currentTab = name
 			render()
 		end)
 	end
+	tabHint = UI.Label({ Text = "", TextSize = 14, Font = UI.FontBody, TextColor3 = UI.Colors.TextDim, Size = UDim2.new(1, 0, 0, 18), Position = UDim2.fromOffset(0, 52) }, menu.Content)
 
 	listFrame = UI.New("ScrollingFrame", {
 		BackgroundTransparency = 1,
-		Size = UDim2.new(1, 0, 1, -56),
-		Position = UDim2.fromOffset(0, 52),
+		Size = UDim2.new(1, 0, 1, -80),
+		Position = UDim2.fromOffset(0, 78),
 		CanvasSize = UDim2.new(),
 		AutomaticCanvasSize = Enum.AutomaticSize.Y,
 		ScrollBarThickness = 6,
+		ScrollBarImageColor3 = UI.Colors.TextDim,
 		BorderSizePixel = 0,
 	}, menu.Content) :: ScrollingFrame
 	UI.ListLayout(listFrame, Enum.FillDirection.Vertical, 10, Enum.HorizontalAlignment.Center)
+	UI.Padding(listFrame, { 0, 0, 4, 8 })
 
 	menu.OnOpen(function()
 		render()

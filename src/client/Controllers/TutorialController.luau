@@ -21,7 +21,7 @@ local stepLabel: TextLabel
 local textLabel: TextLabel
 local step = 0
 local active = false
-local highlightStroke: UIStroke? = nil
+local highlight: Instance? = nil
 local TOTAL = 6
 
 local function platformText(pc: string, touch: string, pad: string): string
@@ -49,9 +49,9 @@ local function stepText(n: number): string
 end
 
 local function clearHighlight()
-	if highlightStroke then
-		highlightStroke:Destroy()
-		highlightStroke = nil
+	if highlight then
+		highlight:Destroy()
+		highlight = nil
 	end
 end
 
@@ -68,7 +68,8 @@ local function showStep(n: number)
 	UI.Tween(s, { Scale = 1 }, 0.25, Enum.EasingStyle.Back)
 	clearHighlight()
 	if n == 5 then
-		highlightStroke = UI.Stroke(Controllers.HUDController.Buttons.Upgrades, UI.Colors.Gold, 4)
+		-- A separate glow (not the button's own border, which must survive the highlight).
+		highlight = UI.Glow(Controllers.HUDController.Buttons.Upgrades, UI.Colors.Gold, 18, 0.1)
 		task.delay(12, function()
 			showStep(6)
 		end)
@@ -88,10 +89,12 @@ function TutorialController.Finish()
 end
 
 function TutorialController.Init()
-	card = UI.Panel({ Size = UDim2.fromOffset(400, 84), AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 12, 1, -20), Visible = false, BackgroundTransparency = 0.05 }, UI.Layers.Overlay)
-	UI.Stroke(card, UI.Colors.Gold, 2)
-	stepLabel = UI.Label({ Text = "TUTORIAL", TextSize = 14, TextColor3 = UI.Colors.Gold, Size = UDim2.new(1, -20, 0, 20), Position = UDim2.fromOffset(10, 6), TextXAlignment = Enum.TextXAlignment.Left }, card)
-	textLabel = UI.Label({ Text = "", TextSize = 18, Font = UI.FontBody, Size = UDim2.new(1, -20, 0, 50), Position = UDim2.fromOffset(10, 28), TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top }, card)
+	card = UI.Panel({ Size = UDim2.fromOffset(420, 92), AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 12, 1, -20), Visible = false, BackgroundTransparency = 0.05 }, UI.Layers.Overlay)
+	UI.Stroke(card, UI.Colors.Gold, 2.5)
+	-- A studded gold tab sticking out of the card's top edge.
+	local tab = UI.Surface3D({ Size = UDim2.fromOffset(156, 28), Position = UDim2.fromOffset(12, -14) }, card, UI.Colors.Gold, 12, 0.14)
+	stepLabel = UI.Label({ Text = "TUTORIAL", TextSize = 13, TextWrapped = false, Size = UDim2.new(1, -8, 0.86, 0), Position = UDim2.fromOffset(4, 0) }, tab)
+	textLabel = UI.Label({ Text = "", TextSize = 17, Font = UI.FontBody, Size = UDim2.new(1, -24, 0, 62), Position = UDim2.fromOffset(12, 22), TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top }, card)
 
 	Remotes.Event("MatchUpdate").OnClientEvent:Connect(function(eventName)
 		if eventName == "Started" and player:GetAttribute("TutorialCompleted") ~= true then

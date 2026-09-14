@@ -374,11 +374,14 @@ local function fitText(label: TextLabel, maxSize: number): TextLabel
 	return label
 end
 
+-- Leaderboard kinds: which LeaderboardData attribute feeds the board, its two-colour title, and
+-- whether lower values rank higher (times).
 local BoardKinds = {
-	TopFinders = { Title = "TOP OBJECT FINDERS", Color = UI.Colors.Gold, Attr = "TopFinders" },
-	Fastest = { Title = "FASTEST ROOM #001", Color = UI.Colors.Cyan, Attr = "Fastest", Time = true },
-	MostCleaned = { Title = "MOST CLEANED", Color = UI.Colors.Green, Attr = "MostCleaned" },
+	TopFinders = { Title = '<font color="#FFFFFF">TOP</font> <font color="#FFD200">FINDERS</font>', Attr = "TopFinders" },
+	Fastest = { Title = '<font color="#FFFFFF">FASTEST</font> <font color="#3CD2FF">ROOM #001</font>', Attr = "Fastest", Time = true },
+	MostCleaned = { Title = '<font color="#FFFFFF">MOST</font> <font color="#7DFF28">CLEANED</font>', Attr = "MostCleaned" },
 }
+local BOARD_ROWS = 10
 
 local function attachCollectionBoard(part: BasePart)
 	local sg = UI.Surface(part, (part:GetAttribute("Face") and Enum.NormalId[part:GetAttribute("Face")]) or Enum.NormalId.Front, 30)
@@ -415,6 +418,7 @@ local function attachShopStand(part: BasePart)
 	local prompt = Instance.new("ProximityPrompt")
 	prompt.ActionText = "Open Shop"
 	prompt.ObjectText = "Shop"
+	prompt.Style = Enum.ProximityPromptStyle.Custom
 	prompt.RequiresLineOfSight = false
 	prompt.MaxActivationDistance = 12
 	prompt.Parent = part
@@ -423,45 +427,165 @@ local function attachShopStand(part: BasePart)
 	end)
 end
 
-local function attachLeaderboard(part: BasePart)
-	local def = BoardKinds[part:GetAttribute("Kind") or "TopFinders"] or BoardKinds.TopFinders
-	local sg = UI.Surface(part, (part:GetAttribute("Face") and Enum.NormalId[part:GetAttribute("Face")]) or Enum.NormalId.Front, 30)
-	local panel = UI.Frame({ BackgroundTransparency = 1 }, sg)
-	fitText(UI.Label({ Text = def.Title, TextScaled = true, TextColor3 = def.Color, Size = UDim2.new(0.92, 0, 0.11, 0), Position = UDim2.fromScale(0.04, 0.02) }, panel), 56)
-	local list = UI.Frame({ BackgroundTransparency = 1, Size = UDim2.new(1, -20, 0.84, 0), Position = UDim2.new(0, 10, 0.15, 0) }, panel)
-	UI.ListLayout(list, Enum.FillDirection.Vertical, 4)
+-- A scaled title line in the leaderboard asset's text style (heavy white, black outline).
+local function boardText(parent: Instance, richText: string, font: Font?, order: number, height: number): TextLabel
+	local label = Instance.new("TextLabel")
+	label.Name = "BoardText"
+	label.BackgroundTransparency = 1
+	label.RichText = true
+	label.Text = richText
+	label.TextScaled = true
+	label.TextColor3 = Color3.new(1, 1, 1)
+	if font then
+		label.FontFace = font
+	else
+		label.Font = UI.Font
+	end
+	label.Size = UDim2.fromScale(0.95, height)
+	label.LayoutOrder = order
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = Color3.new(0, 0, 0)
+	stroke.Thickness = 0.1
+	pcall(function()
+		stroke.StrokeSizingMode = Enum.StrokeSizingMode.ScaledSize
+	end)
+	stroke.Parent = label
+	label.Parent = parent
+	return label
+end
 
-	local data = ReplicatedStorage:WaitForChild("LeaderboardData")
-	local attrName = def.Attr
-	local function refresh()
-		for _, c in ipairs(list:GetChildren()) do
-			if c:IsA("Frame") then
-				c:Destroy()
-			end
-		end
-		local ok, entries = pcall(function()
-			return HttpService:JSONDecode(data:GetAttribute(attrName) or "[]")
-		end)
-		if not ok or type(entries) ~= "table" then
-			return
-		end
-		if #entries == 0 then
-			local row = UI.Frame({ Size = UDim2.new(1, 0, 0.08, 0), BackgroundTransparency = 1 }, list)
-			fitText(UI.Label({ Text = "No entries yet - be the first!", TextScaled = true, TextColor3 = UI.Colors.TextDim }, row), 24)
-		end
-		for i, e in ipairs(entries) do
-			if i > 10 then
-				break
-			end
-			local row = UI.Frame({ Size = UDim2.new(1, 0, 0.085, 0), BackgroundColor3 = i == 1 and UI.Colors.GoldDark or UI.Colors.PanelLight, LayoutOrder = i }, list)
-			UI.Corner(row, 6)
-			fitText(UI.Label({ Text = string.format("%d. %s", i, e.Name or "?"), TextScaled = true, Font = UI.FontBody, Size = UDim2.new(0.66, -10, 0.8, 0), Position = UDim2.new(0, 10, 0.1, 0), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = e.UserId == player.UserId and UI.Colors.Gold or UI.Colors.Text }, row), 24)
-			local valueText = def.Time and FormatUtil.Time(e.Value or 0) or tostring(e.Value or 0)
-			fitText(UI.Label({ Text = valueText, TextScaled = true, Font = UI.FontBody, Size = UDim2.new(0.34, -10, 0.8, 0), Position = UDim2.new(0.66, 0, 0.1, 0), TextXAlignment = Enum.TextXAlignment.Right, TextColor3 = UI.Colors.TextDim }, row), 24)
+-- One ranked row from the asset's row design (rank 1-3 have their own looks, 4+ share one).
+local function boardRow(style: Frame, rank: number, entry, def): Frame
+	local row = style:Clone()
+	row.Name = string.format("Rank%02d", rank)
+	row.LayoutOrder = rank
+	row.Visible = true
+	local icon = row:FindFirstChild("PlayerIcon")
+	if icon and icon:IsA("ImageLabel") then
+		icon.Image = string.format("rbxthumb://type=AvatarHeadShot&id=%d&w=150&h=150", tonumber(entry.UserId) or 0)
+	end
+	local name = row:FindFirstChild("PlayerName")
+	if name and name:IsA("TextLabel") then
+		name.Text = "@" .. tostring(entry.Name or "?")
+	end
+	local place = row:FindFirstChild("Place")
+	if place and place:IsA("TextLabel") then
+		place.Text = "#" .. rank
+	end
+	local amount = row:FindFirstChild("Amount")
+	if amount and amount:IsA("TextLabel") then
+		amount.Text = def.Time and FormatUtil.Time(entry.Value or 0) or FormatUtil.Compact(entry.Value or 0)
+	end
+	if entry.UserId == player.UserId then
+		local stroke = row:FindFirstChildOfClass("UIStroke")
+		if stroke then
+			stroke.Color = UI.Colors.Gold
+			stroke.Thickness *= 2
 		end
 	end
-	data:GetAttributeChangedSignal(attrName):Connect(refresh)
-	refresh()
+	return row
+end
+
+-- The lobby leaderboards use the imported leaderboard asset (GameAssets.LeaderboardTemplate):
+-- its #1 gold / #2 silver / #3 bronze / plain rows with avatar, name and amount. Data: the
+-- global OrderedDataStore tops LeaderboardService publishes on ReplicatedStorage.LeaderboardData.
+local function attachLeaderboard(part: BasePart)
+	local def = BoardKinds[part:GetAttribute("Kind") or "TopFinders"] or BoardKinds.TopFinders
+	local assets = ReplicatedStorage:FindFirstChild("GameAssets")
+	local template = assets and assets:FindFirstChild("LeaderboardTemplate")
+	if not (template and template:IsA("SurfaceGui")) then
+		warn("[LobbyController] ReplicatedStorage.GameAssets.LeaderboardTemplate is missing - leaderboards not shown")
+		return
+	end
+	local sg = template:Clone() :: SurfaceGui
+	local list = sg:FindFirstChildWhichIsA("ScrollingFrame") or sg:FindFirstChildWhichIsA("Frame")
+	if not list then
+		return
+	end
+	-- Keep one of each row design as a style, drop the asset's placeholder rows.
+	local styles: { Frame } = {}
+	for i = 1, 4 do
+		local style = list:FindFirstChild("Top" .. i)
+		if style then
+			styles[i] = style :: Frame
+			style.Parent = nil
+		end
+	end
+	for _, c in ipairs(list:GetChildren()) do
+		if c:IsA("Frame") and string.match(c.Name, "^Top%d") then
+			c:Destroy()
+		end
+	end
+	for i = 2, 4 do
+		styles[i] = styles[i] or styles[i - 1]
+	end
+	if not styles[1] then
+		return
+	end
+	local layout = list:FindFirstChildOfClass("UIListLayout")
+	if layout then
+		layout.SortOrder = Enum.SortOrder.LayoutOrder
+	end
+	local spacer = list:FindFirstChild("Empty")
+	if spacer and spacer:IsA("GuiObject") then
+		spacer.LayoutOrder = -2
+	end
+	sg.Name = "Leaderboard_" .. def.Attr
+	sg.Adornee = part
+	sg.Face = (part:GetAttribute("Face") and Enum.NormalId[part:GetAttribute("Face")]) or Enum.NormalId.Front
+	sg.ResetOnSpawn = false
+	sg.Enabled = true
+	local nameLabel = styles[1]:FindFirstChild("PlayerName")
+	local font = nameLabel and nameLabel:IsA("TextLabel") and nameLabel.FontFace or nil
+	boardText(list, def.Title, font, -1, 0.12)
+	sg.Parent = player:WaitForChild("PlayerGui")
+
+	local data = ReplicatedStorage:WaitForChild("LeaderboardData")
+	local rows: { Instance } = {}
+	local status: TextLabel? = nil
+	local function setStatus(text: string?)
+		if status then
+			status:Destroy()
+			status = nil
+		end
+		if text then
+			status = boardText(list, '<font color="#C8CDE0">' .. text .. "</font>", font, 1, 0.07)
+		end
+	end
+	local function render()
+		for _, r in ipairs(rows) do
+			r:Destroy()
+		end
+		table.clear(rows)
+		local raw = data:GetAttribute(def.Attr)
+		local ok, entries = pcall(HttpService.JSONDecode, HttpService, raw or "")
+		if raw == nil or not ok or type(entries) ~= "table" then
+			setStatus("Loading...")
+			return
+		end
+		-- One row per player, best first (fastest = lowest time); nobody ranks with nothing done.
+		local seen, clean = {}, {}
+		for _, e in ipairs(entries) do
+			if type(e) == "table" and e.UserId and not seen[e.UserId] and (def.Time or (tonumber(e.Value) or 0) > 0) then
+				seen[e.UserId] = true
+				table.insert(clean, e)
+			end
+		end
+		table.sort(clean, function(a, b)
+			if def.Time then
+				return (a.Value or 0) < (b.Value or 0)
+			end
+			return (a.Value or 0) > (b.Value or 0)
+		end)
+		setStatus(#clean == 0 and "No entries yet - be the first!" or nil)
+		for rank = 1, math.min(#clean, BOARD_ROWS) do
+			local row = boardRow(styles[math.min(rank, 4)], rank, clean[rank], def)
+			row.Parent = list
+			table.insert(rows, row)
+		end
+	end
+	data:GetAttributeChangedSignal(def.Attr):Connect(render)
+	render()
 end
 
 local function attachFutureDoor(part: BasePart)
