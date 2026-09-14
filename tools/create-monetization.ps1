@@ -23,9 +23,15 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$apiKey = $env:ROBLOX_API_KEY
+# The key is read from the environment (this window, or saved for the Windows user) and is
+# never printed.
+$apiKey = @(
+    $env:ROBLOX_OPEN_CLOUD_API_KEY,
+    [Environment]::GetEnvironmentVariable("ROBLOX_OPEN_CLOUD_API_KEY", "User"),
+    $env:ROBLOX_API_KEY
+) | Where-Object { $_ } | Select-Object -First 1
 if (-not $apiKey -and -not $DryRun) {
-    throw 'Set $env:ROBLOX_API_KEY first (see the top of this script).'
+    throw 'Set ROBLOX_OPEN_CLOUD_API_KEY first (see the top of this script).'
 }
 
 $root = Split-Path -Parent $PSScriptRoot

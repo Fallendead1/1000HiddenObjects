@@ -18,19 +18,19 @@ export type ProductDef = {
 
 local MonetizationConfig = {
 	Gamepasses = {
-		DoubleCash = 0, -- suggested 149 R$
-		StrongerHands = 0, -- suggested 149 R$
-		FastHands = 0, -- suggested 99 R$
-		ThrowBoost = 0, -- suggested 99 R$
-		VIP = 0, -- suggested 299 R$
+		DoubleCash = 1976037788, -- suggested 149 R$
+		StrongerHands = 1979595471, -- suggested 149 R$
+		FastHands = 1976289800, -- suggested 99 R$
+		ThrowBoost = 1976487827, -- suggested 99 R$
+		VIP = 1977231673, -- suggested 299 R$
 	},
 
 	Products = {
-		QuickHint = 0, -- suggested 19 R$
-		SuperHint = 0, -- suggested 39 R$
-		Strength10Min = 0, -- suggested 49 R$
-		Cash10Min = 0, -- suggested 29 R$
-		TeamMuscleBoost = 0, -- suggested 129 R$
+		QuickHint = 3712853724, -- suggested 19 R$
+		SuperHint = 3712853727, -- suggested 39 R$
+		Strength10Min = 3712853730, -- suggested 49 R$
+		Cash10Min = 3712853728, -- suggested 29 R$
+		TeamMuscleBoost = 3712853734, -- suggested 129 R$
 	},
 
 	Badges = {
