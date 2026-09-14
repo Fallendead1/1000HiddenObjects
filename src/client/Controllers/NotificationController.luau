@@ -14,6 +14,7 @@ local KindColors = {
 	Error = UI.Colors.Red,
 	Premium = UI.Colors.Purple,
 }
+local KindGlyphs = { Info = "i", Success = "✓", Warning = "!", Error = "✕", Premium = "★" }
 
 function NotificationController.Init()
 	container = UI.Frame({
@@ -36,19 +37,25 @@ function NotificationController.Show(kind: string, text: string, duration: numbe
 	UI.Corner(toast, 10)
 	UI.Stroke(toast, color, 2)
 	UI.Frame({ Size = UDim2.new(0, 6, 1, 0), BackgroundColor3 = color }, toast)
+	local badge = UI.Frame({ Size = UDim2.fromOffset(28, 28), Position = UDim2.fromOffset(14, 8), BackgroundColor3 = color }, toast)
+	UI.Corner(badge, 14)
+	UI.Icon(badge, "Icon_Notify_" .. kind, KindGlyphs[kind] or "i", { TextSize = 16, TextColor3 = UI.Colors.PanelDark })
 	local label = UI.Label({
 		Text = text,
 		TextSize = 18,
 		Font = UI.FontBody,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextYAlignment = Enum.TextYAlignment.Top,
-		Size = UDim2.new(1, -24, 0, 0),
+		Size = UDim2.new(1, -58, 0, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
-		Position = UDim2.fromOffset(16, 0),
+		Position = UDim2.fromOffset(50, 0),
 	}, toast)
 	UI.Padding(label, { 0, 8, 10, 10 })
 	toast.Position = UDim2.fromOffset(60, 0)
 	UI.Tween(toast, { Position = UDim2.fromOffset(0, 0) }, 0.25, Enum.EasingStyle.Back)
+	UI.PopIn(badge, 0.3, 0.4)
+	local glow = UI.Glow(toast, color, 12, 0.1)
+	UI.Tween(glow, { [glow:IsA("UIStroke") and "Transparency" or "ImageTransparency"] = 0.85 }, 0.8)
 
 	if kind ~= "Info" then
 		Controllers.AudioController.Play("Notification")

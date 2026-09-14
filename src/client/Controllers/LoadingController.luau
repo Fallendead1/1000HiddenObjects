@@ -22,6 +22,7 @@ local bigLabel: TextLabel
 local smallLabel: TextLabel
 local iconFrame: Frame
 local iconGlyph: TextLabel
+local iconImage: ImageLabel
 local token = 0
 
 local function show()
@@ -73,6 +74,11 @@ local function runIntro(payload)
 	iconFrame.Visible = true
 	iconFrame.BackgroundColor3 = def and def.Color or UI.Colors.Gold
 	iconGlyph.Text = def and string.upper(string.sub(def.Name, 1, 1)) or "?"
+	local art = def and UI.Asset(def.IconKey or "")
+	iconImage.Image = art or ""
+	iconImage.Visible = art ~= nil
+	iconGlyph.Visible = art == nil
+	UI.PopIn(iconFrame, 0.4, 0.45)
 	task.wait(2)
 	if not alive() then return end
 
@@ -96,12 +102,26 @@ end
 
 function LoadingController.Init()
 	overlay = UI.Frame({ Name = "LoadingOverlay", BackgroundColor3 = Color3.fromRGB(8, 10, 18), Visible = false }, UI.Layers.Top)
+	-- Optional art: a full-screen backdrop and the game logo (ReplicatedStorage.GameAssets.UIImages).
+	local backdropArt = UI.Asset("LoadingBackground")
+	if backdropArt then
+		UI.Image({ Image = backdropArt, Size = UDim2.fromScale(1, 1), ScaleType = Enum.ScaleType.Crop, ImageTransparency = 0.25, ZIndex = 0 }, overlay)
+	end
+	local logoArt = UI.Asset("Logo")
+	if logoArt then
+		local logo = UI.Image({ Image = logoArt, Size = UDim2.fromOffset(460, 200), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0.03, 0) }, overlay)
+		UI.New("UISizeConstraint", { MaxSize = Vector2.new(460, 200) }, logo)
+		UI.Pulse(logo, 0.02, 1.6)
+	end
 	bigLabel = UI.Label({ Text = "", TextSize = 56, Size = UDim2.new(1, 0, 0, 120), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.45) }, overlay)
+	UI.Stroke(bigLabel, Color3.new(0, 0, 0), 3, 0.3)
 	smallLabel = UI.Label({ Text = "", TextSize = 24, TextColor3 = UI.Colors.TextDim, Size = UDim2.new(1, 0, 0, 40), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.56) }, overlay)
 	iconFrame = UI.Frame({ Size = UDim2.fromOffset(140, 140), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.25), BackgroundColor3 = UI.Colors.Gold, Visible = false }, overlay)
 	UI.Corner(iconFrame, 24)
 	UI.Stroke(iconFrame, Color3.new(1, 1, 1), 4)
 	iconGlyph = UI.Label({ Text = "K", TextSize = 80, TextColor3 = UI.Colors.PanelDark }, iconFrame)
+	iconImage = UI.Image({ Size = UDim2.new(1, -18, 1, -18), Position = UDim2.fromOffset(9, 9), Visible = false }, iconFrame)
+	UI.Glow(iconFrame, UI.Colors.Gold, 36, 0.35)
 
 	Remotes.Event("MatchUpdate").OnClientEvent:Connect(function(eventName, payload)
 		if eventName == "Intro" then

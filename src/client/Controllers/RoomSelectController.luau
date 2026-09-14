@@ -27,6 +27,7 @@ local nameLabel: TextLabel
 local targetLabel: TextLabel
 local iconFrame: Frame
 local iconGlyph: TextLabel
+local iconImage: ImageLabel
 local statusLabel: TextLabel
 local footerLabel: TextLabel
 local prevButton: TextButton
@@ -71,6 +72,10 @@ local function render()
 	targetLabel.Text = config.TargetName
 	iconFrame.BackgroundColor3 = def and def.Color or UI.Colors.Gold
 	iconGlyph.Text = string.upper(string.sub(config.TargetName, 1, 1))
+	local art = def and UI.Asset(def.IconKey or "")
+	iconImage.Image = art or ""
+	iconImage.Visible = art ~= nil
+	iconGlyph.Visible = art == nil
 
 	local highest = player:GetAttribute("HighestRoomCompleted") or 0
 	local cpRoom = player:GetAttribute("CheckpointRoomId") or 0
@@ -140,13 +145,16 @@ function RoomSelectController.Init()
 	UI.Corner(iconFrame, 12)
 	UI.Stroke(iconFrame, Color3.new(1, 1, 1), 2)
 	iconGlyph = UI.Label({ Text = "G", TextSize = 32, TextColor3 = UI.Colors.PanelDark }, iconFrame)
+	iconImage = UI.Image({ Size = UDim2.new(1, -8, 1, -8), Position = UDim2.fromOffset(4, 4), Visible = false }, iconFrame)
+	UI.Glow(panel, UI.Colors.Gold, 26, 0.55)
 	targetLabel = UI.Label({ Text = "Golden Key", TextSize = 20, TextColor3 = UI.Colors.Gold, Size = UDim2.new(1, 0, 0, 24), Position = UDim2.fromOffset(0, 138) }, card)
 
 	prevButton = UI.Button({ Text = "<", Color = UI.Colors.PanelLight, Size = UDim2.fromOffset(52, 72), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 14, 0, 146), TextSize = 32 }, panel)
 	nextButton = UI.Button({ Text = ">", Color = UI.Colors.PanelLight, Size = UDim2.fromOffset(52, 72), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -14, 0, 146), TextSize = 32 }, panel)
 
 	statusLabel = UI.Label({ Text = "", TextSize = 15, Font = UI.FontBody, Size = UDim2.new(1, -20, 0, 20), Position = UDim2.fromOffset(10, 242) }, panel)
-	playButton = UI.Button({ Text = "PLAY", Color = UI.Colors.Green, Size = UDim2.new(1, -60, 0, 56), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 266), TextSize = 30 }, panel)
+	playButton = UI.Button({ Text = "PLAY", Color = UI.Colors.Green, Size = UDim2.new(1, -60, 0, 56), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 266), TextSize = 30, Shine = 2.4 }, panel)
+	UI.Pulse(playButton, 0.03, 3)
 	footerLabel = UI.Label({ Text = "", TextSize = 13, Font = UI.FontBody, TextColor3 = UI.Colors.TextDim, Size = UDim2.new(1, -20, 0, 18), Position = UDim2.fromOffset(10, 330) }, panel)
 
 	prevButton.Activated:Connect(function()

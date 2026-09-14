@@ -1,6 +1,6 @@
 --[[
-	Room Cash. The only currency. Earned when an object is moved for the first time
-	(ObjectService), spent on room upgrades. Server-owned; clients only read RoomCash.
+	Room Cash. The only currency. Earned by cleaning objects into deposit bins
+	(DepositService), spent on room upgrades. Server-owned; clients only read RoomCash.
 ]]
 
 local EconomyService = {}

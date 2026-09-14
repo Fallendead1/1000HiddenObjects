@@ -40,9 +40,15 @@ local Template = {
 		ReduceVFX = false,
 		CameraShake = true,
 	},
+	-- Paid timed boosts (server-time expiry) survive room changes and server hops.
 	Boosts = {
-		StrengthExpiresAt = 0,
-		CashExpiresAt = 0,
+		StrengthBoostExpires = 0,
+		CashBoostExpires = 0,
+	},
+	-- Paid hints waiting for the next room.
+	Banked = {
+		QuickHint = 0,
+		SuperHint = 0,
 	},
 	PurchaseHistory = {},
 }

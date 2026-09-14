@@ -35,6 +35,8 @@ local timerLabel: TextLabel
 local boostsFrame: Frame
 local teamFrame: Frame
 local cashLabel: TextLabel
+local cashGlow: Instance
+local shownCash = 0
 local weightLabel: TextLabel
 local progressBar
 local progressLabel: TextLabel
@@ -65,6 +67,7 @@ local function sideButton(parent: Instance, text: string, color: Color3, order: 
 	UI.Corner(badge, 8)
 	UI.Icon(badge, iconKey, icon, { TextSize = 14 })
 	UI.Label({ Text = text, TextSize = 16, TextWrapped = false, Size = UDim2.new(1, -(h - 2), 1, 0), Position = UDim2.fromOffset(h - 2, 0), TextXAlignment = Enum.TextXAlignment.Left }, b)
+	UI.Shine(b, 5 + order * 0.9)
 	return b
 end
 
@@ -107,12 +110,15 @@ local function buildMatchHUD()
 	local top = UI.Panel({ Size = UDim2.fromOffset(440, 100), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 10), BackgroundTransparency = 0.1 }, matchFrame)
 	roomTitleLabel = UI.Label({ Text = "ROOM #001", TextSize = 20, Size = UDim2.new(1, 0, 0, 24), Position = UDim2.fromOffset(0, 5) }, top)
 	roomTargetLabel = UI.Label({ Text = "Find the Golden Key", TextSize = 19, TextColor3 = UI.Colors.Gold, Size = UDim2.new(1, 0, 0, 22), Position = UDim2.fromOffset(0, 27) }, top)
+	UI.Glow(top, UI.Colors.Gold, 18, 0.75)
 	progressBar = UI.ProgressBar(top, UDim2.new(1, -32, 0, 22), UDim2.fromOffset(16, 52), UI.Colors.Green)
+	UI.Shine(progressBar.Fill, 2.6)
 	progressLabel = UI.Label({ Text = "ROOM CLEANED: 0%", TextSize = 14, Font = UI.FontBody, Size = UDim2.new(1, 0, 1, 0), ZIndex = 3 }, progressBar.Frame)
 	UI.Stroke(progressLabel, Color3.new(0, 0, 0), 1, 0.4)
 	timerLabel = UI.Label({ Text = "00:00", TextSize = 15, Font = UI.FontBody, TextColor3 = UI.Colors.TextDim, Size = UDim2.new(1, 0, 0, 18), Position = UDim2.fromOffset(0, 78) }, top)
 
 	local left = UI.Panel({ Size = UDim2.fromOffset(210, 80), Position = UDim2.fromOffset(12, 10), BackgroundTransparency = 0.1 }, matchFrame)
+	cashGlow = UI.Glow(left, UI.Colors.Cash, 16, 0.9)
 	local cashBadge = UI.Frame({ Size = UDim2.fromOffset(30, 30), Position = UDim2.fromOffset(12, 10), BackgroundColor3 = UI.Colors.Cash }, left)
 	UI.Corner(cashBadge, 15)
 	UI.Icon(cashBadge, "Icon_Cash", "$", { TextSize = 20, TextColor3 = UI.Colors.PanelDark })
@@ -128,6 +134,8 @@ local function buildMatchHUD()
 	UI.Icon(streakIcon, "Icon_Streak", "", {})
 	streakLabel = UI.Label({ Text = "STREAK x2", TextSize = 15, TextColor3 = UI.Colors.Gold, Size = UDim2.new(0, 110, 1, 0), Position = UDim2.fromOffset(32, 0), TextXAlignment = Enum.TextXAlignment.Left }, streakFrame)
 	streakBar = UI.ProgressBar(streakFrame, UDim2.new(0, 56, 0, 8), UDim2.new(1, -64, 0.5, -4), UI.Colors.Gold)
+	UI.Glow(streakFrame, UI.Colors.Orange, 14, 0.5)
+	UI.Pulse(streakFrame, 0.035, 7)
 
 	local buttons = UI.Frame({ BackgroundTransparency = 1, Size = UDim2.fromOffset(170, 260), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -12, 0, 10) }, matchFrame)
 	UI.ListLayout(buttons, Enum.FillDirection.Vertical, 8, Enum.HorizontalAlignment.Right)
@@ -159,6 +167,8 @@ local function buildMatchHUD()
 	-- Touch: one big button above the jump button, clear of the thumbstick.
 	mobileActionButton = UI.Button({ Text = "GRAB", Color = UI.Colors.Green, Size = UDim2.fromOffset(112, 112), AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -20, 1, -140), TextSize = 28, Corner = 56 }, matchFrame)
 	UI.Stroke(mobileActionButton, Color3.new(1, 1, 1), 3, 0.5)
+	UI.Glow(mobileActionButton, Color3.new(1, 1, 1), 14, 0.6)
+	UI.Pulse(mobileActionButton, 0.04, 4)
 	mobileActionButton.Visible = false
 	-- Touch: smaller DROP button beside it while holding something.
 	mobileDropButton = UI.Button({ Text = "DROP", Color = UI.Colors.PanelLight, Size = UDim2.fromOffset(72, 72), AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -146, 1, -150), TextSize = 18, Corner = 36 }, matchFrame)
@@ -188,7 +198,18 @@ local function refreshProgress()
 end
 
 local function refreshCash()
-	cashLabel.Text = FormatUtil.CashExact(attr("RoomCash", 0))
+	local cash = attr("RoomCash", 0)
+	if cash ~= shownCash then
+		local from = shownCash
+		shownCash = cash
+		UI.CountUp(cashLabel, from, cash, FormatUtil.CashExact, 0.45)
+		-- Flash the cash panel's glow when money comes in.
+		if cash > from and cashGlow then
+			local prop = cashGlow:IsA("UIStroke") and "Transparency" or "ImageTransparency"
+			;(cashGlow :: any)[prop] = 0.05
+			UI.Tween(cashGlow, { [prop] = 0.9 }, 0.7)
+		end
+	end
 	weightLabel.Text = string.format("MAX WEIGHT: %d", attr("MaxWeight", 2))
 end
 

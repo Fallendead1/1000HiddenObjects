@@ -15,6 +15,7 @@ local HintController = {}
 
 local banner: Frame
 local bannerLabel: TextLabel
+local bannerGlow: Instance
 local bannerToken = 0
 local activeRegionParts: { BasePart } = {}
 local outlineBoxes: { SelectionBox } = {}
@@ -27,6 +28,10 @@ function HintController.ShowClue(text: string, duration: number?)
 	banner.Visible = true
 	banner.Position = UDim2.new(0.5, 0, 0, 110)
 	UI.Tween(banner, { Position = UDim2.new(0.5, 0, 0, 140) }, 0.3, Enum.EasingStyle.Back)
+	UI.PopIn(banner, 0.85, 0.35)
+	local prop = bannerGlow:IsA("UIStroke") and "Transparency" or "ImageTransparency"
+	;(bannerGlow :: any)[prop] = 0.05
+	UI.Tween(bannerGlow, { [prop] = 0.6 }, 1)
 	Controllers.AudioController.Play("Hint")
 	task.delay(duration or 7, function()
 		if bannerToken == token then
@@ -138,6 +143,7 @@ function HintController.Init()
 	banner = UI.Panel({ Size = UDim2.fromOffset(520, 56), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 140), Visible = false, BackgroundTransparency = 0.05 }, UI.Layers.HUD)
 	banner.BackgroundColor3 = UI.Colors.PanelDark
 	UI.Stroke(banner, UI.Colors.Cyan, 2)
+	bannerGlow = UI.Glow(banner, UI.Colors.Cyan, 20, 0.6)
 	bannerLabel = UI.Label({ Text = "", TextSize = 20, TextColor3 = UI.Colors.Cyan, Size = UDim2.new(1, -20, 1, 0), Position = UDim2.fromOffset(10, 0) }, banner)
 
 	Remotes.Event("MatchUpdate").OnClientEvent:Connect(function(eventName, payload)

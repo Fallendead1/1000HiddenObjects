@@ -43,12 +43,6 @@ return {
 	OwnedFlightTime = 1.5, -- the thrower keeps simulating its throw (no hitch) until first impact or this
 	RoomSettleSeconds = 10, -- max time a freshly built room gets to settle under physics
 
-	-- Physics bubble: objects near a player are live physics; everything else rests frozen in
-	-- place until someone comes close (keeps thousands of objects smooth).
-	BubbleRadius = 20, -- studs (XZ) around each player
-	BubbleFreezeDelay = 1.5, -- seconds an object must be calm outside every bubble before it freezes
-	BubbleInterval = 0.2,
-
 	-- Junk chunks
 	ChunkBurstSpeed = 7, -- outward speed of the pieces
 

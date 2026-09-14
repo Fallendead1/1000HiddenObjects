@@ -21,6 +21,10 @@ local PlayerSessionService = {}
 local PLAYER_GROUP = "Players"
 local Effects = MonetizationConfig.Effects
 
+-- Defined further down; declared here because Init/RecomputeDerived use them.
+local restoreBoosts: (Player) -> ()
+local updateVipTag: (Player) -> ()
+
 local SessionDefaults = {
 	InMatch = false,
 	RoomCash = 0,
@@ -80,10 +84,18 @@ function PlayerSessionService.Init()
 			applyCollisionGroup(character)
 			PlayerSessionService.ApplyWalkSpeed(player)
 			Services.MatchService.OnCharacterAdded(player, character)
+			character:WaitForChild("Head", 5)
+			updateVipTag(player)
 		end)
 		if player.Character then
 			applyCollisionGroup(player.Character)
 		end
+		task.spawn(function()
+			if Services.DataService.WaitFor(player, 15) then
+				restoreBoosts(player)
+				PlayerSessionService.RecomputeDerived(player)
+			end
+		end)
 	end
 	Players.PlayerAdded:Connect(onPlayer)
 	for _, player in ipairs(Players:GetPlayers()) do
@@ -105,6 +117,21 @@ function PlayerSessionService.Start()
 	end)
 end
 
+-- Paid timed boosts live in the profile, so a room change or server hop never eats them.
+function restoreBoosts(player: Player)
+	local data = Services.DataService.Get(player)
+	if not data then
+		return
+	end
+	local now = workspace:GetServerTimeNow()
+	for _, attr in ipairs({ "StrengthBoostExpires", "CashBoostExpires" }) do
+		local expires = data.Boosts[attr] or 0
+		if expires > now then
+			player:SetAttribute(attr, expires)
+		end
+	end
+end
+
 function PlayerSessionService.Reset(player: Player)
 	for k, v in pairs(SessionDefaults) do
 		player:SetAttribute(k, v)
@@ -112,6 +139,7 @@ function PlayerSessionService.Reset(player: Player)
 	if owns(player, "VIP") then
 		player:SetAttribute("VIPFreeHints", Effects.VIPFreeSuperHintsPerMatch)
 	end
+	restoreBoosts(player)
 	PlayerSessionService.RecomputeDerived(player)
 end
 
@@ -192,6 +220,7 @@ function PlayerSessionService.RecomputeDerived(player: Player)
 		player:SetAttribute("ThrowSpeed", throwSpeed)
 	end
 	PlayerSessionService.ApplyWalkSpeed(player)
+	updateVipTag(player)
 end
 
 function PlayerSessionService.ApplyWalkSpeed(player: Player)
@@ -204,7 +233,39 @@ end
 function PlayerSessionService.ExtendBoost(player: Player, attribute: string, seconds: number)
 	local base = math.max(player:GetAttribute(attribute) or 0, now())
 	player:SetAttribute(attribute, base + seconds)
+	Services.DataService.Update(player, function(data)
+		data.Boosts[attribute] = base + seconds
+	end)
 	PlayerSessionService.RecomputeDerived(player)
+end
+
+-- VIP pass: a gold tag over the player's head, visible to everyone.
+function updateVipTag(player: Player)
+	local head = player.Character and player.Character:FindFirstChild("Head")
+	if not head then
+		return
+	end
+	local tag = head:FindFirstChild("VIPTag")
+	if owns(player, "VIP") and not tag then
+		tag = Instance.new("BillboardGui")
+		tag.Name = "VIPTag"
+		tag.Size = UDim2.fromOffset(90, 28)
+		tag.StudsOffset = Vector3.new(0, 2.6, 0)
+		tag.MaxDistance = 70
+		tag.LightInfluence = 0
+		local label = Instance.new("TextLabel")
+		label.BackgroundTransparency = 1
+		label.Size = UDim2.fromScale(1, 1)
+		label.Font = Enum.Font.FredokaOne
+		label.Text = "VIP"
+		label.TextScaled = true
+		label.TextColor3 = Color3.fromRGB(255, 205, 50)
+		label.TextStrokeTransparency = 0.2
+		label.Parent = tag
+		tag.Parent = head
+	elseif tag and not owns(player, "VIP") then
+		tag:Destroy()
+	end
 end
 
 return PlayerSessionService

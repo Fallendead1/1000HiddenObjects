@@ -35,8 +35,8 @@ local Room = {
 	LayoutVariants = { 1 },
 
 	-- Density knobs for the builder (tune against the performance test, not per pile).
-	-- Only objects near players are live physics (GameConfig.BubbleRadius), so the room can
-	-- hold far more than the ~1,800 loose bodies Roblox settles at 60 Hz all at once.
+	-- Every object is loose physics; ~1,800 loose bodies settle at 60 Hz, so depth comes from
+	-- packed junk chunks (below) rather than thousands more bodies.
 	CountMultiplier = 2.4, -- more candidate objects per heap
 	-- Share of every floor heap built from packed junk chunks (bottom layers). Each chunk bursts
 	-- into ChunkContents real objects when grabbed: depth without thousands of live bodies.

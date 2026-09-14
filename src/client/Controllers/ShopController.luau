@@ -30,7 +30,7 @@ local function buildCard(info, order: number)
 	local card = UI.Panel({ Size = UDim2.new(1, -12, 0, 104), BackgroundColor3 = UI.Colors.PanelLight, LayoutOrder = order }, listFrame)
 	local icon = UI.Frame({ Size = UDim2.fromOffset(64, 64), Position = UDim2.fromOffset(14, 20), BackgroundColor3 = TabColors[info.Tab] or UI.Colors.Cyan }, card)
 	UI.Corner(icon, 12)
-	UI.Label({ Text = info.Icon or "?", TextSize = 20, TextColor3 = UI.Colors.PanelDark }, icon)
+	UI.Icon(icon, "Icon_Prod_" .. info.Key, info.Icon or "?", { TextSize = 20, TextColor3 = UI.Colors.PanelDark })
 	UI.Label({ Text = info.Name, TextSize = 22, Size = UDim2.new(1, -260, 0, 30), Position = UDim2.fromOffset(92, 12), TextXAlignment = Enum.TextXAlignment.Left }, card)
 	UI.Label({ Text = info.Description, TextSize = 15, Font = UI.FontBody, TextColor3 = UI.Colors.TextDim, Size = UDim2.new(1, -260, 0, 52), Position = UDim2.fromOffset(92, 42), TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top }, card)
 
@@ -47,7 +47,7 @@ local function buildCard(info, order: number)
 		UI.Label({ Text = isDev() and "PRODUCT ID NOT SET (dev mock)" or "COMING SOON", TextSize = 12, Font = UI.FontBody, TextColor3 = UI.Colors.Orange, Size = UDim2.fromOffset(200, 16), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -14, 0, 40), TextXAlignment = Enum.TextXAlignment.Right }, card)
 	end
 
-	local button = UI.Button({ Text = owned and "OWNED" or "BUY", Color = owned and UI.Colors.Locked or UI.Colors.Green, Size = UDim2.fromOffset(130, 42), AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -14, 1, -12), TextSize = 20 }, card)
+	local button = UI.Button({ Text = owned and "OWNED" or "BUY", Color = owned and UI.Colors.Locked or UI.Colors.Green, Size = UDim2.fromOffset(130, 42), AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -14, 1, -12), TextSize = 20, Shine = not owned and (3 + order * 0.5) or nil }, card)
 	if owned then
 		UI.SetButtonEnabled(button, false, "OWNED")
 	elseif not info.Configured and not isDev() then

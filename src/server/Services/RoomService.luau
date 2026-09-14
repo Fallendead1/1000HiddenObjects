@@ -279,9 +279,6 @@ function RoomService.SettleAndSnapshot(runtime: RoomRuntime, maxSeconds: number)
 			RoomService.RecoverObject(runtime, obj)
 		end
 		obj:SetAttribute("OriginalCFrame", obj.CFrame)
-		-- Rest frozen where it settled; ObjectService's physics bubble wakes it when a player
-		-- comes close.
-		obj.Anchored = true
 	end
 	RoomService.ComputeBlockers(runtime)
 	return os.clock() - started

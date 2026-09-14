@@ -62,7 +62,7 @@ local MonetizationConfig = {
 }
 
 local GamepassDefs: { ProductDef } = {
-	{ Key = "DoubleCash", Id = 0, Name = "2X CASH", Description = "Double Cash from every newly moved object. Forever.", SuggestedPrice = 149, Tab = "Permanent", Icon = "$$" },
+	{ Key = "DoubleCash", Id = 0, Name = "2X CASH", Description = "Double Cash from every object you clean into a bin. Forever.", SuggestedPrice = 149, Tab = "Permanent", Icon = "$$" },
 	{ Key = "StrongerHands", Id = 0, Name = "STRONGER HANDS", Description = "Lift one weight class heavier than your Strength. Forever.", SuggestedPrice = 149, Tab = "Permanent", Icon = "SH" },
 	{ Key = "FastHands", Id = 0, Name = "FAST HANDS", Description = "Heavy objects feel lighter to handle. Forever.", SuggestedPrice = 99, Tab = "Permanent", Icon = "FH" },
 	{ Key = "ThrowBoost", Id = 0, Name = "THROW BOOST", Description = "+15% throw power. Forever.", SuggestedPrice = 99, Tab = "Permanent", Icon = "TB" },
@@ -71,7 +71,7 @@ local GamepassDefs: { ProductDef } = {
 
 local ProductDefs: { ProductDef } = {
 	{ Key = "Strength10Min", Id = 0, Name = "2X STRENGTH", Description = "Lift twice the weight for 10 minutes.", SuggestedPrice = 49, Tab = "Boosts", MatchOnly = true, Icon = "2X" },
-	{ Key = "Cash10Min", Id = 0, Name = "2X CASH BOOST", Description = "Double Cash from moved objects for 10 minutes.", SuggestedPrice = 29, Tab = "Boosts", MatchOnly = true, Icon = "$2" },
+	{ Key = "Cash10Min", Id = 0, Name = "2X CASH BOOST", Description = "Double Cash from bin deposits for 10 minutes. Carries over between rooms.", SuggestedPrice = 29, Tab = "Boosts", MatchOnly = true, Icon = "$2" },
 	{ Key = "TeamMuscleBoost", Id = 0, Name = "TEAM MUSCLE BOOST", Description = "Everyone in your room gets +50% Strength and +25% throw power for 10 minutes.", SuggestedPrice = 129, Tab = "Boosts", MatchOnly = true, Icon = "TM" },
 	{ Key = "QuickHint", Id = 0, Name = "QUICK HINT", Description = "Instantly receive the next clue.", SuggestedPrice = 19, Tab = "Help", MatchOnly = true, Icon = "?" },
 	{ Key = "SuperHint", Id = 0, Name = "SUPER HINT", Description = "Highlight the correct search region for 15 seconds.", SuggestedPrice = 39, Tab = "Help", MatchOnly = true, Icon = "??" },

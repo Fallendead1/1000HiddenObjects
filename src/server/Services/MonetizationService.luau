@@ -68,11 +68,11 @@ function MonetizationService.GrantProduct(player: Player, key: string): boolean
 
 	if key == "QuickHint" then
 		if not Services.HintService.GrantQuickHint(player) then
-			Services.NotificationService.Send(player, "Info", "Quick Hint saved for your next room.")
+			MonetizationService.Bank(player, key)
 		end
 	elseif key == "SuperHint" then
 		if not Services.HintService.GrantSuperHint(player) then
-			Services.NotificationService.Send(player, "Info", "Super Hint saved for your next room.")
+			MonetizationService.Bank(player, key)
 		end
 	elseif key == "Strength10Min" then
 		Services.PlayerSessionService.ExtendBoost(player, "StrengthBoostExpires", effects.BoostDurationSeconds)
@@ -97,6 +97,41 @@ function MonetizationService.GrantProduct(player: Player, key: string): boolean
 	end
 	Services.AnalyticsService.Log("premium_purchase", player, { Product = key })
 	return true
+end
+
+-- A paid hint that can't be used right now (not in a room / every clue already out) is saved
+-- in the profile and delivered when the player's next room starts.
+function MonetizationService.Bank(player: Player, key: string)
+	Services.DataService.Update(player, function(data)
+		data.Banked[key] = (data.Banked[key] or 0) + 1
+	end)
+	Services.DataService.Save(player)
+	Services.NotificationService.Send(player, "Premium", string.format("%s saved - it will be used when your next room starts.", key == "SuperHint" and "Super Hint" or "Quick Hint"))
+end
+
+function MonetizationService.ApplyBanked(player: Player)
+	local data = Services.DataService.Get(player)
+	if not data then
+		return
+	end
+	local quick, super = data.Banked.QuickHint or 0, data.Banked.SuperHint or 0
+	if quick == 0 and super == 0 then
+		return
+	end
+	local usedQuick, usedSuper = 0, 0
+	for _ = 1, quick do
+		if Services.HintService.GrantQuickHint(player) then
+			usedQuick += 1
+		end
+	end
+	-- One region highlight per room is enough; keep the rest for later rooms.
+	if super > 0 and Services.HintService.GrantSuperHint(player) then
+		usedSuper = 1
+	end
+	Services.DataService.Update(player, function(d)
+		d.Banked.QuickHint = math.max(0, (d.Banked.QuickHint or 0) - usedQuick)
+		d.Banked.SuperHint = math.max(0, (d.Banked.SuperHint or 0) - usedSuper)
+	end)
 end
 
 local function processReceipt(receiptInfo): Enum.ProductPurchaseDecision

@@ -27,6 +27,8 @@ local ceremonyBig: TextLabel
 local ceremonySmall: TextLabel
 local ceremonyIcon: Frame
 local ceremonyGlyph: TextLabel
+local ceremonyImage: ImageLabel
+local ceremonyRays: ImageLabel
 
 local results: Frame
 local resultsCard: Frame
@@ -101,6 +103,22 @@ local function runCeremony(payload)
 	ceremonyIcon.Visible = true
 	ceremonyIcon.BackgroundColor3 = def and def.Color or UI.Colors.Gold
 	ceremonyGlyph.Text = def and string.upper(string.sub(def.Name, 1, 1)) or "?"
+	local art = def and UI.Asset(def.IconKey or "")
+	ceremonyImage.Image = art or ""
+	ceremonyImage.Visible = art ~= nil
+	ceremonyGlyph.Visible = art == nil
+	UI.PopIn(ceremonyIcon, 0.3, 0.5)
+	-- Spinning light rays behind the found object.
+	if ceremonyRays.Image ~= "" then
+		ceremonyRays.Visible = true
+		task.spawn(function()
+			while ceremony.Visible and ceremonyIcon.Visible do
+				ceremonyRays.Rotation = (ceremonyRays.Rotation + 1.2) % 360
+				task.wait()
+			end
+			ceremonyRays.Visible = false
+		end)
+	end
 	setCeremony(string.upper(payload.TargetName or ""), "Found by @" .. (payload.FinderName or "?"), UI.Colors.Gold, 62)
 	Controllers.AudioController.Play("VictorySting")
 	task.wait(2.2)
@@ -176,15 +194,21 @@ function ResultsController.Init()
 	UI.Corner(ceremonyIcon, 24)
 	UI.Stroke(ceremonyIcon, Color3.new(1, 1, 1), 4)
 	ceremonyGlyph = UI.Label({ Text = "K", TextSize = 70, TextColor3 = UI.Colors.PanelDark }, ceremonyIcon)
+	ceremonyImage = UI.Image({ Size = UDim2.new(1, -16, 1, -16), Position = UDim2.fromOffset(8, 8), Visible = false }, ceremonyIcon)
+	UI.Glow(ceremonyIcon, UI.Colors.Gold, 40, 0.3)
+	ceremonyRays = UI.Image({ Image = UI.Asset("Rays") or "", Size = UDim2.fromOffset(420, 420), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.24), ImageColor3 = UI.Colors.Gold, ImageTransparency = 0.35, Visible = false, ZIndex = 0 }, ceremony)
 
 	results = UI.Frame({ Name = "Results", BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 0.45, Visible = false }, UI.Layers.Top)
 	resultsCard = UI.Panel({ Size = UDim2.fromOffset(520, 540), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5) }, results)
 	UI.Stroke(resultsCard, UI.Colors.Gold, 3)
+	UI.Glow(resultsCard, UI.Colors.Gold, 34, 0.5)
 	UI.New("UISizeConstraint", { MaxSize = Vector2.new(520, 540), MinSize = Vector2.new(300, 420) }, resultsCard)
 	resTitle = UI.Label({ Text = "ROOM #001 COMPLETE", TextSize = 32, TextColor3 = UI.Colors.Green, Size = UDim2.new(1, 0, 0, 44), Position = UDim2.fromOffset(0, 14) }, resultsCard)
 	local icon = UI.Frame({ Size = UDim2.fromOffset(84, 84), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 62), BackgroundColor3 = UI.Colors.Gold }, resultsCard)
 	UI.Corner(icon, 18)
 	UI.Stroke(icon, Color3.new(1, 1, 1), 3)
+	UI.Glow(icon, UI.Colors.Gold, 22, 0.45)
+	UI.Pulse(icon, 0.05, 2.5)
 	UI.Icon(icon, "Icon_Key", "K", { TextSize = 50, TextColor3 = UI.Colors.PanelDark })
 	resObject = UI.Label({ Text = "#001 - Golden Key", TextSize = 24, TextColor3 = UI.Colors.Gold, Size = UDim2.new(1, 0, 0, 32), Position = UDim2.fromOffset(0, 152) }, resultsCard)
 	resStats = UI.Label({ Text = "", TextSize = 18, Font = UI.FontBody, TextColor3 = UI.Colors.TextDim, Size = UDim2.new(0.5, -20, 0, 110), Position = UDim2.fromOffset(20, 192), TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top }, resultsCard)
@@ -192,8 +216,8 @@ function ResultsController.Init()
 	resContrib = UI.Frame({ BackgroundTransparency = 1, Size = UDim2.new(0.5, -20, 0, 130), Position = UDim2.new(0.5, 0, 0, 192) }, resultsCard)
 	UI.ListLayout(resContrib, Enum.FillDirection.Vertical, 4, Enum.HorizontalAlignment.Center)
 
-	returnButton = UI.Button({ Text = "RETURN TO LOBBY", Color = UI.Colors.Green, Size = UDim2.new(1, -40, 0, 54), Position = UDim2.new(0, 20, 1, -132), TextSize = 22 }, resultsCard)
-	nextButton = UI.Button({ Text = "ROOM #002 - COMING SOON", Color = UI.Colors.Gold, Size = UDim2.new(1, -40, 0, 54), Position = UDim2.new(0, 20, 1, -68), TextSize = 20 }, resultsCard)
+	returnButton = UI.Button({ Text = "RETURN TO LOBBY", Color = UI.Colors.Green, Size = UDim2.new(1, -40, 0, 54), Position = UDim2.new(0, 20, 1, -132), TextSize = 22, Shine = true }, resultsCard)
+	nextButton = UI.Button({ Text = "ROOM #002 - COMING SOON", Color = UI.Colors.Gold, Size = UDim2.new(1, -40, 0, 54), Position = UDim2.new(0, 20, 1, -68), TextSize = 20, Shine = true }, resultsCard)
 	UI.SetButtonEnabled(nextButton, false)
 
 	returnButton.Activated:Connect(function()

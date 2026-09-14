@@ -334,20 +334,180 @@ end
 
 function UI.PressEffect(button: GuiButton)
 	local scaleObj = button:FindFirstChildOfClass("UIScale") or UI.New("UIScale", {}, button) :: UIScale
+	-- Hover: lift a little and light up a soft white edge.
+	local hoverGlow = UI.New("UIStroke", { Name = "HoverGlow", Color = Color3.new(1, 1, 1), Thickness = 3, Transparency = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, button) :: UIStroke
+	local hovering = false
+	button.MouseEnter:Connect(function()
+		hovering = true
+		if button.Active then
+			UI.Tween(scaleObj, { Scale = 1.05 }, 0.12)
+			UI.Tween(hoverGlow, { Transparency = 0.35 }, 0.12)
+		end
+	end)
 	button.MouseButton1Down:Connect(function()
 		UI.Tween(scaleObj, { Scale = 0.94 }, 0.08)
 	end)
 	local function release()
-		UI.Tween(scaleObj, { Scale = 1 }, 0.12, Enum.EasingStyle.Back)
+		UI.Tween(scaleObj, { Scale = hovering and button.Active and 1.05 or 1 }, 0.14, Enum.EasingStyle.Back)
 	end
 	button.MouseButton1Up:Connect(release)
-	button.MouseLeave:Connect(release)
+	button.MouseLeave:Connect(function()
+		hovering = false
+		UI.Tween(scaleObj, { Scale = 1 }, 0.14, Enum.EasingStyle.Back)
+		UI.Tween(hoverGlow, { Transparency = 1 }, 0.15)
+	end)
 	button.Activated:Connect(function()
 		if clickSoundHook then
 			clickSoundHook("UIClick")
 		end
 	end)
 end
+
+-- ===== Motion & glow =====
+-- One RenderStepped loop drives every shine sweep and pulse. Everything is skipped while the
+-- player has Reduce VFX on.
+
+local function reduceMotion(): boolean
+	return player:GetAttribute("Setting_ReduceVFX") == true
+end
+
+type Shine = { Overlay: GuiObject, Gradient: UIGradient, Period: number, Phase: number, Owner: GuiObject }
+type Pulse = { Scale: UIScale, Amount: number, Speed: number, Phase: number, Owner: GuiObject }
+local shines: { Shine } = {}
+local pulses: { Pulse } = {}
+
+-- Soft coloured glow around an element: the "Glow" image (a soft white radial blob) when it
+-- exists, else a soft stroke. Sits under the element's skin and content.
+function UI.Glow(inst: GuiObject, color: Color3, spread: number?, transparency: number?): GuiObject | UIStroke
+	local image = UI.Asset("Glow")
+	local s = spread or 20
+	if image then
+		return UI.New("ImageLabel", {
+			Name = "Glow",
+			BackgroundTransparency = 1,
+			Image = image,
+			ImageColor3 = color,
+			ImageTransparency = transparency or 0.4,
+			Size = UDim2.new(1, s * 2, 1, s * 2),
+			Position = UDim2.fromOffset(-s, -s),
+			ZIndex = -1,
+		}, inst) :: ImageLabel
+	end
+	return UI.New("UIStroke", {
+		Name = "Glow",
+		Color = color,
+		Thickness = math.max(2, s / 7),
+		Transparency = transparency or 0.5,
+		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+	}, inst) :: UIStroke
+end
+
+-- A light streak that sweeps across the element every `period` seconds, following its shape
+-- (it reuses the element's 9-slice skin when there is one).
+function UI.Shine(inst: GuiObject, period: number?): GuiObject
+	local skin = inst:FindFirstChild("Skin")
+	local overlay: GuiObject
+	if skin and skin:IsA("ImageLabel") then
+		local clone = skin:Clone()
+		clone.Name = "Shine"
+		clone.ImageColor3 = Color3.new(1, 1, 1)
+		clone.ImageTransparency = 0.15
+		clone.ZIndex = 1
+		overlay = clone
+	else
+		overlay = UI.New("Frame", { Name = "Shine", BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0, Size = UDim2.fromScale(1, 1), ZIndex = 1 }) :: Frame
+		local corner = inst:FindFirstChildOfClass("UICorner")
+		if corner then
+			corner:Clone().Parent = overlay
+		end
+	end
+	overlay.Parent = inst
+	local gradient = UI.New("UIGradient", {
+		Rotation = 20,
+		Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 1),
+			NumberSequenceKeypoint.new(0.4, 1),
+			NumberSequenceKeypoint.new(0.5, 0.45),
+			NumberSequenceKeypoint.new(0.6, 1),
+			NumberSequenceKeypoint.new(1, 1),
+		}),
+		Offset = Vector2.new(-1.2, 0),
+	}, overlay) :: UIGradient
+	table.insert(shines, { Overlay = overlay, Gradient = gradient, Period = period or 3.5, Phase = math.random() * 3, Owner = inst })
+	return overlay
+end
+
+-- Gentle breathing scale (layout-safe: uses a UIScale).
+function UI.Pulse(inst: GuiObject, amount: number?, speed: number?)
+	local scaleObj = inst:FindFirstChild("PulseScale") or UI.New("UIScale", { Name = "PulseScale" }, inst)
+	table.insert(pulses, { Scale = scaleObj :: UIScale, Amount = amount or 0.04, Speed = speed or 2, Phase = math.random() * 6, Owner = inst })
+end
+
+function UI.StopPulse(inst: GuiObject)
+	for i = #pulses, 1, -1 do
+		if pulses[i].Owner == inst then
+			pulses[i].Scale.Scale = 1
+			table.remove(pulses, i)
+		end
+	end
+end
+
+-- Pop an element in with a springy scale.
+function UI.PopIn(inst: GuiObject, from: number?, time: number?)
+	local scaleObj = inst:FindFirstChild("PopScale") or UI.New("UIScale", { Name = "PopScale" }, inst)
+	;(scaleObj :: UIScale).Scale = from or 0.6
+	UI.Tween(scaleObj, { Scale = 1 }, time or 0.35, Enum.EasingStyle.Back)
+end
+
+-- Roll a number label from one value to another.
+local countTokens: { [Instance]: number } = {}
+function UI.CountUp(label: TextLabel, from: number, to: number, format: (number) -> string, time: number?)
+	local token = (countTokens[label] or 0) + 1
+	countTokens[label] = token
+	local duration = reduceMotion() and 0 or (time or 0.4)
+	if duration <= 0 or from == to then
+		label.Text = format(to)
+		return
+	end
+	task.spawn(function()
+		local t0 = os.clock()
+		while countTokens[label] == token do
+			local a = math.min(1, (os.clock() - t0) / duration)
+			local eased = 1 - (1 - a) ^ 3
+			label.Text = format(math.floor(from + (to - from) * eased + 0.5))
+			if a >= 1 then
+				break
+			end
+			task.wait()
+		end
+	end)
+end
+
+game:GetService("RunService").RenderStepped:Connect(function()
+	local t = os.clock()
+	local still = reduceMotion()
+	for i = #shines, 1, -1 do
+		local s = shines[i]
+		if not s.Overlay.Parent or not s.Owner.Parent then
+			table.remove(shines, i)
+		else
+			local owner = s.Owner :: any
+			local disabled = owner:IsA("GuiButton") and not owner.Active
+			s.Overlay.Visible = not still and not disabled
+			local cycle = ((t + s.Phase) % s.Period) / s.Period
+			-- Sweep during the first 40% of each period, rest off-element the remainder.
+			s.Gradient.Offset = Vector2.new(-1.2 + math.min(cycle / 0.4, 1) * 2.4, 0)
+		end
+	end
+	for i = #pulses, 1, -1 do
+		local p = pulses[i]
+		if not p.Owner.Parent then
+			table.remove(pulses, i)
+		else
+			p.Scale.Scale = still and 1 or 1 + math.sin(t * p.Speed + p.Phase) * p.Amount
+		end
+	end
+end)
 
 function UI.Button(props: { [string]: any }?, parent: Instance?): TextButton
 	local color = props and props.Color or UI.Colors.Green
@@ -369,12 +529,17 @@ function UI.Button(props: { [string]: any }?, parent: Instance?): TextButton
 			end
 		end
 	end
+	base.Shine = nil
 	local button = UI.New("TextButton", base, parent) :: TextButton
 	UI.Corner(button, props and props.Corner or UIConfig.CornerSmall)
 	local stroke = UI.Stroke(button, Color3.new(0, 0, 0), 2, 0.6)
 	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 	UI.Skin(button, props and props.Corner and props.Corner >= 40 and "ButtonRound" or "Button")
 	UI.PressEffect(button)
+	-- Call-to-action buttons get a periodic light sweep.
+	if props and props.Shine then
+		UI.Shine(button, type(props.Shine) == "number" and props.Shine or 3.2)
+	end
 	return button
 end
 
@@ -431,6 +596,34 @@ local menus: { [string]: any } = {}
 local openMenu: string? = nil
 local menuListeners: { (string?, string?) -> () } = {}
 
+-- Dimmed backdrop behind an open menu; clicking it closes the menu.
+local backdrop = UI.New("TextButton", {
+	Name = "MenuBackdrop",
+	Text = "",
+	AutoButtonColor = false,
+	BackgroundColor3 = Color3.new(0, 0, 0),
+	BackgroundTransparency = 1,
+	BorderSizePixel = 0,
+	Size = UDim2.fromScale(1, 1),
+	Visible = false,
+	ZIndex = 0,
+}, UI.Layers.Menus) :: TextButton
+backdrop.Activated:Connect(function()
+	UI.CloseAllMenus()
+end)
+local function setBackdrop(on: boolean)
+	if on then
+		backdrop.Visible = true
+		UI.Tween(backdrop, { BackgroundTransparency = 0.55 }, 0.2)
+	else
+		UI.Tween(backdrop, { BackgroundTransparency = 1 }, 0.15).Completed:Once(function()
+			if not openMenu then
+				backdrop.Visible = false
+			end
+		end)
+	end
+end
+
 function UI.OnMenuChanged(fn: (string?, string?) -> ())
 	table.insert(menuListeners, fn)
 end
@@ -456,6 +649,7 @@ function UI.Menu(name: string, title: string, size: UDim2)
 	UI.Corner(frame, 16)
 	UI.Stroke(frame, UI.Colors.Stroke, 3)
 	UI.Skin(frame, "Panel")
+	UI.Glow(frame, UI.Colors.Cyan, 28, 0.55)
 	UI.New("UISizeConstraint", { MaxSize = Vector2.new(1100, 800), MinSize = Vector2.new(280, 200) }, frame)
 
 	local titleBar = UI.Frame({ Size = UDim2.new(1, 0, 0, 56), BackgroundColor3 = UI.Colors.PanelDark }, frame)
@@ -482,9 +676,10 @@ function UI.Menu(name: string, title: string, size: UDim2)
 		openMenu = name
 		isOpen = true
 		frame.Visible = true
+		setBackdrop(true)
 		local uiScale = frame:FindFirstChildOfClass("UIScale") or UI.New("UIScale", { Scale = 0.85 }, frame)
-		uiScale.Scale = 0.85
-		UI.Tween(uiScale, { Scale = 1 }, 0.2, Enum.EasingStyle.Back)
+		uiScale.Scale = 0.8
+		UI.Tween(uiScale, { Scale = 1 }, 0.28, Enum.EasingStyle.Back)
 		if onOpen then
 			onOpen()
 		end
@@ -498,9 +693,20 @@ function UI.Menu(name: string, title: string, size: UDim2)
 			return
 		end
 		isOpen = false
-		frame.Visible = false
 		if openMenu == name then
 			openMenu = nil
+			setBackdrop(false)
+		end
+		-- Quick shrink-out, then hide (unless it was reopened meanwhile).
+		local uiScale = frame:FindFirstChildOfClass("UIScale")
+		if uiScale then
+			UI.Tween(uiScale, { Scale = 0.9 }, 0.1).Completed:Once(function()
+				if not isOpen then
+					frame.Visible = false
+				end
+			end)
+		else
+			frame.Visible = false
 		end
 		if onClose then
 			onClose()

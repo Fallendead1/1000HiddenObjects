@@ -53,7 +53,7 @@ local function buildCard(def, parent: Instance, order: number)
 	local priceBadge = UI.Frame({ Size = UDim2.new(0.5, -18, 0, 44), Position = UDim2.new(0, 14, 1, -58), BackgroundColor3 = UI.Colors.PanelDark }, card)
 	UI.Corner(priceBadge, 10)
 	local priceLabel = UI.Label({ Text = "$150", TextSize = 22, TextColor3 = UI.Colors.Cash }, priceBadge)
-	local button = UI.Button({ Text = "UPGRADE", Color = color, Size = UDim2.new(0.5, -18, 0, 44), Position = UDim2.new(0.5, 4, 1, -58), TextSize = 20 }, card)
+	local button = UI.Button({ Text = "UPGRADE", Color = color, Size = UDim2.new(0.5, -18, 0, 44), Position = UDim2.new(0.5, 4, 1, -58), TextSize = 20, Shine = 3.5 + order * 0.6 }, card)
 
 	local entry = { Card = card, Level = levelLabel, Stat = statLabel, Price = priceLabel, PriceBadge = priceBadge, Button = button, Def = def, Desc = desc, Pips = pipList, Color = color }
 	button.Activated:Connect(function()

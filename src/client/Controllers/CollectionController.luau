@@ -14,7 +14,7 @@ local CollectionController = {}
 local menu
 local header: TextLabel
 local grid: ScrollingFrame
-local tiles: { [number]: { Frame: Frame, Icon: Frame, Name: TextLabel, Number: TextLabel, Check: TextLabel } } = {}
+local tiles: { [number]: { Frame: Frame, Icon: Frame, Name: TextLabel, Number: TextLabel, Check: TextLabel, Glyph: TextLabel, Image: ImageLabel } } = {}
 local built = false
 
 local function buildTile(number: number)
@@ -25,9 +25,10 @@ local function buildTile(number: number)
 	local icon = UI.Frame({ Size = UDim2.fromOffset(52, 52), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 24), BackgroundColor3 = UI.Colors.Locked }, tile)
 	UI.Corner(icon, 8)
 	local glyph = UI.Label({ Text = "?", TextSize = 28, TextColor3 = UI.Colors.TextDim }, icon)
+	local image = UI.Image({ Size = UDim2.new(1, -8, 1, -8), Position = UDim2.fromOffset(4, 4), Visible = false }, icon)
 	local nameLabel = UI.Label({ Text = "???", TextSize = 13, Font = UI.FontBody, Size = UDim2.new(1, -6, 0, 26), Position = UDim2.fromOffset(3, 80), TextTruncate = Enum.TextTruncate.AtEnd }, tile)
 	local check = UI.Label({ Text = "✓", TextSize = 16, TextColor3 = UI.Colors.Green, Size = UDim2.fromOffset(24, 16), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -4, 0, 4), Visible = false }, tile)
-	tiles[number] = { Frame = tile, Icon = icon, Name = nameLabel, Number = numberLabel, Check = check, Glyph = glyph }
+	tiles[number] = { Frame = tile, Icon = icon, Name = nameLabel, Number = numberLabel, Check = check, Glyph = glyph, Image = image }
 end
 
 local function refresh()
@@ -35,6 +36,10 @@ local function refresh()
 	header.Text = string.format("%d / %d FOUND", found, GameConfig.TotalObjects)
 	for number, tile in pairs(tiles) do
 		local def = TargetData.Get(number)
+		local art = def and number <= found and UI.Asset(def.IconKey or "") or nil
+		tile.Image.Image = art or ""
+		tile.Image.Visible = art ~= nil
+		tile.Glyph.Visible = art == nil
 		if number <= found and def then
 			tile.Icon.BackgroundColor3 = def.Color
 			tile.Glyph.Text = string.upper(string.sub(def.Name, 1, 1))

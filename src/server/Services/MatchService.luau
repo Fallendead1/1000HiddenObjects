@@ -144,22 +144,35 @@ local function checkTargetExposure()
 	end
 end
 
+-- Random hiding spot, weighted toward DEEP ones (more junk on top, packed chunks count triple):
+-- finding the key should take real digging, while shallow lucky finds stay possible but rare.
 local function selectTarget()
 	local maxWeight = UpgradeConfig.GetValue("Strength", UpgradeConfig.GetMaxLevel("Strength"))
-	local eligible = {}
+	local eligible, total = {}, 0
 	for _, socket in ipairs(match.Runtime.SocketList) do
 		local ok = #socket.Blockers > 0
+		local depth = 0
 		for _, b in ipairs(socket.Blockers) do
 			if (b:GetAttribute("Weight") or 1) > maxWeight then
 				ok = false
 			end
+			depth += b:GetAttribute("IsChunk") and 3 or 1
 		end
 		if ok then
-			table.insert(eligible, socket)
+			table.insert(eligible, { Socket = socket, Weight = depth })
+			total += depth
 		end
 	end
 	assert(#eligible > 0, "Room has no exposable target sockets")
-	match.TargetSocket = eligible[match.Rng:NextInteger(1, #eligible)]
+	local roll = match.Rng:NextNumber() * total
+	for _, e in ipairs(eligible) do
+		roll -= e.Weight
+		if roll <= 0 then
+			match.TargetSocket = e.Socket
+			return
+		end
+	end
+	match.TargetSocket = eligible[#eligible].Socket
 end
 
 -- Silently clean objects as if deposited, no Cash (checkpoint resume + dev tools).
@@ -511,6 +524,10 @@ function MatchService.BeginMatch(params: LaunchParams, origin: CFrame): boolean
 		setState("Searching")
 		fireMatch("Started", {})
 		checkTargetExposure()
+		-- Hints bought while they couldn't be used are delivered now.
+		for _, player in ipairs(match.Players) do
+			Services.MonetizationService.ApplyBanked(player)
+		end
 	end)
 	return true
 end

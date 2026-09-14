@@ -9,6 +9,7 @@ export type TargetDef = {
 	Number: number,
 	Color: Color3,
 	Icon: string, -- image asset id string, or "" for placeholder
+	IconKey: string, -- UI image key (ReplicatedStorage.GameAssets.UIImages), text glyph fallback
 }
 
 local Targets: { [number]: TargetDef } = {
@@ -18,6 +19,7 @@ local Targets: { [number]: TargetDef } = {
 		Number = 1,
 		Color = Color3.fromRGB(255, 200, 40),
 		Icon = "",
+		IconKey = "Icon_Key",
 	},
 }
 

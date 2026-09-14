@@ -10,9 +10,9 @@
 	it (no ownership hand-off hitch). The server checks the flight against the allowed throw
 	speed and takes it back after the first impact or OwnedFlightTime.
 
-	Physics bubble: objects within BubbleRadius of a player are live physics. Everything else
-	rests frozen exactly where it lies until someone comes close, so rooms can hold thousands of
-	objects and stay smooth. Pulling something out of a pile lets whatever was on it fall.
+	Nothing is ever anchored: every object is a real, server-owned physics body that sleeps when
+	still. Players walk on the mess and kick it around; thrown objects pass through players until
+	they land. Pulling something out of a pile lets whatever was on it fall.
 
 	Cash is never paid here: objects pay when deposited in a bin (DepositService).
 ]]
@@ -26,6 +26,7 @@ local RunService = game:GetService("RunService")
 local Shared = ReplicatedStorage.Shared
 local GameConfig = require(Shared.Config.GameConfig)
 local UpgradeConfig = require(Shared.Config.UpgradeConfig)
+local ClutterConfig = require(Shared.Config.ClutterConfig)
 local Remotes = require(Shared.Utility.Remotes)
 local RateLimiter = require(Shared.Utility.RateLimiter)
 
@@ -52,7 +53,6 @@ local runtime = nil
 local held: { [Player]: Held } = {}
 local heldBy: { [BasePart]: Player } = {}
 local active: { [BasePart]: Flight } = {}
-local calm: { [BasePart]: number } = {}
 local grabLimiter = RateLimiter.new(GameConfig.GrabRateLimit, GameConfig.GrabRateLimit)
 -- Throws get their own, looser budget so a legitimate release is never swallowed.
 local throwLimiter = RateLimiter.new(GameConfig.GrabRateLimit * 2, GameConfig.GrabRateLimit * 2)
@@ -72,14 +72,21 @@ local losParams = RaycastParams.new()
 losParams.FilterType = Enum.RaycastFilterType.Include
 
 local function setupCollisionGroups()
-	for _, name in ipairs({ "Players", "Clutter", "ClutterHeavy" }) do
+	for _, name in ipairs({ "Players", "Clutter", "ClutterHeavy", "ClutterFlying" }) do
 		pcall(function()
 			PhysicsService:RegisterCollisionGroup(name)
 		end)
 	end
-	-- Light clutter never blocks or flings players; big boxes/bins do block.
-	PhysicsService:CollisionGroupSetCollidable("Players", "Clutter", false)
+	-- Players walk on the mess and kick through it: every resting object is solid to them.
+	PhysicsService:CollisionGroupSetCollidable("Players", "Clutter", true)
 	PhysicsService:CollisionGroupSetCollidable("Players", "ClutterHeavy", true)
+	-- Thrown objects pass through players until they land, so a throw never bumps the thrower
+	-- or clobbers a teammate.
+	PhysicsService:CollisionGroupSetCollidable("Players", "ClutterFlying", false)
+end
+
+local function restingGroup(root: BasePart): string
+	return (root:GetAttribute("Weight") or 1) >= ClutterConfig.PlayerCollisionWeight and "ClutterHeavy" or "Clutter"
 end
 
 local function characterRoot(player: Player): BasePart?
@@ -172,6 +179,9 @@ local function settle(root: BasePart, info: Flight)
 		info.Owned = false
 		serverOwns(root)
 	end
+	if root.CollisionGroup == "ClutterFlying" then
+		root.CollisionGroup = restingGroup(root)
+	end
 	setState(root, "Resting")
 	if info.Thrown then
 		local match = Services.MatchService.GetMatch()
@@ -185,7 +195,6 @@ end
 local function makeActive(root: BasePart, by: Player?, state: string, keepOwner: boolean?)
 	root.Anchored = false
 	root.CanCollide = true
-	calm[root] = nil
 	if not keepOwner then
 		serverOwns(root)
 	end
@@ -225,6 +234,7 @@ local function release(player: Player, velocity: Vector3)
 		-- The thrower's client has already launched it (it owns the physics); writing the
 		-- velocity here too would fight that simulation. It is kept as a fallback launch.
 		info.LaunchVelocity = velocity
+		root.CollisionGroup = "ClutterFlying"
 		addLift(root)
 		info.Lift = true
 		info.MaxSpeed = velocity.Magnitude
@@ -263,13 +273,11 @@ function ObjectService.Grab(player: Player, root: any): (boolean, string?)
 	-- Packed junk bursts into its pieces instead of being carried.
 	if root:GetAttribute("IsChunk") then
 		active[root] = nil
-		calm[root] = nil
 		Services.ChunkService.Burst(root, player)
 		return false, "Burst"
 	end
 
 	active[root] = nil
-	calm[root] = nil
 	clearLift(root)
 	heldBy[root] = player
 	root.Anchored = false
@@ -367,7 +375,6 @@ function ObjectService.Forget(root: BasePart)
 		release(holder, Vector3.zero)
 	end
 	active[root] = nil
-	calm[root] = nil
 end
 
 -- Teleport an object (dev tools); it stays a physics body.
@@ -388,7 +395,7 @@ function ObjectService.ClearRoom()
 	for player in pairs(held) do
 		release(player, Vector3.zero)
 	end
-	held, heldBy, active, calm = {}, {}, {}, {}
+	held, heldBy, active = {}, {}, {}
 	runtime = nil
 end
 
@@ -424,51 +431,6 @@ function ObjectService.Init()
 	end)
 end
 
--- Live physics near players, frozen rest everywhere else.
-local function updateBubble(dt: number)
-	local match = Services.MatchService.GetMatch()
-	local centers = {}
-	for _, player in ipairs(match and match.Players or {}) do
-		local hrp = characterRoot(player)
-		if hrp then
-			table.insert(centers, hrp.Position)
-		end
-	end
-	local r2 = GameConfig.BubbleRadius * GameConfig.BubbleRadius
-	for _, obj in ipairs(runtime.Objects) do
-		if obj.Parent and not heldBy[obj] and not active[obj] then
-			local p = obj.Position
-			local near = false
-			for _, c in ipairs(centers) do
-				local dx, dz = p.X - c.X, p.Z - c.Z
-				if dx * dx + dz * dz <= r2 then
-					near = true
-					break
-				end
-			end
-			if near then
-				calm[obj] = nil
-				if obj.Anchored then
-					obj.Anchored = false
-					serverOwns(obj)
-				end
-			elseif not obj.Anchored then
-				if obj.AssemblyLinearVelocity.Magnitude < 0.5 then
-					local t = (calm[obj] or 0) + dt
-					if t >= GameConfig.BubbleFreezeDelay then
-						obj.Anchored = true
-						calm[obj] = nil
-					else
-						calm[obj] = t
-					end
-				else
-					calm[obj] = 0
-				end
-			end
-		end
-	end
-end
-
 function ObjectService.Start()
 	-- Anything loose can be knocked out of the room: sweep for it.
 	task.spawn(function()
@@ -476,19 +438,10 @@ function ObjectService.Start()
 			task.wait(2)
 			if runtime then
 				for _, obj in ipairs(runtime.Objects) do
-					if obj.Parent and not heldBy[obj] and not obj.Anchored and Services.RoomService.IsOutOfRoom(runtime, obj) then
+					if obj.Parent and not heldBy[obj] and Services.RoomService.IsOutOfRoom(runtime, obj) then
 						Services.RoomService.RecoverObject(runtime, obj)
 					end
 				end
-			end
-		end
-	end)
-
-	task.spawn(function()
-		while true do
-			local dt = task.wait(GameConfig.BubbleInterval)
-			if runtime then
-				updateBubble(dt)
 			end
 		end
 	end)
