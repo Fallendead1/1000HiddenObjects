@@ -50,6 +50,11 @@ local Template = {
 		QuickHint = 0,
 		SuperHint = 0,
 	},
+	-- Lasting progression (not a currency): Cleaner XP, room mastery stars, daily challenges.
+	CleanerXP = 0,
+	Stars = {}, -- [tostring(roomId)] = bitmask: 1 object found, 2 cleaned 25%, 4 every treasure
+	Daily = { Day = 0, Ids = {}, Progress = {}, Done = {} },
+	Stats = { Swishes = 0, Treasures = 0, Chunks = 0, Keys = 0 },
 	PurchaseHistory = {},
 }
 

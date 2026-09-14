@@ -49,6 +49,10 @@ return {
 	-- The key "rattles" the junk over it when a player's hands are close
 	KeyRattleDistance = 6,
 	KeyRattleInterval = 1.6,
+	-- Junk still covering the key when its chunk bursts is blasted outward. Gravity is ~196
+	-- studs/s^2, so the lift must be big to clear the spot (38 -> ~3.7 studs up, ~0.4 s aloft).
+	KeyBurstSpeed = 16,
+	KeyBurstLift = 38,
 
 	-- Economy
 	MaxCashMultiplier = 4,
@@ -78,6 +82,7 @@ return {
 	-- Persistence
 	DataStoreName = "PlayerData_v1",
 	LeaderboardTopFinders = "TopObjectFinders_v1",
+	LeaderboardMostCleaned = "MostCleaned_v1",
 	LeaderboardFastestPrefix = "FastestRoom_v1_",
 	AutosaveInterval = 120,
 	LeaderboardRefreshInterval = 60,

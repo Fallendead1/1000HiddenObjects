@@ -25,6 +25,7 @@ local panel: Frame
 local numberLabel: TextLabel
 local nameLabel: TextLabel
 local targetLabel: TextLabel
+local starsLabel: TextLabel
 local iconFrame: Frame
 local iconGlyph: TextLabel
 local iconImage: ImageLabel
@@ -76,6 +77,13 @@ local function render()
 	iconImage.Image = art or ""
 	iconImage.Visible = art ~= nil
 	iconGlyph.Visible = art == nil
+	local mask, count, text = player:GetAttribute("Stars_" .. roomId) or 0, 0, ""
+	for _, bitValue in ipairs({ 1, 2, 4 }) do
+		local has = bit32.band(mask, bitValue) ~= 0
+		count += has and 1 or 0
+		text ..= has and "★" or "☆"
+	end
+	starsLabel.Text = string.format("%s  %d/3 STARS", text, count)
 
 	local highest = player:GetAttribute("HighestRoomCompleted") or 0
 	local cpRoom = player:GetAttribute("CheckpointRoomId") or 0
@@ -147,7 +155,8 @@ function RoomSelectController.Init()
 	iconGlyph = UI.Label({ Text = "G", TextSize = 32, TextColor3 = UI.Colors.PanelDark }, iconFrame)
 	iconImage = UI.Image({ Size = UDim2.new(1, -8, 1, -8), Position = UDim2.fromOffset(4, 4), Visible = false }, iconFrame)
 	UI.Glow(panel, UI.Colors.Gold, 26, 0.55)
-	targetLabel = UI.Label({ Text = "Golden Key", TextSize = 20, TextColor3 = UI.Colors.Gold, Size = UDim2.new(1, 0, 0, 24), Position = UDim2.fromOffset(0, 138) }, card)
+	targetLabel = UI.Label({ Text = "Golden Key", TextSize = 20, TextColor3 = UI.Colors.Gold, Size = UDim2.new(1, 0, 0, 24), Position = UDim2.fromOffset(0, 136) }, card)
+	starsLabel = UI.Label({ Text = "", TextSize = 15, Font = UI.FontBody, TextColor3 = UI.Colors.Gold, Size = UDim2.new(1, 0, 0, 18), Position = UDim2.fromOffset(0, 160) }, card)
 
 	prevButton = UI.Button({ Text = "<", Color = UI.Colors.PanelLight, Size = UDim2.fromOffset(52, 72), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 14, 0, 146), TextSize = 32 }, panel)
 	nextButton = UI.Button({ Text = ">", Color = UI.Colors.PanelLight, Size = UDim2.fromOffset(52, 72), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -14, 0, 146), TextSize = 32 }, panel)

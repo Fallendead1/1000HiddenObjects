@@ -52,6 +52,11 @@ function ChunkService.Burst(chunk: BasePart, player: Player?)
 	for _, p in ipairs(match.Players) do
 		Remotes.Event("FXEvent"):FireClient(p, "ChunkBurst", { Position = center, Count = spawned })
 	end
+	if player then
+		Services.ProgressionService.OnChunkBurst(player)
+	end
+	-- The packed junk hiding the key releases it.
+	Services.MatchService.OnChunkBurst(chunk, center)
 end
 
 return ChunkService

@@ -1,0 +1,157 @@
+{
+  "images": {
+    "Icon_MoveSpeed": "rbxassetid://84988676424472",
+    "Icon_Streak": "rbxassetid://116460052831056",
+    "ButtonRound": "rbxassetid://123520816156849",
+    "BarFill": "rbxassetid://95094683900308",
+    "Bin_Donation": "rbxassetid://110854404508732",
+    "Icon_Hint": "rbxassetid://81692182350562",
+    "Bin_Laundry": "rbxassetid://72702616354126",
+    "Icon_Prod_SuperHint": "rbxassetid://113217719921909",
+    "Panel": "rbxassetid://78555733929420",
+    "Icon_Key": "rbxassetid://87799452161037",
+    "Bin_Books": "rbxassetid://134560460133024",
+    "BarTrack": "rbxassetid://84129628832032",
+    "Icon_Prod_TeamMuscleBoost": "rbxassetid://103537113039346",
+    "Icon_ThrowPower": "rbxassetid://79124376921800",
+    "Icon_Prod_ThrowBoost": "rbxassetid://86960028570573",
+    "Icon_Shop": "rbxassetid://85315603343670",
+    "Glow": "rbxassetid://121196171903265",
+    "Icon_Cash": "rbxassetid://126926165011193",
+    "Icon_Close": "rbxassetid://113957885992864",
+    "Icon_Notify_Premium": "rbxassetid://135890840300694",
+    "Icon_Notify_Warning": "rbxassetid://73057523441986",
+    "Bin_Toys": "rbxassetid://117831229176136",
+    "Icon_Strength": "rbxassetid://99077768953205",
+    "Button": "rbxassetid://126071621008676",
+    "Icon_Prod_StrongerHands": "rbxassetid://134361076786951",
+    "Icon_Notify_Success": "rbxassetid://115874730968541",
+    "Icon_Settings": "rbxassetid://94646874940604",
+    "Rays": "rbxassetid://78171063235742",
+    "Icon_Prod_VIP": "rbxassetid://104155498878927",
+    "Icon_Notify_Error": "rbxassetid://77017657913667",
+    "Icon_Prod_FastHands": "rbxassetid://73464995716083",
+    "Icon_Notify_Info": "rbxassetid://127654306838860",
+    "Logo": "rbxassetid://95267532898680",
+    "Icon_Prod_Strength10Min": "rbxassetid://89680190449854",
+    "Icon_Prod_DoubleCash": "rbxassetid://129250602561603",
+    "LoadingBackground": "rbxassetid://73855222508447",
+    "Icon_Prod_QuickHint": "rbxassetid://79769020720304",
+    "Icon_Prod_Cash10Min": "rbxassetid://140325526376696",
+    "Icon_Collection": "rbxassetid://140185361838030",
+    "Icon_Upgrades": "rbxassetid://117067775936072",
+    "Icon_Weight": "rbxassetid://86366604475454",
+    "Bin_Trash": "rbxassetid://135961698426764",
+    "Crosshair": "rbxassetid://76202135256272"
+  },
+  "violations": [],
+  "parts": 51,
+  "tags": {
+    "Leaderboard": [
+      {
+        "path": "Workspace.Lobby.TopFindersBoard",
+        "attributes": {
+          "Kind": "TopFinders",
+          "Face": "Front"
+        },
+        "position": [
+          27,
+          -12.630000114440918,
+          24
+        ],
+        "class": "Part",
+        "size": [
+          12,
+          14,
+          0.5
+        ]
+      },
+      {
+        "path": "Workspace.Lobby.FastestBoard",
+        "attributes": {
+          "Kind": "Fastest",
+          "Face": "Front"
+        },
+        "position": [
+          27,
+          -12.630000114440918,
+          39
+        ],
+        "class": "Part",
+        "size": [
+          12,
+          14,
+          0.5
+        ]
+      }
+    ],
+    "CollectionBoard": [
+      {
+        "path": "Workspace.Lobby.CollectionBoard",
+        "attributes": {
+          "Face": "Front"
+        },
+        "position": [
+          -23,
+          -14.630000114440918,
+          30
+        ],
+        "class": "Part",
+        "size": [
+          14,
+          8,
+          0.5
+        ]
+      }
+    ],
+    "ShopStand": [
+      {
+        "path": "Workspace.Lobby.UpgradeShop.AwningValance",
+        "attributes": [],
+        "position": [
+          -44.5,
+          -12.050000190734863,
+          52
+        ],
+        "class": "Part",
+        "size": [
+          3,
+          1.2000000476837158,
+          0.30000001192092896
+        ]
+      }
+    ],
+    "LobbyKeyDeco": [
+      {
+        "path": "Workspace.Lobby.LobbyKeyDeco",
+        "attributes": [],
+        "scale": 3,
+        "class": "Model",
+        "size": [
+          6.90000057220459,
+          3.6000003814697266,
+          0.9000000357627869
+        ]
+      }
+    ],
+    "FutureDoor": [
+      {
+        "path": "Workspace.Lobby.FutureDoor",
+        "attributes": {
+          "Label": "MORE ROOMS COMING SOON"
+        },
+        "position": [
+          -60,
+          -15.130000114440918,
+          0
+        ],
+        "class": "Part",
+        "size": [
+          8,
+          12,
+          0.6000000238418579
+        ]
+      }
+    ]
+  }
+}

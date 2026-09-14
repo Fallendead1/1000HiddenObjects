@@ -1,0 +1,47 @@
+DataStoreService: StudioAccessToApisNotAllowed: Studio access to APIs is not allowed. API: GetSortedAsync, Data Store: TopObjectFinders_v1
+[LeaderboardService] OrderedDataStore unavailable, using memory fallback
+[QueueService] 4 matchmaking queues registered
+[1000 Hidden Objects] Server started. Role=Combined DevelopmentMode=true
+DataStoreService: StudioAccessToApisNotAllowed: Studio access to APIs is not allowed. API: GetAsync, Data Store: PlayerData_v1
+[MiniMartBuilder] Plugin loaded. Use the Mini Mart toolbar to build.
+[DataService] Failed to load profile for Yeno_mediaX 502: API Services rejected request with error. Error code: 7 Reason: Studio access to APIs is not allowed.
+[MiniMartBuilder] Plugin loaded. Use the Mini Mart toolbar to build.
+Players.Yeno_mediaX.PlayerScripts.Client.Controllers.ShopController:148: attempt to index nil with 'Open'
+Stack Begin
+Script 'Players.Yeno_mediaX.PlayerScripts.Client.Controllers.ShopController', Line 148 - function Open
+Script 'AssistantCommand', Line 3
+Stack End
+[Roblox][sabuiltin_Assistant.rbxm.Assistant.Packages._Index.AssistantUI.AssistantUI.Util.TestAutomationUtils] VirtualInput::SendMousePosition: position (147.7, 87.8) hits CoreGUI.
+Stack Begin
+Script 'sabuiltin_Assistant.rbxm.Assistant.Packages._Index.AssistantUI.AssistantUI.Util.TestAutomationUtils', Line 286
+Script 'sabuiltin_Assistant.rbxm.Assistant.Packages._Index.AssistantUI.AssistantUI.Util.TestAutomationUtils', Line 164
+Stack End
+[Roblox][sabuiltin_Assistant.rbxm.Assistant.Packages._Index.AssistantUI.AssistantUI.Util.TestAutomationUtils] VirtualInput::SendMousePosition: position (244.3, 107.3) hits CoreGUI.
+Stack Begin
+Script 'sabuiltin_Assistant.rbxm.Assistant.Packages._Index.AssistantUI.AssistantUI.Util.TestAutomationUtils', Line 286
+Script 'sabuiltin_Assistant.rbxm.Assistant.Packages._Index.AssistantUI.AssistantUI.Util.TestAutomationUtils', Line 164
+Stack End
+[Roblox][sabuiltin_Assistant.rbxm.Assistant.Packages._Index.AssistantUI.AssistantUI.Util.TestAutomationUtils] VirtualInput::SendMousePosition: position (298.4, 118.2) hits CoreGUI.
+Stack Begin
+Script 'sabuiltin_Assistant.rbxm.Assistant.Packages._Index.AssistantUI.AssistantUI.Util.TestAutomationUtils', Line 286
+Script 'sabuiltin_Assistant.rbxm.Assistant.Packages._Index.AssistantUI.AssistantUI.Util.TestAutomationUtils', Line 164
+Stack End
+[Roblox][sabuiltin_Assistant.rbxm.Assistant.Packages._Index.AssistantUI.AssistantUI.Util.TestAutomationUtils] VirtualInput::SendMousePosition: position (376.7, 134.0) hits CoreGUI.
+Stack Begin
+Script 'sabuiltin_Assistant.rbxm.Assistant.Packages._Index.AssistantUI.AssistantUI.Util.TestAutomationUtils', Line 286
+Script 'sabuiltin_Assistant.rbxm.Assistant.Packages._Index.AssistantUI.AssistantUI.Util.TestAutomationUtils', Line 164
+Stack End
+[Roblox][sabuiltin_Assistant.rbxm.Assistant.Packages._Index.AssistantUI.AssistantUI.Util.TestAutomationUtils] VirtualInput::SendMousePosition: position (447.0, 148.1) hits CoreGUI.
+Stack Begin
+Script 'sabuiltin_Assistant.rbxm.Assistant.Packages._Index.AssistantUI.AssistantUI.Util.TestAutomationUtils', Line 286
+Script 'sabuiltin_Assistant.rbxm.Assistant.Packages._Index.AssistantUI.AssistantUI.Util.TestAutomationUtils', Line 164
+Stack End
+[Analytics] shop_open Yeno_mediaX 
+[Analytics] shop_open Yeno_mediaX 
+[ClutterBuilder] The Messy Bedroom: 1816 physics bodies (1225 in heaps/rows, 591 floor carpet), 246 junk chunks holding 1608 more objects, 17 treasures, built in 0.94s
+[MatchService] 1816 objects released to physics, settled in 2.4s
+=== ROOM VALIDATION: The Messy Bedroom (001) ===
+Movable objects: 1816 | AssetKeys used: 37 | Sockets: 36 exposable / 36 | Regions: 12 | Total parts: 5762
+Bins: 5 | Junk chunks: 246 holding 1608 objects | Treasures: 17 | Real objects in room: 3178
+RESULT: PASS
+[Analytics] match_start Yeno_mediaX PartySize=1 Resume=0 RoomId=1 Objects=3178

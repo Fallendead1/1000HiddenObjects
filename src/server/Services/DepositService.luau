@@ -104,6 +104,7 @@ function DepositService.Deposit(root: BasePart, bin: Bin)
 		amount = math.max(1, math.floor((root:GetAttribute("CashValue") or 1) * mult + 0.5))
 		Services.EconomyService.AddCash(player, amount)
 		player:SetAttribute("ObjectsCleaned", (player:GetAttribute("ObjectsCleaned") or 0) + 1)
+		Services.ProgressionService.OnDeposit(player, { Match = isMatch, BinType = bin.Type, Swish = swish, Streak = streak, Treasure = category == "Treasure" })
 	end
 
 	root:SetAttribute("Deposited", true)
@@ -129,7 +130,7 @@ function DepositService.Deposit(root: BasePart, bin: Bin)
 		Remotes.Event("FXEvent"):FireClient(p, "Deposit", payload)
 	end
 	root:Destroy()
-	Services.MatchService.OnObjectDeposited(player)
+	Services.MatchService.OnObjectDeposited(player, category == "Treasure")
 end
 
 function DepositService.GetBins(): { Bin }

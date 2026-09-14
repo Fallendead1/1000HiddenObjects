@@ -13,6 +13,7 @@ local Shared = ReplicatedStorage.Shared
 local GameConfig = require(Shared.Config.GameConfig)
 local Remotes = require(Shared.Utility.Remotes)
 local FormatUtil = require(Shared.Utility.FormatUtil)
+local ProgressionConfig = require(Shared.Config.ProgressionConfig)
 local TargetData = require(Shared.Data.TargetData)
 
 local UI = require(script.Parent.Parent.UI.UI)
@@ -37,6 +38,7 @@ local resObject: TextLabel
 local resStats: TextLabel
 local resBest: TextLabel
 local resContrib: Frame
+local resStars: Frame
 local returnButton: TextButton
 local nextButton: TextButton
 
@@ -174,6 +176,35 @@ local function showResults(payload)
 		UI.Label({ Text = tostring(c.Objects or 0) .. " cleaned", TextSize = 15, Font = UI.FontBody, TextColor3 = UI.Colors.TextDim, Size = UDim2.new(0.4, -10, 1, 0), Position = UDim2.new(0.6, 0, 0, 0), TextXAlignment = Enum.TextXAlignment.Right }, row)
 	end
 
+	-- Mastery stars: earned ones light up, newly earned ones pop in one by one.
+	for _, c in ipairs(resStars:GetChildren()) do
+		if c:IsA("Frame") then
+			c:Destroy()
+		end
+	end
+	local stars = (payload.Stars or {})[tostring(player.UserId)] or { Earned = 0, New = 0 }
+	local owned = bit32.bor(stars.Earned or 0, player:GetAttribute("Stars_" .. tostring(payload.ObjectNumber or 1)) or 0)
+	for i, s in ipairs(ProgressionConfig.Stars) do
+		local has = bit32.band(owned, s.Bit) ~= 0
+		local new = bit32.band(stars.New or 0, s.Bit) ~= 0
+		local cell = UI.Frame({ Size = UDim2.new(1 / 3, -7, 1, 0), BackgroundColor3 = UI.Colors.PanelLight, LayoutOrder = i }, resStars)
+		UI.Corner(cell, 10)
+		UI.Stroke(cell, has and UI.Colors.Gold or UI.Colors.Stroke, 2, has and 0 or 0.5)
+		local star = UI.Label({ Text = has and "★" or "☆", TextSize = 34, TextColor3 = has and UI.Colors.Gold or UI.Colors.TextDim, Size = UDim2.new(1, 0, 0, 36), Position = UDim2.fromOffset(0, 2) }, cell)
+		local caption = s.Text
+		if s.Key == "Treasure" then
+			caption = string.format("%s (%d/%d)", s.Text, payload.TreasuresCleaned or 0, payload.TreasuresTotal or 0)
+		end
+		UI.Label({ Text = new and "NEW! " .. caption or caption, TextSize = 12, Font = UI.FontBody, TextWrapped = true, TextColor3 = new and UI.Colors.Gold or UI.Colors.TextDim, Size = UDim2.new(1, -8, 0, 30), Position = UDim2.fromOffset(4, 38) }, cell)
+		if new then
+			UI.Glow(cell, UI.Colors.Gold, 14, 0.5)
+			task.delay(0.4 + i * 0.35, function()
+				UI.PopIn(star, 0.2, 0.35)
+				Controllers.AudioController.Play("Streak")
+			end)
+		end
+	end
+
 	if payload.NextRoomAvailable then
 		nextButton.Text = "NEXT ROOM"
 		UI.SetButtonEnabled(nextButton, true)
@@ -215,6 +246,8 @@ function ResultsController.Init()
 	resBest = UI.Label({ Text = "", TextSize = 16, Font = UI.FontBody, TextColor3 = UI.Colors.Cyan, Size = UDim2.new(0.5, -20, 0, 22), Position = UDim2.fromOffset(20, 300), TextXAlignment = Enum.TextXAlignment.Left }, resultsCard)
 	resContrib = UI.Frame({ BackgroundTransparency = 1, Size = UDim2.new(0.5, -20, 0, 130), Position = UDim2.new(0.5, 0, 0, 192) }, resultsCard)
 	UI.ListLayout(resContrib, Enum.FillDirection.Vertical, 4, Enum.HorizontalAlignment.Center)
+	resStars = UI.Frame({ BackgroundTransparency = 1, Size = UDim2.new(1, -40, 0, 70), Position = UDim2.fromOffset(20, 330) }, resultsCard)
+	UI.ListLayout(resStars, Enum.FillDirection.Horizontal, 10, Enum.HorizontalAlignment.Center)
 
 	returnButton = UI.Button({ Text = "RETURN TO LOBBY", Color = UI.Colors.Green, Size = UDim2.new(1, -40, 0, 54), Position = UDim2.new(0, 20, 1, -132), TextSize = 22, Shine = true }, resultsCard)
 	nextButton = UI.Button({ Text = "ROOM #002 - COMING SOON", Color = UI.Colors.Gold, Size = UDim2.new(1, -40, 0, 54), Position = UDim2.new(0, 20, 1, -68), TextSize = 20, Shine = true }, resultsCard)

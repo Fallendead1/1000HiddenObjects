@@ -42,6 +42,7 @@ local order = {
 	"BinController",
 	"LoadingController",
 	"ResultsController",
+	"ProgressionController",
 	"TutorialController",
 	"LobbyController",
 	"RoomSelectController",

@@ -16,11 +16,13 @@ local Remotes = require(Shared.Utility.Remotes)
 local LeaderboardService = {}
 
 local finderStore: OrderedDataStore? = nil
+local cleanedStore: OrderedDataStore? = nil
 local fastestStores: { [number]: OrderedDataStore } = {}
 local available = false
 local dataFolder: Configuration
 
 local memoryFinders: { [number]: number } = {}
+local memoryCleaned: { [number]: number } = {}
 local memoryFastest: { [number]: { [number]: number } } = {}
 
 local function getFastestStore(roomId: number): OrderedDataStore?
@@ -87,6 +89,7 @@ function LeaderboardService.Init()
 	dataFolder.Name = "LeaderboardData"
 	dataFolder:SetAttribute("TopFinders", "[]")
 	dataFolder:SetAttribute("Fastest", "[]")
+	dataFolder:SetAttribute("MostCleaned", "[]")
 	dataFolder:SetAttribute("FastestRoomId", 1)
 	dataFolder.Parent = ReplicatedStorage
 
@@ -99,6 +102,9 @@ function LeaderboardService.Init()
 	if ok then
 		finderStore = store
 		available = true
+		pcall(function()
+			cleanedStore = DataStoreService:GetOrderedDataStore(GameConfig.LeaderboardMostCleaned)
+		end)
 	else
 		warn("[LeaderboardService] OrderedDataStore unavailable, using memory fallback")
 	end
@@ -126,8 +132,22 @@ end
 function LeaderboardService.Refresh()
 	local finders = fetchTop(finderStore, memoryFinders, false, 10)
 	local fastest = fetchTop(getFastestStore(1), memoryFastest[1] or {}, true, 10)
+	local cleaned = fetchTop(cleanedStore, memoryCleaned, false, 10)
 	dataFolder:SetAttribute("TopFinders", HttpService:JSONEncode(finders))
 	dataFolder:SetAttribute("Fastest", HttpService:JSONEncode(fastest))
+	dataFolder:SetAttribute("MostCleaned", HttpService:JSONEncode(cleaned))
+end
+
+-- All-time objects cleaned into bins (the profile's TotalMessCleared).
+function LeaderboardService.SubmitMostCleaned(player: Player, total: number)
+	memoryCleaned[player.UserId] = total
+	if cleanedStore then
+		task.spawn(function()
+			pcall(function()
+				cleanedStore:SetAsync(tostring(player.UserId), total)
+			end)
+		end)
+	end
 end
 
 function LeaderboardService.SubmitObjectsFound(player: Player, objectsFound: number)

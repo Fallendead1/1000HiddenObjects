@@ -1,0 +1,242 @@
+[
+  {
+    "file": "C:/1000 Hidden Objects/output/game-art/additions/ui/Glow.png",
+    "width": 256,
+    "height": 256,
+    "alpha": true
+  },
+  {
+    "file": "C:/1000 Hidden Objects/output/game-art/additions/ui/Icon_Notify_Error.png",
+    "width": 128,
+    "height": 128,
+    "alpha": true
+  },
+  {
+    "file": "C:/1000 Hidden Objects/output/game-art/additions/ui/Icon_Notify_Info.png",
+    "width": 128,
+    "height": 128,
+    "alpha": true
+  },
+  {
+    "file": "C:/1000 Hidden Objects/output/game-art/additions/ui/Icon_Notify_Premium.png",
+    "width": 128,
+    "height": 128,
+    "alpha": true
+  },
+  {
+    "file": "C:/1000 Hidden Objects/output/game-art/additions/ui/Icon_Notify_Success.png",
+    "width": 128,
+    "height": 128,
+    "alpha": true
+  },
+  {
+    "file": "C:/1000 Hidden Objects/output/game-art/additions/ui/Icon_Notify_Warning.png",
+    "width": 128,
+    "height": 128,
+    "alpha": true
+  },
+  {
+    "file": "C:/1000 Hidden Objects/output/game-art/additions/ui/Icon_Prod_Cash10Min.png",
+    "width": 256,
+    "height": 256,
+    "alpha": true
+  },
+  {
+    "file": "C:/1000 Hidden Objects/output/game-art/additions/ui/Icon_Prod_DoubleCash.png",
+    "width": 256,
+    "height": 256,
+    "alpha": true
+  },
+  {
+    "file": "C:/1000 Hidden Objects/output/game-art/additions/ui/Icon_Prod_FastHands.png",
+    "width": 256,
+    "height": 256,
+    "alpha": true
+  },
+  {
+    "file": "C:/1000 Hidden Objects/output/game-art/additions/ui/Icon_Prod_QuickHint.png",
+    "width": 256,
+    "height": 256,
+    "alpha": true
+  },
+  {
+    "file": "C:/1000 Hidden Objects/output/game-art/additions/ui/Icon_Prod_Strength10Min.png",
+    "width": 256,
+    "height": 256,
+    "alpha": true
+  },
+  {
+    "file": "C:/1000 Hidden Objects/output/game-art/additions/ui/Icon_Prod_StrongerHands.png",
+    "width": 256,
+    "height": 256,
+    "alpha": true
+  },
+  {
+    "file": "C:/1000 Hidden Objects/output/game-art/additions/ui/Icon_Prod_SuperHint.png",
+    "width": 256,
+    "height": 256,
+    "alpha": true
+  },
+  {
+    "file": "C:/1000 Hidden Objects/output/game-art/additions/ui/Icon_Prod_TeamMuscleBoost.png",
+    "width": 256,
+    "height": 256,
+    "alpha": true
+  },
+  {
+    "file": "C:/1000 Hidden Objects/output/game-art/additions/ui/Icon_Prod_ThrowBoost.png",
+    "width": 256,
+    "height": 256,
+    "alpha": true
+  },
+  {
+    "file": "C:/1000 Hidden Objects/output/game-art/additions/ui/Icon_Prod_VIP.png",
+    "width": 256,
+    "height": 256,
+    "alpha": true
+  },
+  {
+    "file": "C:/1000 Hidden Objects/output/game-art/additions/ui/LoadingBackground.png",
+    "width": 1920,
+    "height": 1080,
+    "alpha": false
+  },
+  {
+    "file": "C:/1000 Hidden Objects/output/game-art/additions/ui/Logo.png",
+    "width": 1024,
+    "height": 440,
+    "alpha": true
+  },
+  {
+    "file": "C:/1000 Hidden Objects/output/game-art/additions/ui/Rays.png",
+    "width": 512,
+    "height": 512,
+    "alpha": true
+  },
+  {
+    "file": "C:/1000 Hidden Objects/output/creator-hub/Badge_FirstFinderWin.png",
+    "width": 512,
+    "height": 512,
+    "alpha": true
+  },
+  {
+    "file": "C:/1000 Hidden Objects/output/creator-hub/Badge_FirstObject.png",
+    "width": 512,
+    "height": 512,
+    "alpha": true
+  },
+  {
+    "file": "C:/1000 Hidden Objects/output/creator-hub/Badge_FiveHundredObjects.png",
+    "width": 512,
+    "height": 512,
+    "alpha": true
+  },
+  {
+    "file": "C:/1000 Hidden Objects/output/creator-hub/Badge_HundredObjects.png",
+    "width": 512,
+    "height": 512,
+    "alpha": true
+  },
+  {
+    "file": "C:/1000 Hidden Objects/output/creator-hub/Badge_Room001Speed.png",
+    "width": 512,
+    "height": 512,
+    "alpha": true
+  },
+  {
+    "file": "C:/1000 Hidden Objects/output/creator-hub/Badge_TenObjects.png",
+    "width": 512,
+    "height": 512,
+    "alpha": true
+  },
+  {
+    "file": "C:/1000 Hidden Objects/output/creator-hub/Badge_ThousandObjects.png",
+    "width": 512,
+    "height": 512,
+    "alpha": true
+  },
+  {
+    "file": "C:/1000 Hidden Objects/output/creator-hub/GameIcon.png",
+    "width": 512,
+    "height": 512,
+    "alpha": false
+  },
+  {
+    "file": "C:/1000 Hidden Objects/output/creator-hub/Pass_DoubleCash.png",
+    "width": 512,
+    "height": 512,
+    "alpha": true
+  },
+  {
+    "file": "C:/1000 Hidden Objects/output/creator-hub/Pass_FastHands.png",
+    "width": 512,
+    "height": 512,
+    "alpha": true
+  },
+  {
+    "file": "C:/1000 Hidden Objects/output/creator-hub/Pass_StrongerHands.png",
+    "width": 512,
+    "height": 512,
+    "alpha": true
+  },
+  {
+    "file": "C:/1000 Hidden Objects/output/creator-hub/Pass_ThrowBoost.png",
+    "width": 512,
+    "height": 512,
+    "alpha": true
+  },
+  {
+    "file": "C:/1000 Hidden Objects/output/creator-hub/Pass_VIP.png",
+    "width": 512,
+    "height": 512,
+    "alpha": true
+  },
+  {
+    "file": "C:/1000 Hidden Objects/output/creator-hub/Product_Cash10Min.png",
+    "width": 512,
+    "height": 512,
+    "alpha": true
+  },
+  {
+    "file": "C:/1000 Hidden Objects/output/creator-hub/Product_QuickHint.png",
+    "width": 512,
+    "height": 512,
+    "alpha": true
+  },
+  {
+    "file": "C:/1000 Hidden Objects/output/creator-hub/Product_Strength10Min.png",
+    "width": 512,
+    "height": 512,
+    "alpha": true
+  },
+  {
+    "file": "C:/1000 Hidden Objects/output/creator-hub/Product_SuperHint.png",
+    "width": 512,
+    "height": 512,
+    "alpha": true
+  },
+  {
+    "file": "C:/1000 Hidden Objects/output/creator-hub/Product_TeamMuscleBoost.png",
+    "width": 512,
+    "height": 512,
+    "alpha": true
+  },
+  {
+    "file": "C:/1000 Hidden Objects/output/creator-hub/Thumbnail_1.png",
+    "width": 1920,
+    "height": 1080,
+    "alpha": false
+  },
+  {
+    "file": "C:/1000 Hidden Objects/output/creator-hub/Thumbnail_2.png",
+    "width": 1920,
+    "height": 1080,
+    "alpha": false
+  },
+  {
+    "file": "C:/1000 Hidden Objects/output/creator-hub/Thumbnail_3.png",
+    "width": 1920,
+    "height": 1080,
+    "alpha": false
+  }
+]

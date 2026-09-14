@@ -60,7 +60,7 @@ local function resetStateConfig()
 		State = "None", RoomId = 0, RoomName = "", RoomNumber = "", TargetName = "", TargetId = "",
 		PartySize = 0, StartTime = 0, EndTime = 0, TotalObjects = 0, CleanedObjects = 0, Progress = 0,
 		HintStage = 0, TargetRevealed = false, TargetFound = false, FinderName = "", OutlinedObjects = "",
-		TeamMuscleExpires = 0, PlayerNames = "", ResumePercent = 0,
+		TeamMuscleExpires = 0, PlayerNames = "", ResumePercent = 0, TreasuresTotal = 0, TreasuresCleaned = 0,
 	}) do
 		stateConfig:SetAttribute(name, value)
 	end
@@ -169,10 +169,18 @@ local function selectTarget()
 		roll -= e.Weight
 		if roll <= 0 then
 			match.TargetSocket = e.Socket
-			return
+			break
 		end
 	end
-	match.TargetSocket = eligible[#eligible].Socket
+	match.TargetSocket = match.TargetSocket or eligible[#eligible].Socket
+	-- The lowest packed junk on the spot secretly holds the key: breaking it open releases it.
+	local keyChunk, lowest = nil, math.huge
+	for _, b in ipairs(match.TargetSocket.Blockers) do
+		if b:GetAttribute("IsChunk") and b.Position.Y < lowest then
+			keyChunk, lowest = b, b.Position.Y
+		end
+	end
+	match.KeyChunk = keyChunk
 end
 
 -- Silently clean objects as if deposited, no Cash (checkpoint resume + dev tools).
@@ -210,6 +218,9 @@ local function preClean(fraction: number, clearTarget: boolean?)
 		if root.Parent then
 			-- A packed chunk counts as every object inside it.
 			runtime.DepositedCount += root:GetAttribute("IsChunk") and #string.split(root:GetAttribute("Contents") or "", ",") or 1
+			if root:GetAttribute("Category") == "Treasure" then
+				match.TreasuresCleaned = (match.TreasuresCleaned or 0) + 1
+			end
 			Services.ObjectService.Forget(root)
 			root:Destroy()
 		end
@@ -464,6 +475,21 @@ function MatchService.BeginMatch(params: LaunchParams, origin: CFrame): boolean
 	}
 
 	selectTarget()
+	-- Treasures in the room (loose + packed in junk) for the "every treasure" mastery star.
+	local treasures = 0
+	for _, obj in ipairs(runtime.Objects) do
+		if obj:GetAttribute("Category") == "Treasure" then
+			treasures += 1
+		elseif obj:GetAttribute("IsChunk") then
+			for _, key in ipairs(string.split(obj:GetAttribute("Contents") or "", ",")) do
+				if string.sub(key, 1, 9) == "Treasure_" then
+					treasures += 1
+				end
+			end
+		end
+	end
+	match.TreasuresTotal = treasures
+	match.TreasuresCleaned = 0
 	if match.ResumePercent > 0 then
 		preClean(match.ResumePercent)
 	end
@@ -478,6 +504,8 @@ function MatchService.BeginMatch(params: LaunchParams, origin: CFrame): boolean
 	stateConfig:SetAttribute("TotalObjects", runtime.TotalObjects)
 	stateConfig:SetAttribute("PlayerNames", playerNamesString(players))
 	stateConfig:SetAttribute("ResumePercent", match.ResumePercent)
+	stateConfig:SetAttribute("TreasuresTotal", match.TreasuresTotal)
+	stateConfig:SetAttribute("TreasuresCleaned", match.TreasuresCleaned)
 	publishProgress()
 	setState("Loading")
 
@@ -534,15 +562,55 @@ end
 
 -- ===== ObjectService callbacks =====
 
-function MatchService.OnObjectDeposited(_player: Player?)
+function MatchService.OnObjectDeposited(_player: Player?, treasure: boolean?)
 	if not match then
 		return
 	end
 	match.Runtime.DepositedCount += 1
+	if treasure then
+		match.TreasuresCleaned = (match.TreasuresCleaned or 0) + 1
+		stateConfig:SetAttribute("TreasuresCleaned", match.TreasuresCleaned)
+	end
 	local old, progress = publishProgress()
 	Services.HintService.OnProgress(match, progress)
 	Services.CheckpointService.OnProgress(match, old, progress)
 	checkTargetExposure()
+end
+
+-- Blasts whatever is still piled on the key's spot outward so the key lies in plain sight.
+local function blastFromKey()
+	local socket = match.TargetSocket.Position
+	for _, root in ipairs(MatchService.GetCoveringObjects()) do
+		local away = Vector3.new(root.Position.X - socket.X, 0, root.Position.Z - socket.Z)
+		if away.Magnitude < 0.1 then
+			local a = match.Rng:NextNumber(0, math.pi * 2)
+			away = Vector3.new(math.cos(a), 0, math.sin(a))
+		end
+		-- Heavier junk moves less.
+		local k = 1 / math.sqrt(math.max(1, root:GetAttribute("Weight") or 1))
+		Services.ObjectService.Activate(root)
+		-- Passes through players while flying (ObjectService restores the group once it settles).
+		root.CollisionGroup = "ClutterFlying"
+		root.AssemblyLinearVelocity = away.Unit * GameConfig.KeyBurstSpeed * k + Vector3.new(0, GameConfig.KeyBurstLift * k, 0)
+		root.AssemblyAngularVelocity = Vector3.new(match.Rng:NextNumber(-5, 5), match.Rng:NextNumber(-5, 5), match.Rng:NextNumber(-5, 5))
+	end
+end
+
+-- The packed junk hiding the key was broken open: the key bursts out of it.
+function MatchService.OnChunkBurst(chunk: Instance, position: Vector3)
+	if not match or match.State ~= "Searching" or match.TargetRevealed or chunk ~= match.KeyChunk then
+		return
+	end
+	blastFromKey()
+	-- A second push clears what the first wave's own junk kept from leaving.
+	local thisMatch = match
+	task.delay(0.5, function()
+		if match == thisMatch and match.State == "Searching" then
+			blastFromKey()
+		end
+	end)
+	fireMatch("KeyBurst", { Position = position })
+	MatchService.RevealTarget()
 end
 
 function MatchService.OnObjectSettled(_root: BasePart)
@@ -687,6 +755,7 @@ function MatchService.CompleteMatch(finder: Player)
 	local roomId = match.RoomId
 
 	-- Save FIRST, then celebrate.
+	local starsByUser = {}
 	for _, player in ipairs(match.Players) do
 		local firstClear = false
 		Services.DataService.Update(player, function(data)
@@ -706,10 +775,12 @@ function MatchService.CompleteMatch(finder: Player)
 			end
 		end)
 		Services.CheckpointService.ClearForRoom(player, roomId)
+		starsByUser[tostring(player.UserId)] = Services.ProgressionService.OnRoomComplete(player, match, player == finder, firstClear)
 		Services.DataService.Save(player)
 		local data = Services.DataService.Get(player)
 		if data then
 			Services.LeaderboardService.SubmitObjectsFound(player, data.ObjectsFound)
+			Services.LeaderboardService.SubmitMostCleaned(player, data.TotalMessCleared)
 			Services.LeaderboardService.SubmitRoomTime(player, roomId, elapsed)
 		end
 		Services.MonetizationService.CheckBadges(player, firstClear, player == finder)
@@ -750,6 +821,9 @@ function MatchService.CompleteMatch(finder: Player)
 			TeamSize = match.PartySize,
 			Contributions = contributions,
 			RoomSearched = match.Progress,
+			Stars = starsByUser,
+			TreasuresTotal = match.TreasuresTotal,
+			TreasuresCleaned = match.TreasuresCleaned,
 			NextRoomAvailable = RoomRegistry.Exists(roomId + 1),
 			TotalObjects = GameConfig.TotalObjects,
 		})
@@ -854,6 +928,7 @@ function MatchService.GetTargetInfo()
 		RegionId = match.TargetSocket.RegionId,
 		Position = match.TargetSocket.Position,
 		Blockers = #match.TargetSocket.Blockers,
+		KeyChunk = match.KeyChunk and match.KeyChunk.Parent and match.KeyChunk.Position or nil,
 		BlockerIds = ids,
 		Covering = #MatchService.GetCoveringObjects(),
 		Revealed = match.TargetRevealed,

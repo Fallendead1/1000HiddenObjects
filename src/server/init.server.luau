@@ -53,6 +53,7 @@ local startOrder = {
 	"ObjectService",
 	"ChunkService",
 	"DepositService",
+	"ProgressionService",
 	"EconomyService",
 	"UpgradeService",
 	"HintService",

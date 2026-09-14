@@ -37,6 +37,7 @@ local function refreshPasses(player: Player)
 	local cache = passCache[player] or {}
 	passCache[player] = cache
 	for _, def in ipairs(MonetizationConfig.GamepassDefs) do
+		local had = cache[def.Key]
 		local owns = false
 		if def.Id ~= 0 then
 			local ok, result = pcall(function()
@@ -49,6 +50,10 @@ local function refreshPasses(player: Player)
 		end
 		cache[def.Key] = owns
 		setPassAttribute(player, def.Key, owns)
+		-- VIP bought mid-room: this room's free Super Hint is available right away.
+		if def.Key == "VIP" and owns and had == false and player:GetAttribute("InMatch") then
+			player:SetAttribute("VIPFreeHints", MonetizationConfig.Effects.VIPFreeSuperHintsPerMatch)
+		end
 	end
 	Services.PlayerSessionService.RecomputeDerived(player)
 end
@@ -310,8 +315,56 @@ function MonetizationService.CheckBadges(player: Player, firstClear: boolean, is
 	end
 end
 
+-- Developer products with Id 0 are looked up on Roblox by their exact StoreName, so products
+-- created by hand in Creator Hub work without pasting IDs into the config.
+local function resolveDeveloperProducts()
+	local missing = false
+	for _, def in ipairs(MonetizationConfig.ProductDefs) do
+		if def.Id == 0 then
+			missing = true
+		end
+	end
+	if not missing then
+		return
+	end
+	local ok, pages = pcall(function()
+		return MarketplaceService:GetDeveloperProductsAsync()
+	end)
+	if not ok or not pages then
+		return
+	end
+	local byName = {}
+	while true do
+		for _, item in ipairs(pages:GetCurrentPage()) do
+			byName[item.Name] = item.ProductId or item.DeveloperProductId
+		end
+		if pages.IsFinished then
+			break
+		end
+		local advanced = pcall(function()
+			pages:AdvanceToNextPageAsync()
+		end)
+		if not advanced then
+			break
+		end
+	end
+	local found = {}
+	for _, def in ipairs(MonetizationConfig.ProductDefs) do
+		local id = def.Id == 0 and byName[def.StoreName]
+		if id then
+			def.Id = id
+			MonetizationConfig.Products[def.Key] = id
+			table.insert(found, def.Key)
+		end
+	end
+	if #found > 0 then
+		print("[Monetization] Developer products found by name: " .. table.concat(found, ", "))
+	end
+end
+
 function MonetizationService.Init()
 	MarketplaceService.ProcessReceipt = processReceipt
+	task.spawn(resolveDeveloperProducts)
 
 	MarketplaceService.PromptGamePassPurchaseFinished:Connect(function(player, passId, purchased)
 		if purchased then

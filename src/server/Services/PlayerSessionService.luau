@@ -239,33 +239,9 @@ function PlayerSessionService.ExtendBoost(player: Player, attribute: string, sec
 	PlayerSessionService.RecomputeDerived(player)
 end
 
--- VIP pass: a gold tag over the player's head, visible to everyone.
+-- Overhead tag: "LV 12 · SOCK HUNTER", gold with a VIP prefix for VIP pass owners.
 function updateVipTag(player: Player)
-	local head = player.Character and player.Character:FindFirstChild("Head")
-	if not head then
-		return
-	end
-	local tag = head:FindFirstChild("VIPTag")
-	if owns(player, "VIP") and not tag then
-		tag = Instance.new("BillboardGui")
-		tag.Name = "VIPTag"
-		tag.Size = UDim2.fromOffset(90, 28)
-		tag.StudsOffset = Vector3.new(0, 2.6, 0)
-		tag.MaxDistance = 70
-		tag.LightInfluence = 0
-		local label = Instance.new("TextLabel")
-		label.BackgroundTransparency = 1
-		label.Size = UDim2.fromScale(1, 1)
-		label.Font = Enum.Font.FredokaOne
-		label.Text = "VIP"
-		label.TextScaled = true
-		label.TextColor3 = Color3.fromRGB(255, 205, 50)
-		label.TextStrokeTransparency = 0.2
-		label.Parent = tag
-		tag.Parent = head
-	elseif tag and not owns(player, "VIP") then
-		tag:Destroy()
-	end
+	Services.ProgressionService.RefreshTag(player)
 end
 
 return PlayerSessionService

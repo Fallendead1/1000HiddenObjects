@@ -192,12 +192,25 @@ function LobbyController.RefreshPill()
 	queuePill.Visible = false
 end
 
+local function fitText(label: TextLabel, maxSize: number): TextLabel
+	UI.New("UITextSizeConstraint", { MaxTextSize = maxSize, MinTextSize = 8 }, label)
+	return label
+end
+
+local BoardKinds = {
+	TopFinders = { Title = "TOP OBJECT FINDERS", Color = UI.Colors.Gold, Attr = "TopFinders" },
+	Fastest = { Title = "FASTEST ROOM #001", Color = UI.Colors.Cyan, Attr = "Fastest", Time = true },
+	MostCleaned = { Title = "MOST CLEANED", Color = UI.Colors.Green, Attr = "MostCleaned" },
+}
+
 local function attachCollectionBoard(part: BasePart)
 	local sg = UI.Surface(part, (part:GetAttribute("Face") and Enum.NormalId[part:GetAttribute("Face")]) or Enum.NormalId.Front, 30)
 	local panel = UI.Frame({ BackgroundTransparency = 1 }, sg)
-	UI.Label({ Text = "YOUR COLLECTION", TextSize = 44, TextColor3 = UI.Colors.TextDim, Size = UDim2.new(1, 0, 0.2, 0) }, panel)
-	local count = UI.Label({ Text = "0 / 1000", TextSize = 100, TextColor3 = UI.Colors.Gold, Size = UDim2.new(1, 0, 0.4, 0), Position = UDim2.fromScale(0, 0.18) }, panel)
-	local button = UI.Button({ Text = "VIEW COLLECTION", Color = UI.Colors.Gold, Size = UDim2.new(0.6, 0, 0.16, 0), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.fromScale(0.5, 0.72), TextSize = 40 }, panel)
+	-- Every board text scales to the board's real size (boards come in any dimensions).
+	fitText(UI.Label({ Text = "YOUR COLLECTION", TextScaled = true, TextColor3 = UI.Colors.TextDim, Size = UDim2.new(0.9, 0, 0.16, 0), Position = UDim2.fromScale(0.05, 0.04) }, panel), 54)
+	local count = fitText(UI.Label({ Text = "0 / 1000", TextScaled = true, TextColor3 = UI.Colors.Gold, Size = UDim2.new(0.9, 0, 0.42, 0), Position = UDim2.fromScale(0.05, 0.22) }, panel), 130)
+	local button = UI.Button({ Text = "", Color = UI.Colors.Gold, Size = UDim2.new(0.7, 0, 0.2, 0), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.fromScale(0.5, 0.72), Shine = 3 }, panel)
+	fitText(UI.Label({ Text = "VIEW COLLECTION", TextScaled = true, TextColor3 = UI.Colors.PanelDark, Size = UDim2.new(0.9, 0, 0.7, 0), Position = UDim2.fromScale(0.05, 0.15), ZIndex = 3 }, button), 44)
 	button.Activated:Connect(function()
 		Controllers.CollectionController.Open()
 	end)
@@ -225,15 +238,15 @@ local function attachShopStand(part: BasePart)
 end
 
 local function attachLeaderboard(part: BasePart)
-	local kind = part:GetAttribute("Kind") or "TopFinders"
+	local def = BoardKinds[part:GetAttribute("Kind") or "TopFinders"] or BoardKinds.TopFinders
 	local sg = UI.Surface(part, (part:GetAttribute("Face") and Enum.NormalId[part:GetAttribute("Face")]) or Enum.NormalId.Front, 30)
 	local panel = UI.Frame({ BackgroundTransparency = 1 }, sg)
-	UI.Label({ Text = kind == "Fastest" and "FASTEST ROOM #001" or "TOP OBJECT FINDERS", TextSize = 40, TextColor3 = kind == "Fastest" and UI.Colors.Cyan or UI.Colors.Gold, Size = UDim2.new(1, 0, 0.14, 0) }, panel)
+	fitText(UI.Label({ Text = def.Title, TextScaled = true, TextColor3 = def.Color, Size = UDim2.new(0.92, 0, 0.11, 0), Position = UDim2.fromScale(0.04, 0.02) }, panel), 56)
 	local list = UI.Frame({ BackgroundTransparency = 1, Size = UDim2.new(1, -20, 0.84, 0), Position = UDim2.new(0, 10, 0.15, 0) }, panel)
 	UI.ListLayout(list, Enum.FillDirection.Vertical, 4)
 
 	local data = ReplicatedStorage:WaitForChild("LeaderboardData")
-	local attrName = kind == "Fastest" and "Fastest" or "TopFinders"
+	local attrName = def.Attr
 	local function refresh()
 		for _, c in ipairs(list:GetChildren()) do
 			if c:IsA("Frame") then
@@ -247,18 +260,18 @@ local function attachLeaderboard(part: BasePart)
 			return
 		end
 		if #entries == 0 then
-			local row = UI.Frame({ Size = UDim2.new(1, 0, 0, 34), BackgroundTransparency = 1 }, list)
-			UI.Label({ Text = "No entries yet - be the first!", TextSize = 22, TextColor3 = UI.Colors.TextDim }, row)
+			local row = UI.Frame({ Size = UDim2.new(1, 0, 0.08, 0), BackgroundTransparency = 1 }, list)
+			fitText(UI.Label({ Text = "No entries yet - be the first!", TextScaled = true, TextColor3 = UI.Colors.TextDim }, row), 24)
 		end
 		for i, e in ipairs(entries) do
 			if i > 10 then
 				break
 			end
-			local row = UI.Frame({ Size = UDim2.new(1, 0, 0, 30), BackgroundColor3 = i == 1 and UI.Colors.GoldDark or UI.Colors.PanelLight, LayoutOrder = i }, list)
+			local row = UI.Frame({ Size = UDim2.new(1, 0, 0.085, 0), BackgroundColor3 = i == 1 and UI.Colors.GoldDark or UI.Colors.PanelLight, LayoutOrder = i }, list)
 			UI.Corner(row, 6)
-			UI.Label({ Text = string.format("%d. %s", i, e.Name or "?"), TextSize = 22, Font = UI.FontBody, Size = UDim2.new(0.7, 0, 1, 0), Position = UDim2.fromOffset(10, 0), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = e.UserId == player.UserId and UI.Colors.Gold or UI.Colors.Text }, row)
-			local valueText = kind == "Fastest" and FormatUtil.Time(e.Value or 0) or tostring(e.Value or 0)
-			UI.Label({ Text = valueText, TextSize = 22, Font = UI.FontBody, Size = UDim2.new(0.3, -10, 1, 0), Position = UDim2.new(0.7, 0, 0, 0), TextXAlignment = Enum.TextXAlignment.Right, TextColor3 = UI.Colors.TextDim }, row)
+			fitText(UI.Label({ Text = string.format("%d. %s", i, e.Name or "?"), TextScaled = true, Font = UI.FontBody, Size = UDim2.new(0.66, -10, 0.8, 0), Position = UDim2.new(0, 10, 0.1, 0), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = e.UserId == player.UserId and UI.Colors.Gold or UI.Colors.Text }, row), 24)
+			local valueText = def.Time and FormatUtil.Time(e.Value or 0) or tostring(e.Value or 0)
+			fitText(UI.Label({ Text = valueText, TextScaled = true, Font = UI.FontBody, Size = UDim2.new(0.34, -10, 0.8, 0), Position = UDim2.new(0.66, 0, 0.1, 0), TextXAlignment = Enum.TextXAlignment.Right, TextColor3 = UI.Colors.TextDim }, row), 24)
 		end
 	end
 	data:GetAttributeChangedSignal(attrName):Connect(refresh)

@@ -118,10 +118,21 @@ commands.ForceCheckpoint = function(player, percent)
 	end
 end
 
+-- Breaks open the packed junk that secretly holds the key (same path as grabbing it).
+commands.BurstKeyChunk = function(player)
+	local match = Services.MatchService.GetMatch()
+	local chunk = match and match.KeyChunk
+	if chunk and chunk.Parent then
+		Services.ChunkService.Burst(chunk, player)
+	else
+		print("[DEV] No key chunk on this spot")
+	end
+end
+
 commands.TargetInfo = function(player)
 	local info = Services.MatchService.GetTargetInfo()
 	if info then
-		local text = string.format("[DEV] Target: %s (%s) at %s | %d covering / %d blockers | revealed=%s | blockers: %s", tostring(info.SocketId), tostring(info.RegionId), tostring(info.Position), info.Covering or 0, info.Blockers or 0, tostring(info.Revealed), table.concat(info.BlockerIds or {}, ","))
+		local text = string.format("[DEV] Target: %s (%s) at %s | %d covering / %d blockers | revealed=%s | keyChunk=%s | blockers: %s", tostring(info.SocketId), tostring(info.RegionId), tostring(info.Position), info.Covering or 0, info.Blockers or 0, tostring(info.Revealed), tostring(info.KeyChunk), table.concat(info.BlockerIds or {}, ","))
 		print(text)
 		Services.NotificationService.Send(player, "Info", text, 8)
 	end

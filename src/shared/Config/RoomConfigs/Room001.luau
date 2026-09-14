@@ -194,6 +194,22 @@ Room.Sockets = {
 	socket("S_Center_01", "Center_Main", -2, -2, 1), socket("S_Center_02", "Center_Main", 2.5, 2, 1), socket("S_Center_03", "Center_B", 0, 0, 1), socket("S_Center_04", "Center_C", 0, 0, 1),
 	socket("S_Left_01", "Left_A", 0, -1), socket("S_Left_02", "Left_B", 0, 0),
 	socket("S_Right_01", "Right_A", 0, 1), socket("S_Right_02", "Right_B", 0, 0),
+	-- More hiding spots: searching every pile is part of the hunt.
+	socket("S_Bed_04", "Bed_Top", 4, -6), socket("S_Bed_05", "Bed_Top", -4, 6),
+	socket("S_BedSide_02", "Bed_Side", 0, 4),
+	socket("S_UnderBed_04", "UnderBed_B", -3, 2, 3),
+	socket("S_Desk_04", "Desk_Floor_L", -2, -2), socket("S_Desk_05", "Desk_Floor_R", 2, 1),
+	socket("S_Closet_04", "Closet_Floor", 0, 7), socket("S_Closet_05", "Closet_Front", 1, -2),
+	socket("S_Books_03", "Bookshelf_Floor_A", -1.5, 1.5), socket("S_Books_04", "Bookshelf_Floor_B", -1, 2),
+	socket("S_Laundry_05", "Laundry_B", 2, 1), socket("S_Laundry_06", "Laundry_C", -2, -1),
+	socket("S_Toy_05", "Toy_B", 2, 1), socket("S_Toy_06", "Toy_C", -2, 1),
+	socket("S_Dresser_04", "Dresser_Floor_L", 2, 2), socket("S_Dresser_05", "Dresser_Floor_R", -1.5, 1.5),
+	socket("S_Window_03", "Window_Pile", 2.5, -2),
+	socket("S_Center_05", "Center_Main", 3, -3, 1), socket("S_Center_06", "Center_B", 1.5, -1.5, 1), socket("S_Center_07", "Center_C", -1.5, 1.5, 1),
+	socket("S_Left_03", "Left_A", 2, 2.5), socket("S_Left_04", "Left_B", -2, 1),
+	socket("S_Right_03", "Right_A", -2, -2), socket("S_Right_04", "Right_B", 2, -1.5),
+	socket("S_Mound_01", "Mound_MidLeft", 0, 0), socket("S_Mound_02", "Mound_MidRight", 0, 0),
+	socket("S_Mound_03", "Mound_Closetside", 0, 0), socket("S_Mound_04", "Mound_Shelfside", 0, 0),
 }
 
 return Room
