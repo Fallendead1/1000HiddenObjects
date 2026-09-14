@@ -261,7 +261,7 @@ function ObjectService.Grab(player: Player, root: any): (boolean, string?)
 	end
 	local weight = root:GetAttribute("Weight") or 1
 	if weight > Services.PlayerSessionService.GetMaxWeight(player) then
-		Remotes.Event("FXEvent"):FireClient(player, "TooHeavy", { Name = root:GetAttribute("DisplayName"), Weight = weight, RequiredLevel = UpgradeConfig.StrengthLevelFor(weight) })
+		Remotes.Event("FXEvent"):FireClient(player, "TooHeavy", { Name = root:GetAttribute("DisplayName"), Weight = weight, RequiredLevel = Services.PlayerSessionService.StrengthLevelToLift(player, weight) or UpgradeConfig.StrengthLevelFor(weight) })
 		return false, "TooHeavy"
 	end
 	if closestPointDistance(root, hrp.Position) > GameConfig.GrabDistance + GameConfig.GrabLeniency then

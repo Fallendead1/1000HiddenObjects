@@ -64,11 +64,24 @@ local function buildCard(def, parent: Instance, order: number)
 	return entry
 end
 
+-- Strength shows what you would really lift (passes and boosts included, published by the
+-- server as LiftByLevel), so it always agrees with MAX WEIGHT on the HUD.
+local function statValue(key: string, level: number): number
+	if key == "Strength" then
+		local list = player:GetAttribute("LiftByLevel")
+		local lift = type(list) == "string" and tonumber(string.split(list, ",")[level])
+		if lift then
+			return lift
+		end
+	end
+	return UpgradeConfig.GetValue(key, level)
+end
+
 local function refreshCard(entry)
 	local def = entry.Def
 	local level = player:GetAttribute(def.Attribute) or 1
 	local max = UpgradeConfig.GetMaxLevel(def.Key)
-	local current = UpgradeConfig.GetValue(def.Key, level)
+	local current = statValue(def.Key, level)
 	for i, pip in ipairs(entry.Pips) do
 		pip.BackgroundColor3 = i <= level and entry.Color or UI.Colors.PanelDark
 	end
@@ -81,7 +94,7 @@ local function refreshCard(entry)
 		UI.SetButtonEnabled(entry.Button, false, "MAXED")
 		return
 	end
-	local nextValue = UpgradeConfig.GetValue(def.Key, level + 1)
+	local nextValue = statValue(def.Key, level + 1)
 	local cost = UpgradeConfig.GetNextCost(def.Key, level) or 0
 	entry.Level.Text = string.format("LV %d  →  LV %d", level, level + 1)
 	-- The next value in green: what you get for the price.
@@ -135,6 +148,7 @@ function UpgradeController.Init()
 		end
 	end)
 	player:GetAttributeChangedSignal("InMatch"):Connect(refreshAll)
+	player:GetAttributeChangedSignal("LiftByLevel"):Connect(refreshAll)
 	menu.OnOpen(refreshAll)
 	refreshAll()
 end

@@ -151,6 +151,20 @@ local function maxWeight(): number
 	return player:GetAttribute("MaxWeight") or 2
 end
 
+-- The lowest Strength level that lifts `weight`, counting passes and boosts (the server publishes
+-- what each level would lift as LiftByLevel).
+local function strengthLevelFor(weight: number): number?
+	local list = player:GetAttribute("LiftByLevel")
+	if type(list) == "string" and list ~= "" then
+		for level, lift in ipairs(string.split(list, ",")) do
+			if (tonumber(lift) or 0) >= weight then
+				return level
+			end
+		end
+	end
+	return UpgradeConfig.StrengthLevelFor(weight)
+end
+
 local function setIdle()
 	state = "Idle"
 	requestedObjectId = nil
@@ -470,7 +484,7 @@ local function updateVisuals()
 			cardStats.Text = string.format("Weight: %d   •   %s", weight, valueText(hovered))
 		end
 		if tooHeavy then
-			cardAction.Text = string.format("TOO HEAVY - Requires Strength Lv. %d", UpgradeConfig.StrengthLevelFor(weight) or 99)
+			cardAction.Text = string.format("TOO HEAVY - Requires Strength Lv. %d", strengthLevelFor(weight) or UpgradeConfig.GetMaxLevel("Strength"))
 			cardAction.TextColor3 = UI.Colors.Red
 		else
 			cardAction.Text = actionText(chunk)

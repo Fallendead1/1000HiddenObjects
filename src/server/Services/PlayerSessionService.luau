@@ -155,8 +155,9 @@ function PlayerSessionService.GetLevel(player: Player, key: string): number
 	return player:GetAttribute(UpgradeConfig.ByKey[key].Attribute) or 1
 end
 
-function PlayerSessionService.GetMaxWeight(player: Player): number
-	local weight = UpgradeConfig.GetValue("Strength", PlayerSessionService.GetLevel(player, "Strength"))
+-- The heaviest weight the player would lift at Strength `level`, with their passes and boosts.
+local function maxWeightAt(player: Player, level: number): number
+	local weight = UpgradeConfig.GetValue("Strength", level)
 	if owns(player, "StrongerHands") then
 		weight += Effects.StrongerHandsWeightBonus
 	end
@@ -169,6 +170,20 @@ function PlayerSessionService.GetMaxWeight(player: Player): number
 	end
 	temp = math.min(temp, GameConfig.MaxTempStrengthMultiplier)
 	return math.min(math.floor(weight * temp + 1e-6), GameConfig.MaxWeightCap)
+end
+
+function PlayerSessionService.GetMaxWeight(player: Player): number
+	return maxWeightAt(player, PlayerSessionService.GetLevel(player, "Strength"))
+end
+
+-- The lowest Strength level that lifts `weight` for this player (nil: no level can).
+function PlayerSessionService.StrengthLevelToLift(player: Player, weight: number): number?
+	for level = 1, UpgradeConfig.GetMaxLevel("Strength") do
+		if maxWeightAt(player, level) >= weight then
+			return level
+		end
+	end
+	return nil
 end
 
 function PlayerSessionService.GetThrowSpeed(player: Player): number
@@ -213,6 +228,16 @@ function PlayerSessionService.RecomputeDerived(player: Player)
 	local maxWeight = PlayerSessionService.GetMaxWeight(player)
 	if player:GetAttribute("MaxWeight") ~= maxWeight then
 		player:SetAttribute("MaxWeight", maxWeight)
+	end
+	-- What each Strength level would lift for this player ("3,4,5,..."), so the client can say
+	-- exactly which level an object needs and what the next upgrade gives, bonuses included.
+	local lifts = {}
+	for level = 1, UpgradeConfig.GetMaxLevel("Strength") do
+		lifts[level] = tostring(maxWeightAt(player, level))
+	end
+	local liftList = table.concat(lifts, ",")
+	if player:GetAttribute("LiftByLevel") ~= liftList then
+		player:SetAttribute("LiftByLevel", liftList)
 	end
 	-- The client draws its throw-arc preview from this.
 	local throwSpeed = PlayerSessionService.GetThrowSpeed(player)
