@@ -2,8 +2,10 @@
 	Lobby presentation. The lobby itself is authored in Workspace.Lobby; this controller only
 	animates and labels it:
 	  - QueueZone: glowing circle (Visual/GlowDisc, GlowCore, GlowRim, SparklePlane.Sparkles)
-	    coloured + pulsed by queue state, with a floating sign above it, plus a HUD pill while
-	    the local player is queued.
+	    coloured + pulsed by queue state; a see-through wall ring (built locally, so it can
+	    block only the local player when the circle is closed to them); "0/4" + status text
+	    floating above; a plaque with the room and its fastest record; and a HUD pill with
+	    START NOW / LEAVE while the local player is in a party.
 	  - Optional tagged extras: CollectionBoard, ShopStand, Leaderboard (attr Kind), FutureDoor,
 	    LobbyKeyDeco. Tag any part in the lobby to enable them.
 ]]
@@ -17,6 +19,7 @@ local RunService = game:GetService("RunService")
 local Shared = ReplicatedStorage.Shared
 local GameConfig = require(Shared.Config.GameConfig)
 local FormatUtil = require(Shared.Utility.FormatUtil)
+local Remotes = require(Shared.Utility.Remotes)
 
 local UI = require(script.Parent.Parent.UI.UI)
 local Controllers = require(script.Parent)
@@ -39,6 +42,12 @@ local attached: { [Instance]: boolean } = {}
 local visuals: { QueueVisual } = {}
 local queuePill: Frame
 local queuePillLabel: TextLabel
+local queuePillStart: TextButton
+local queuePillLeave: TextButton
+local wallFolder: Folder? = nil
+
+local WALL_SEGMENTS = 28
+local WALL_HEIGHT = 5
 
 local StateStyle = {
 	Empty = { Color = UI.Colors.Green, Pulse = 1.2 },
@@ -53,32 +62,158 @@ local function zoneState(zone: BasePart): string
 	return zone:GetAttribute("State") or "Empty"
 end
 
--- Text for the floating sign above a circle. Returns title, subtitle, count, countdown.
-local function describe(zone: BasePart): (string, string, string, string, Color3)
+-- The big line over a circle (players / party size) and the status line under it.
+local function describe(zone: BasePart): (string, string)
 	local state = zoneState(zone)
 	local count = zone:GetAttribute("Count") or 0
 	local max = zone:GetAttribute("MaxPlayers") or GameConfig.MaxPartySize
-	local roomNumber = zone:GetAttribute("RoomNumber") or ""
-	local roomName = string.upper(zone:GetAttribute("RoomName") or "")
-	local countText = string.format("%d / %d PLAYERS", count, max)
-	local style = StateStyle[state] or StateStyle.Empty
-
+	local countText = string.format("%d/%d", count, max)
 	if state == "Selecting" then
-		local owner = zone:GetAttribute("OwnerUserId") == player.UserId and "YOU ARE" or ((zone:GetAttribute("OwnerName") or "HOST") .. " IS")
-		return "JOINING...", owner .. " CHOOSING A ROOM", countText, "", style.Color
+		if zone:GetAttribute("OwnerUserId") == player.UserId then
+			return countText, "Set up your party"
+		end
+		return countText, (zone:GetAttribute("OwnerName") or "Someone") .. " is creating a party"
 	elseif state == "CountingDown" then
 		local cd = zone:GetAttribute("Countdown") or 0
-		local resume = zone:GetAttribute("ResumePercent") or 0
-		local sub = roomName .. (resume > 0 and string.format("  -  RESUME %d%%", math.floor(resume * 100)) or "")
-		return "ROOM #" .. roomNumber, sub, countText, count >= max and "STARTING..." or ("STARTING IN " .. cd), style.Color
-	elseif state == "Locked" then
-		return "ROOM #" .. roomNumber, roomName, string.format("%d / %d", count, max), "STARTING...", style.Color
-	elseif state == "Teleporting" then
-		return string.format("%d / %d", count, max), "ROOM #" .. roomNumber, "", "TELEPORTING...", style.Color
+		if max == 1 then
+			return countText, "Solo run - starting in " .. cd
+		elseif count >= max then
+			return countText, "Party full - starting in " .. cd
+		end
+		return countText, "Touch to join - starting in " .. cd
+	elseif state == "Locked" or state == "Teleporting" then
+		return countText, "Starting..."
 	elseif state == "Resetting" then
-		return "PLAY", "NEXT GROUP...", "", "", style.Color
+		return string.format("0/%d", GameConfig.MaxPartySize), "Next party..."
 	end
-	return "PLAY", "STEP INSIDE TO PLAY", "1 - 4 PLAYERS", "", style.Color
+	return countText, "Touch to create a party"
+end
+
+local WallColors = {
+	Open = Color3.fromRGB(255, 244, 214),
+	Setup = UI.Colors.Cyan,
+	Joinable = UI.Colors.Green,
+	Member = UI.Colors.Gold,
+	Closed = UI.Colors.Red,
+}
+
+-- Wall colour, and whether the circle is closed to the local player right now.
+local function wallState(zone: BasePart): (Color3, boolean)
+	local state = zoneState(zone)
+	if state == "Empty" then
+		return WallColors.Open, false
+	elseif player:GetAttribute("QueueId") == zone:GetAttribute("QueueId") then
+		return WallColors.Member, false
+	elseif zone:GetAttribute("Joinable") == true then
+		return WallColors.Joinable, false
+	elseif state == "Selecting" then
+		return WallColors.Setup, true
+	end
+	return WallColors.Closed, true
+end
+
+-- A see-through ring wall around a circle, with a glowing top edge. Built locally, so it can
+-- block only the local player (whose character physics is their own) when the circle is closed
+-- to them. The server moves anyone out regardless.
+local function buildWall(zone: BasePart): ({ BasePart }, { BasePart }, number)
+	if not wallFolder then
+		wallFolder = Instance.new("Folder")
+		wallFolder.Name = "LocalQueueWalls"
+		wallFolder.Parent = workspace
+	end
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = { zone.Parent or zone, wallFolder :: Folder, player.Character }
+	local hit = workspace:Raycast(zone.Position + Vector3.new(0, 3, 0), Vector3.new(0, -30, 0), params)
+	local groundY = hit and hit.Position.Y or (zone.Position.Y - zone.Size.Y / 2)
+	local radius = (zone:GetAttribute("Radius") or GameConfig.QueueRadius) + 0.25
+	local width = 2 * math.pi * radius / WALL_SEGMENTS * 1.04
+	local walls, rims = {}, {}
+	for i = 1, WALL_SEGMENTS do
+		local angle = (i - 0.5) / WALL_SEGMENTS * math.pi * 2
+		local offset = Vector3.new(math.cos(angle), 0, math.sin(angle)) * radius
+		local base = Vector3.new(zone.Position.X, groundY, zone.Position.Z) + offset
+		local facing = CFrame.lookAt(base, base + offset)
+		local wall = Instance.new("Part")
+		wall.Name = "QueueWall"
+		wall.Anchored = true
+		wall.CanCollide = false
+		wall.CanQuery = false
+		wall.CanTouch = false
+		wall.CastShadow = false
+		wall.Material = Enum.Material.SmoothPlastic
+		wall.Color = WallColors.Open
+		wall.Transparency = 0.78
+		wall.Size = Vector3.new(width, WALL_HEIGHT, 0.15)
+		wall.CFrame = facing * CFrame.new(0, WALL_HEIGHT / 2, 0)
+		wall.Parent = wallFolder
+		table.insert(walls, wall)
+		local rim = wall:Clone()
+		rim.Name = "QueueWallRim"
+		rim.Material = Enum.Material.Neon
+		rim.Transparency = 0.2
+		rim.Size = Vector3.new(width, 0.18, 0.2)
+		rim.CFrame = facing * CFrame.new(0, WALL_HEIGHT, 0)
+		rim.Parent = wallFolder
+		table.insert(rims, rim)
+	end
+	return walls, rims, groundY
+end
+
+-- A small plaque at the circle's front edge (facing the plaza): the room and its fastest
+-- record. Returns its refresh function.
+local function buildPlate(zone: BasePart, groundY: number): () -> ()
+	local lobby = workspace:FindFirstChild("Lobby")
+	local keyDeco = lobby and lobby:FindFirstChild("LobbyKeyDeco")
+	local center = keyDeco and (keyDeco :: any):GetPivot().Position or Vector3.zero
+	local toCenter = Vector3.new(center.X - zone.Position.X, 0, center.Z - zone.Position.Z)
+	local dir = toCenter.Magnitude > 0.1 and toCenter.Unit or Vector3.zAxis
+	local radius = zone:GetAttribute("Radius") or GameConfig.QueueRadius
+	local anchor = Instance.new("Attachment")
+	anchor.Name = "QueuePlate"
+	anchor.WorldPosition = Vector3.new(zone.Position.X, groundY + 1.4, zone.Position.Z) + dir * (radius - 1.4)
+	anchor.Parent = workspace.Terrain
+	local bb = Instance.new("BillboardGui")
+	bb.Name = "QueuePlate_" .. (zone:GetAttribute("QueueId") or "")
+	bb.Size = UDim2.fromScale(5.5, 2.4)
+	bb.MaxDistance = 70
+	bb.LightInfluence = 0
+	bb.Adornee = anchor
+	bb.Parent = player:WaitForChild("PlayerGui")
+	local function line(y: number, h: number, color: Color3, font: Enum.Font, maxSize: number): TextLabel
+		local label = UI.Label({ Text = "", TextScaled = true, Font = font, TextColor3 = color, Size = UDim2.new(1, 0, h, 0), Position = UDim2.fromScale(0, y) }, bb)
+		UI.New("UITextSizeConstraint", { MaxTextSize = maxSize }, label)
+		UI.Stroke(label, Color3.new(0, 0, 0), 2, 0.2)
+		return label
+	end
+	local roomLine = line(0, 0.34, UI.Colors.Text, UI.Font, 28)
+	local nameLine = line(0.34, 0.3, UI.Colors.Text, UI.FontBody, 22)
+	local timeLine = line(0.64, 0.34, UI.Colors.Gold, UI.Font, 26)
+	local data = ReplicatedStorage:FindFirstChild("LeaderboardData")
+	local function refresh()
+		local roomNumber = zone:GetAttribute("RoomNumber") or ""
+		if roomNumber == "" then
+			roomNumber = "001"
+		end
+		roomLine.Text = "ROOM #" .. roomNumber
+		-- The fastest board tracks Room #001.
+		local best = nil
+		if roomNumber == "001" and data then
+			local ok, entries = pcall(HttpService.JSONDecode, HttpService, data:GetAttribute("Fastest") or "[]")
+			best = ok and type(entries) == "table" and entries[1] or nil
+		end
+		nameLine.Text = best and tostring(best.Name) or "No record yet"
+		timeLine.Text = "🏆 " .. (best and FormatUtil.Time(best.Value or 0) or "--:--")
+	end
+	task.spawn(function()
+		data = data or ReplicatedStorage:WaitForChild("LeaderboardData", 30)
+		if data then
+			data:GetAttributeChangedSignal("Fastest"):Connect(refresh)
+			refresh()
+		end
+	end)
+	refresh()
+	return refresh
 end
 
 local function attachQueueZone(zone: BasePart)
@@ -97,31 +232,40 @@ local function attachQueueZone(zone: BasePart)
 	}
 	table.insert(visuals, entry)
 
-	-- Sized in studs so signs shrink with distance instead of crowding the screen.
-	local bb = UI.Billboard(zone, UDim2.fromScale(11, 6.4), Vector3.new(0, 7.5, 0), 160)
+	local walls, rims, groundY = buildWall(zone)
+	local refreshPlate = buildPlate(zone, groundY)
+
+	-- Floating text over the circle, sized in studs so it shrinks with distance.
+	local bb = UI.Billboard(zone, UDim2.fromScale(12, 4.4), Vector3.new(0, 6.5, 0), 140)
 	bb.Name = "QueueSign_" .. (zone:GetAttribute("QueueId") or "")
-	local panel = UI.Panel({ BackgroundTransparency = 0.12 }, bb)
-	local stroke = panel:FindFirstChildOfClass("UIStroke") :: UIStroke
-	stroke.Thickness = 3
-	local function line(y: number, h: number, color: Color3, maxSize: number): TextLabel
-		local label = UI.Label({ Text = "", TextScaled = true, TextColor3 = color, Size = UDim2.new(0.92, 0, h, 0), Position = UDim2.new(0.04, 0, y, 0) }, panel)
-		UI.New("UITextSizeConstraint", { MaxTextSize = maxSize }, label)
-		return label
-	end
-	local title = line(0.03, 0.32, UI.Colors.Green, 64)
-	local subtitle = line(0.36, 0.16, UI.Colors.Text, 26)
-	local countLabel = line(0.54, 0.18, UI.Colors.TextDim, 30)
-	local countdown = line(0.74, 0.22, UI.Colors.Gold, 40)
+	local countLabel = UI.Label({ Text = "0/4", TextScaled = true, Size = UDim2.new(1, 0, 0.58, 0) }, bb)
+	UI.New("UITextSizeConstraint", { MaxTextSize = 90 }, countLabel)
+	UI.Stroke(countLabel, Color3.new(0, 0, 0), 3, 0.15)
+	local countdown = UI.Label({ Text = "", TextScaled = true, Size = UDim2.new(1, 0, 0.34, 0), Position = UDim2.fromScale(0, 0.62) }, bb)
+	UI.New("UITextSizeConstraint", { MaxTextSize = 44 }, countdown)
+	UI.Stroke(countdown, Color3.new(0, 0, 0), 3, 0.15)
 
 	local lastCount, lastCd = zone:GetAttribute("Count") or 0, -1
+	local lastWallColor: Color3? = nil
 	local function refresh()
-		local t, s, c, cd, color = describe(zone)
-		title.Text = t
-		title.TextColor3 = color
-		subtitle.Text = s
-		countLabel.Text = c
-		countdown.Text = cd
-		stroke.Color = color
+		local countText, status = describe(zone)
+		countLabel.Text = countText
+		countdown.Text = status
+		local wallColor, blocked = wallState(zone)
+		countdown.TextColor3 = wallColor == WallColors.Open and UI.Colors.Text or wallColor
+		if wallColor ~= lastWallColor then
+			lastWallColor = wallColor
+			for _, w in ipairs(walls) do
+				UI.Tween(w, { Color = wallColor }, 0.3)
+			end
+			for _, r in ipairs(rims) do
+				UI.Tween(r, { Color = wallColor }, 0.3)
+			end
+		end
+		for _, w in ipairs(walls) do
+			w.CanCollide = blocked
+		end
+		refreshPlate()
 
 		local style = StateStyle[zoneState(zone)] or StateStyle.Empty
 		entry.Color = style.Color
@@ -157,9 +301,10 @@ local function attachQueueZone(zone: BasePart)
 		end
 		LobbyController.RefreshPill()
 	end
-	for _, name in ipairs({ "State", "Count", "Countdown", "RoomNumber", "RoomName", "OwnerUserId", "OwnerName", "ResumePercent" }) do
+	for _, name in ipairs({ "State", "Count", "MaxPlayers", "Joinable", "Countdown", "RoomNumber", "OwnerUserId", "OwnerName" }) do
 		zone:GetAttributeChangedSignal(name):Connect(refresh)
 	end
+	player:GetAttributeChangedSignal("QueueId"):Connect(refresh)
 	refresh()
 end
 
@@ -170,17 +315,28 @@ function LobbyController.RefreshPill()
 		return
 	end
 	for _, v in ipairs(visuals) do
-		if v.Zone:GetAttribute("QueueId") == queueId then
-			local state = zoneState(v.Zone)
+		local zone = v.Zone
+		if zone:GetAttribute("QueueId") == queueId then
+			local state = zoneState(zone)
+			local isHost = zone:GetAttribute("OwnerUserId") == player.UserId
+			if state == "Selecting" and isHost then
+				queuePill.Visible = false -- the party setup panel is showing instead
+				return
+			end
+			local count, max = zone:GetAttribute("Count") or 0, zone:GetAttribute("MaxPlayers") or GameConfig.MaxPartySize
+			local cd = zone:GetAttribute("Countdown") or 0
 			local text
 			if state == "Selecting" then
-				text = v.Zone:GetAttribute("OwnerUserId") == player.UserId and "CHOOSE A ROOM TO START" or "WAITING FOR THE HOST TO CHOOSE A ROOM"
+				text = "WAITING FOR THE HOST TO SET UP THE PARTY"
 			elseif state == "CountingDown" then
-				text = string.format("ROOM #%s  -  %d/%d  -  STARTING IN %d", v.Zone:GetAttribute("RoomNumber") or "", v.Zone:GetAttribute("Count") or 0, v.Zone:GetAttribute("MaxPlayers") or 4, v.Zone:GetAttribute("Countdown") or 0)
+				local sub = max == 1 and "Solo run" or (count >= max and "Party full!" or "Waiting for players...")
+				text = string.format("ROOM #%s  ·  %d/%d  ·  STARTING IN %d\n%s", zone:GetAttribute("RoomNumber") or "", count, max, cd, sub)
 			else
-				text = "TELEPORTING..."
+				text = "STARTING..."
 			end
-			queuePillLabel.Text = text .. (state ~= "Teleporting" and "\nWalk out of the circle to leave" or "")
+			queuePillLabel.Text = text
+			queuePillLeave.Visible = state == "Selecting" or state == "CountingDown"
+			queuePillStart.Visible = state == "CountingDown" and isHost and cd > GameConfig.FullQueueCountdown
 			queuePill.Visible = true
 			local stroke = queuePill:FindFirstChildOfClass("UIStroke")
 			if stroke then
@@ -320,8 +476,16 @@ local function tryAttach(tag: string, inst: Instance)
 end
 
 function LobbyController.Init()
-	queuePill = UI.Panel({ Size = UDim2.fromOffset(460, 58), AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -110), Visible = false, BackgroundTransparency = 0.08 }, UI.Layers.HUD)
-	queuePillLabel = UI.Label({ Text = "", TextSize = 18, Size = UDim2.new(1, -16, 1, 0), Position = UDim2.fromOffset(8, 0) }, queuePill)
+	queuePill = UI.Panel({ Size = UDim2.fromOffset(580, 70), AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -110), Visible = false, BackgroundTransparency = 0.08 }, UI.Layers.HUD)
+	queuePillLabel = UI.Label({ Text = "", TextSize = 17, TextWrapped = true, Size = UDim2.new(1, -266, 1, 0), Position = UDim2.fromOffset(12, 0), TextXAlignment = Enum.TextXAlignment.Left }, queuePill)
+	queuePillStart = UI.Button({ Text = "START NOW", Color = UI.Colors.Gold, Size = UDim2.fromOffset(120, 46), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -134, 0.5, 0), TextSize = 16, Shine = 3 }, queuePill)
+	queuePillLeave = UI.Button({ Text = "LEAVE", Color = UI.Colors.Red, Size = UDim2.fromOffset(110, 46), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -12, 0.5, 0), TextSize = 18 }, queuePill)
+	queuePillStart.Activated:Connect(function()
+		Remotes.Event("StartParty"):FireServer(player:GetAttribute("QueueId"))
+	end)
+	queuePillLeave.Activated:Connect(function()
+		Remotes.Event("LeaveQueue"):FireServer(player:GetAttribute("QueueId"))
+	end)
 	player:GetAttributeChangedSignal("QueueId"):Connect(LobbyController.RefreshPill)
 	player:GetAttributeChangedSignal("InMatch"):Connect(LobbyController.RefreshPill)
 

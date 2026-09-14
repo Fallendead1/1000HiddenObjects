@@ -17,7 +17,7 @@ return {
 
 	-- Queue / matchmaking
 	MaxPartySize = 4,
-	QueueCountdown = 10,
+	QueueCountdown = 20, -- how long a party waits for players (the host can start early)
 	FullQueueCountdown = 3,
 	QueueRadius = 8.5,
 	QueuePollInterval = 0.2,

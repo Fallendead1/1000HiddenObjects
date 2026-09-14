@@ -15,7 +15,9 @@ local Remotes = {
 		"RequestHint", -- C->S (kind: "Free" | "Quick" | "Super")
 		"RequestPurchase", -- C->S (productKey)
 		"ReturnToLobby", -- C->S
-		"SelectRoom", -- C->S (queueId, roomId) queue owner picks the room
+		"CreateParty", -- C->S (queueId, roomId, partySize) a circle's host sets up the party
+		"LeaveQueue", -- C->S (queueId) leave a circle (BACK / LEAVE)
+		"StartParty", -- C->S (queueId) the host starts before the countdown ends
 		"UpdateSettings", -- C->S (settingsTable)
 		"TutorialComplete", -- C->S
 		"DiscardCheckpoint", -- C->S
