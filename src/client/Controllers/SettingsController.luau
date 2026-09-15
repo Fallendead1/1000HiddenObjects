@@ -54,6 +54,7 @@ function SettingsController.Init()
 	howTo.Activated:Connect(function()
 		Controllers.TutorialController.PlayVideo()
 	end)
+	menu.Primary = howTo -- controllers: up reaches the switches
 end
 
 function SettingsController.Open()

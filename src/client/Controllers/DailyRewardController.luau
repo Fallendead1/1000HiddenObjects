@@ -109,6 +109,7 @@ function DailyRewardController.Init()
 	claimButton = UI.Button({ Text = "CLAIM", Color = UI.Colors.Green, Size = UDim2.fromOffset(260, 56), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 244), TextSize = 26, Shine = 2.5 }, menu.Content)
 	footerLabel = UI.Label({ Text = "", TextSize = 14, Font = UI.FontBody, TextColor3 = UI.Colors.TextDim, Size = UDim2.new(1, 0, 0, 18), Position = UDim2.fromOffset(0, 308) }, menu.Content)
 	claimButton.Activated:Connect(claim)
+	menu.Primary = claimButton -- controllers: A claims straight away
 	menu.OnOpen(refresh)
 
 	for _, name in ipairs({ "LoginDay", "LoginClaimable", "LoginStreak" }) do

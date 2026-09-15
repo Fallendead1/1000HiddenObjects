@@ -359,7 +359,8 @@ local function onInputBegan(input: InputObject, gameProcessed: boolean)
 	end
 	if isGrabInput(input) then
 		pressAction()
-	elseif input.KeyCode == Enum.KeyCode.Q or input.KeyCode == Enum.KeyCode.ButtonB
+	-- B drops, except while it closes a menu (UI closes it right after this).
+	elseif input.KeyCode == Enum.KeyCode.Q or (input.KeyCode == Enum.KeyCode.ButtonB and not UI.GetOpenMenu())
 		or (input.UserInputType == Enum.UserInputType.MouseButton2 and Controllers.CameraController.IsFirstPerson()) then
 		dropHeld()
 	end

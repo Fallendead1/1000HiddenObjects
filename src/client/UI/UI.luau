@@ -45,27 +45,87 @@ pcall(function()
 	playerGui.ScreenOrientation = Enum.ScreenOrientation.LandscapeSensor
 end)
 
--- Roblox's Text Size accessibility setting (GuiService.PreferredTextSize) enlarges every
--- fixed-size text past the box it was laid out for, so a larger setting on a phone broke every
--- panel. Each text is capped at its design size (TextScaled text is exempt anyway, and a text
--- with its own UITextSizeConstraint keeps it); later TextSize changes (pulses, restyles) follow.
+-- The HUD scale: layouts are in design units, drawn at this scale (see updateScale).
+local scale = Instance.new("UIScale")
+scale.Parent = gui
+UI.ScaleObject = scale
+
+-- ===== Text caps =====
+-- Roblox's Text Size accessibility setting (GuiService.PreferredTextSize) enlarges fixed-size
+-- text past the box it was laid out for, so every text gets a UITextSizeConstraint at its design
+-- size. A constraint caps SCREEN pixels, while a layout is drawn at the HUD scale times any
+-- panel's FitScale (about 0.5 on a phone), so each cap is the design size x that scale: text
+-- never outgrows its box on any screen. TextScaled text is exempt from the setting and only
+-- keeps caps given through UI.CapText. Later TextSize changes (pulses, restyles) follow.
+local caps: { [Instance]: { Cap: UITextSizeConstraint, Size: number? } } = setmetatable({}, { __mode = "k" }) :: any
+
+-- The scale a text rests at: the HUD scale (inside MainUI) times every panel FitScale above it.
+local function restingScale(obj: Instance): number
+	local s, inMain = 1, false
+	local node: Instance? = obj
+	while node and node ~= playerGui do
+		local fit = node:GetAttribute("FitScale")
+		if type(fit) == "number" then
+			s *= fit
+		end
+		inMain = inMain or node == gui
+		node = node.Parent
+	end
+	return if inMain then s * scale.Scale else s
+end
+
+local function applyCap(text: Instance)
+	local entry = caps[text]
+	if entry and text.Parent then
+		local size = entry.Size or (text :: TextLabel).TextSize
+		entry.Cap.MaxTextSize = math.clamp(math.ceil(size * restingScale(text) - 0.01), 1, 100)
+	end
+end
+
+-- Re-caps every text under `root` (all of them when nil): the HUD scale or a FitScale changed.
+local function refreshCaps(root: Instance?)
+	for text in pairs(caps) do
+		if root == nil or text:IsDescendantOf(root) then
+			applyCap(text)
+		end
+	end
+end
+scale:GetPropertyChangedSignal("Scale"):Connect(function()
+	refreshCaps(nil)
+end)
+
+-- Caps `text` at `size` design units (nil: its own TextSize, following changes).
+function UI.CapText(text: GuiObject, size: number?)
+	local entry = caps[text]
+	if not entry then
+		local cap = text:FindFirstChildOfClass("UITextSizeConstraint") or Instance.new("UITextSizeConstraint")
+		cap.MinTextSize = 1
+		entry = { Cap = cap :: UITextSizeConstraint }
+		caps[text] = entry
+		cap.Parent = text
+		text:GetPropertyChangedSignal("TextSize"):Connect(function()
+			applyCap(text)
+		end)
+		text.AncestryChanged:Connect(function()
+			applyCap(text)
+		end)
+	end
+	entry.Size = size
+	applyCap(text)
+end
+
 local function capText(obj: Instance)
 	if not (obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox")) then
 		return
 	end
 	task.defer(function()
 		local text = obj :: TextLabel
-		if not text.Parent or text.TextScaled or text:FindFirstChildOfClass("UITextSizeConstraint") then
+		if not text.Parent or text.TextScaled or caps[text] or text:FindFirstChildOfClass("UITextSizeConstraint") then
 			return
 		end
-		local cap = Instance.new("UITextSizeConstraint")
+		UI.CapText(text)
+		local cap = caps[text].Cap
 		cap.Name = "DesignTextSize"
-		cap.MinTextSize = 1
-		cap.MaxTextSize = math.clamp(math.round(text.TextSize), 1, 100)
-		cap.Parent = text
-		text:GetPropertyChangedSignal("TextSize"):Connect(function()
-			cap.MaxTextSize = math.clamp(math.round(text.TextSize), 1, 100)
-		end)
 		text:GetPropertyChangedSignal("TextScaled"):Connect(function()
 			cap.Parent = if text.TextScaled then nil else text
 		end)
@@ -75,10 +135,6 @@ playerGui.DescendantAdded:Connect(capText)
 for _, d in ipairs(playerGui:GetDescendants()) do
 	capText(d)
 end
-
-local scale = Instance.new("UIScale")
-scale.Parent = gui
-UI.ScaleObject = scale
 
 UI.Layers = {}
 for i, name in ipairs({ "World", "HUD", "Menus", "Overlay", "Notify", "Top" }) do
@@ -181,9 +237,126 @@ function UI.IsTouch(): boolean
 	return UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled and not UserInputService.MouseEnabled
 end
 
+-- Controller mode: a console, or a PC whose last input came from a controller. Studio: the
+-- workspace attribute DevForceGamepad previews it.
+local lastInputPad = false
+local inputModeListeners: { () -> () } = {}
+
 function UI.IsGamepad(): boolean
-	return UserInputService.GamepadEnabled and not UserInputService.KeyboardEnabled
+	if workspace:GetAttribute("DevForceGamepad") == true and game:GetService("RunService"):IsStudio() then
+		return true
+	end
+	return UserInputService.GamepadEnabled and (lastInputPad or not UserInputService.KeyboardEnabled)
 end
+
+-- Runs `fn` whenever the player switches between a controller and mouse / keyboard / touch.
+function UI.OnInputModeChanged(fn: () -> ())
+	table.insert(inputModeListeners, fn)
+end
+
+local function inputModeChanged()
+	for _, fn in ipairs(inputModeListeners) do
+		task.spawn(fn)
+	end
+end
+
+local function noteInput(inputType: Enum.UserInputType)
+	local pad = string.sub(inputType.Name, 1, 7) == "Gamepad"
+	if pad ~= lastInputPad then
+		lastInputPad = pad
+		inputModeChanged()
+	end
+end
+noteInput(UserInputService:GetLastInputType())
+UserInputService.LastInputTypeChanged:Connect(noteInput)
+workspace:GetAttributeChangedSignal("DevForceGamepad"):Connect(inputModeChanged)
+
+-- Controllers: puts the selection on `obj` so A presses it straight away (controller mode only).
+function UI.SelectForGamepad(obj: GuiObject?)
+	if obj and UI.IsGamepad() and obj:IsDescendantOf(playerGui) then
+		GuiService.SelectedObject = obj
+	end
+end
+
+-- Set while the game itself clears the selection, so the menu manager can tell that apart from
+-- Roblox dropping it on B (see "Controllers: B closes the open menu" below).
+local ownSelectionClear = false
+
+-- Drops a controller selection left inside `within` (anywhere when nil), e.g. as it closes.
+function UI.ClearSelection(within: Instance?)
+	local selected = GuiService.SelectedObject
+	if selected and (within == nil or selected:IsDescendantOf(within)) then
+		ownSelectionClear = true
+		GuiService.SelectedObject = nil
+	end
+end
+
+-- A controller button's picture (Xbox or PlayStation style, whichever the player uses).
+function UI.PadImage(keyCode: Enum.KeyCode): string
+	local ok, image = pcall(UserInputService.GetImageForKeyCode, UserInputService, keyCode)
+	return if ok and type(image) == "string" then image else ""
+end
+
+-- A small controller-button badge on `parent` (its top-left corner unless `position` says),
+-- shown only in controller mode, so players see which button does it.
+function UI.PadBadge(parent: GuiObject, keyCode: Enum.KeyCode, position: UDim2?, size: number?): Frame
+	-- The button's picture on a dark disc, so it reads over any tile colour.
+	local s = size or 32
+	local badge = Instance.new("Frame")
+	badge.Name = "PadBadge"
+	badge.BackgroundColor3 = BLACK
+	badge.BackgroundTransparency = 0.15
+	badge.Size = UDim2.fromOffset(s, s)
+	badge.AnchorPoint = Vector2.new(0.5, 0.5)
+	badge.Position = position or UDim2.fromOffset(6, 6)
+	badge.ZIndex = 30
+	badge.Visible = UI.IsGamepad()
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(1, 0)
+	corner.Parent = badge
+	local ring = Instance.new("UIStroke")
+	ring.Color = WHITE
+	ring.Thickness = 1.5
+	ring.Parent = badge
+	local glyph = Instance.new("ImageLabel")
+	glyph.Name = "Glyph"
+	glyph.BackgroundTransparency = 1
+	glyph.Size = UDim2.fromScale(0.84, 0.84)
+	glyph.AnchorPoint = Vector2.new(0.5, 0.5)
+	glyph.Position = UDim2.fromScale(0.5, 0.5)
+	glyph.Image = UI.PadImage(keyCode)
+	glyph.ZIndex = 31
+	glyph.Parent = badge
+	-- A D-pad picture is the whole cross at this size: a bold arrow over it says which way.
+	local arrow = ({ [Enum.KeyCode.DPadLeft] = "<", [Enum.KeyCode.DPadRight] = ">", [Enum.KeyCode.DPadDown] = "v" })[keyCode]
+	if arrow then
+		glyph.ImageTransparency = 0.6
+		UI.Label({ Name = "Arrow", Text = arrow, TextSize = math.floor(s * 0.66), TextColor3 = WHITE, TextWrapped = false, ZIndex = 32 }, badge)
+	end
+	badge.Parent = parent
+	UI.OnInputModeChanged(function()
+		glyph.Image = UI.PadImage(keyCode) -- Xbox and PlayStation pictures differ
+		badge.Visible = UI.IsGamepad()
+	end)
+	return badge
+end
+
+-- The controller selection ring: a white rounded outline instead of Roblox's default box.
+local selectionRing = Instance.new("Frame")
+selectionRing.Name = "SelectionRing"
+selectionRing.BackgroundTransparency = 1
+selectionRing.Size = UDim2.new(1, 10, 1, 10)
+selectionRing.Position = UDim2.fromOffset(-5, -5)
+local ringStroke = Instance.new("UIStroke")
+ringStroke.Color = WHITE
+ringStroke.Thickness = 3
+ringStroke.Parent = selectionRing
+local ringCorner = Instance.new("UICorner")
+ringCorner.CornerRadius = UDim.new(0, 14)
+ringCorner.Parent = selectionRing
+pcall(function()
+	playerGui.SelectionImageObject = selectionRing
+end)
 
 local function updateScale()
 	local camera = workspace.CurrentCamera
@@ -381,16 +554,25 @@ function UI.Label(props: { [string]: any }?, parent: Instance?): TextLabel
 		BorderSizePixel = 0,
 	}
 	local noOutline = false
+	-- FitText = n: one line that shrinks to fit the box, never above n design units.
+	local fitText = props and props.FitText
 	if props then
 		for k, v in pairs(props) do
 			if k == "NoOutline" then
 				noOutline = v
-			else
+			elseif k ~= "FitText" then
 				base[k] = v
 			end
 		end
 	end
+	if fitText then
+		base.TextScaled = true
+		base.TextWrapped = false
+	end
 	local label = UI.New("TextLabel", base, parent) :: TextLabel
+	if fitText then
+		UI.CapText(label, fitText)
+	end
 	if not noOutline and label.Font == UI.Font and luminance(label.TextColor3) > 0.45 then
 		UI.Stroke(label, BLACK, label.TextScaled and 2 or math.clamp(label.TextSize * 0.1, 1.5, 4), 0)
 	end
@@ -793,13 +975,7 @@ function UI.Button(props: { [string]: any }?, parent: Instance?): TextButton
 
 	local label = UI.New("TextLabel", { Name = "Label", BackgroundTransparency = 1, Size = UDim2.new(1, -10, 0.9, 0), Position = UDim2.fromOffset(5, 0), ZIndex = button.ZIndex }, button) :: TextLabel
 	if fitText then
-		-- The cap is in screen pixels, so it follows the HUD scale to stay n design units.
-		local cap = UI.New("UITextSizeConstraint", {}, label) :: UITextSizeConstraint
-		local function rescale()
-			cap.MaxTextSize = math.clamp(math.round(fitText * scale.Scale), 1, 100)
-		end
-		rescale()
-		scale:GetPropertyChangedSignal("Scale"):Connect(rescale)
+		UI.CapText(label, fitText)
 	end
 	local outline = UI.Stroke(label, BLACK, 2, 0)
 	local function sync()
@@ -927,6 +1103,56 @@ function UI.CloseAllMenus()
 	end
 end
 
+-- Controllers: B closes the open menu. Deferred, so other B handlers this frame (dropping what you
+-- hold) still see the menu open and leave things alone.
+UserInputService.InputBegan:Connect(function(input)
+	if input.KeyCode == Enum.KeyCode.ButtonB and openMenu then
+		task.defer(UI.CloseAllMenus)
+	end
+end)
+
+-- While something is selected, Roblox itself takes B (and the View button) to drop the selection,
+-- so the press above may never arrive. When the selection inside the open menu vanishes like
+-- that, its button still there, close the menu; when the button itself was destroyed (a list
+-- re-rendered), select the menu's main button again instead.
+local lastSelected: GuiObject? = nil
+local lastSelectedMenu: string? = nil
+GuiService:GetPropertyChangedSignal("SelectedObject"):Connect(function()
+	local selected = GuiService.SelectedObject
+	local previous, previousMenu = lastSelected, lastSelectedMenu
+	lastSelected, lastSelectedMenu = selected, nil
+	if selected then
+		for name, m in pairs(menus) do
+			if selected:IsDescendantOf(m.Frame) then
+				lastSelectedMenu = name
+			end
+		end
+		ownSelectionClear = false
+		return
+	end
+	if ownSelectionClear then
+		ownSelectionClear = false
+		return
+	end
+	local menu = openMenu and menus[openMenu]
+	if not menu or previousMenu ~= openMenu then
+		return
+	end
+	if previous and previous.Parent then
+		menu.Close()
+	else
+		task.defer(function()
+			if menu.IsOpen() and GuiService.SelectedObject == nil then
+				local primary = menu.Primary
+				if type(primary) == "function" then
+					primary = primary()
+				end
+				UI.SelectForGamepad(primary or menu.Frame:FindFirstChild("Close", true))
+			end
+		end)
+	end
+end)
+
 function UI.GetOpenMenu(): string?
 	return openMenu
 end
@@ -1003,6 +1229,17 @@ function UI.Menu(name: string, title: string, size: UDim2, accent: Color3?)
 		for _, fn in ipairs(menuListeners) do
 			fn(name, "open")
 		end
+		-- Controllers: the menu's main button (menu.Primary, or a function giving it; else the
+		-- close button) is selected, so A works at once and the D-pad moves on from there.
+		task.defer(function()
+			if isOpen then
+				local primary = menu.Primary
+				if type(primary) == "function" then
+					primary = primary()
+				end
+				UI.SelectForGamepad(primary or close)
+			end
+		end)
 	end
 
 	function menu.Close()
@@ -1010,6 +1247,7 @@ function UI.Menu(name: string, title: string, size: UDim2, accent: Color3?)
 			return
 		end
 		isOpen = false
+		UI.ClearSelection(frame)
 		if openMenu == name then
 			openMenu = nil
 			setBackdrop(false)
@@ -1147,6 +1385,7 @@ function UI.FitScale(panel: GuiObject, design: Vector2): number
 	local area = UI.Layers.Menus.AbsoluteSize / UI.Scale
 	local f = area.Y > 0 and math.min(1, (area.X - 24) / design.X, (area.Y - 24) / design.Y) or 1
 	panel:SetAttribute("FitScale", f)
+	refreshCaps(panel) -- its texts now rest at this scale
 	return f
 end
 

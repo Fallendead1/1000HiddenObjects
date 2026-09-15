@@ -629,11 +629,26 @@ function LobbyController.Init()
 	queuePillLabel = UI.Label({ Text = "", TextSize = 17, TextWrapped = true, Size = UDim2.new(1, -266, 1, 0), Position = UDim2.fromOffset(12, 0), TextXAlignment = Enum.TextXAlignment.Left }, queuePill)
 	queuePillStart = UI.Button({ Text = "START NOW", Color = UI.Colors.Gold, Size = UDim2.fromOffset(120, 46), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -134, 0.5, 0), TextSize = 16, Shine = 3 }, queuePill)
 	queuePillLeave = UI.Button({ Text = "LEAVE", Color = UI.Colors.Red, Size = UDim2.fromOffset(110, 46), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -12, 0.5, 0), TextSize = 18 }, queuePill)
-	queuePillStart.Activated:Connect(function()
+	local function startNow()
 		Remotes.Event("StartParty"):FireServer(player:GetAttribute("QueueId"))
-	end)
-	queuePillLeave.Activated:Connect(function()
+	end
+	local function leaveQueue()
 		Remotes.Event("LeaveQueue"):FireServer(player:GetAttribute("QueueId"))
+	end
+	queuePillStart.Activated:Connect(startNow)
+	queuePillLeave.Activated:Connect(leaveQueue)
+	-- Controllers: X starts now (host), B leaves; the buttons wear those badges. (Y is the shop.)
+	UI.PadBadge(queuePillStart, Enum.KeyCode.ButtonX)
+	UI.PadBadge(queuePillLeave, Enum.KeyCode.ButtonB)
+	game:GetService("UserInputService").InputBegan:Connect(function(input, gameProcessed)
+		if gameProcessed or not queuePill.Visible or UI.GetOpenMenu() then
+			return
+		end
+		if input.KeyCode == Enum.KeyCode.ButtonX and queuePillStart.Visible then
+			startNow()
+		elseif input.KeyCode == Enum.KeyCode.ButtonB and queuePillLeave.Visible then
+			leaveQueue()
+		end
 	end)
 	player:GetAttributeChangedSignal("QueueId"):Connect(LobbyController.RefreshPill)
 	player:GetAttributeChangedSignal("InMatch"):Connect(LobbyController.RefreshPill)

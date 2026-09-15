@@ -11,6 +11,7 @@ local GuiService = game:GetService("GuiService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 
 local Shared = ReplicatedStorage.Shared
 local FormatUtil = require(Shared.Utility.FormatUtil)
@@ -72,10 +73,16 @@ local function menuTile(parent: Instance, text: string, color: Color3, order: nu
 	icon.Size = UDim2.fromScale(0.7, 0.62)
 	icon.AnchorPoint = Vector2.new(0.5, 0.5)
 	icon.Position = UDim2.fromScale(0.5, 0.45)
-	local name = UI.Label({ Text = text, TextScaled = true, TextWrapped = false, Size = UDim2.new(1, 2, 0, 15), AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, 0) }, cell)
-	UI.New("UITextSizeConstraint", { MaxTextSize = 13 }, name)
+	UI.Label({ Text = text, FitText = 13, Size = UDim2.new(1, 2, 0, 15), AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, 0) }, cell)
 	UI.Shine(b, 5 + order * 0.9)
 	return b
+end
+
+-- Controllers: a D-pad direction opens a tile's menu (the tile wears that button's badge).
+local padShortcuts: { { Key: Enum.KeyCode, Button: TextButton, Frame: Frame, Open: () -> () } } = {}
+local function padShortcut(button: TextButton, key: Enum.KeyCode, frame: Frame, open: () -> ())
+	UI.PadBadge(button, key)
+	table.insert(padShortcuts, { Key = key, Button = button, Frame = frame, Open = open })
 end
 
 local function tileGrid(parent: Instance, rows: number, props: { [string]: any }): Frame
@@ -130,6 +137,15 @@ local function buildLobbyHUD()
 	end)
 	HUDController.Buttons.LobbySettings.Activated:Connect(function()
 		Controllers.SettingsController.Open()
+	end)
+	padShortcut(HUDController.Buttons.Challenges, Enum.KeyCode.DPadLeft, lobbyFrame, function()
+		Controllers.ProgressionController.OpenChallenges()
+	end)
+	padShortcut(HUDController.Buttons.LobbyShop, Enum.KeyCode.ButtonY, lobbyFrame, function()
+		Controllers.ShopController.Open()
+	end)
+	padShortcut(HUDController.Buttons.Daily, Enum.KeyCode.DPadRight, lobbyFrame, function()
+		Controllers.DailyRewardController.Open()
 	end)
 
 	resumeFrame = UI.Panel({ Size = UDim2.fromOffset(400, 84), AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -24), Visible = false, BackgroundTransparency = 0.06 }, lobbyFrame)
@@ -207,6 +223,15 @@ local function buildMatchHUD()
 	end)
 	HUDController.Buttons.Settings.Activated:Connect(function()
 		Controllers.SettingsController.Open()
+	end)
+	padShortcut(HUDController.Buttons.Upgrades, Enum.KeyCode.DPadLeft, matchFrame, function()
+		Controllers.UpgradeController.Open()
+	end)
+	padShortcut(HUDController.Buttons.Shop, Enum.KeyCode.ButtonY, matchFrame, function()
+		Controllers.ShopController.Open()
+	end)
+	padShortcut(HUDController.Buttons.Hint, Enum.KeyCode.DPadRight, matchFrame, function()
+		Controllers.ShopController.Open("Help")
 	end)
 
 	local gridHeight = 2 * (TILE + 24) + 6
@@ -432,6 +457,18 @@ function HUDController.Init()
 		workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(replace)
 	end
 	player:GetAttributeChangedSignal("InMatch"):Connect(refreshVisibility)
+	-- Controllers: a D-pad direction opens its tile's menu, unless it is steering a selection.
+	UserInputService.InputBegan:Connect(function(input, gameProcessed)
+		if gameProcessed or GuiService.SelectedObject ~= nil then
+			return
+		end
+		for _, s in ipairs(padShortcuts) do
+			if s.Key == input.KeyCode and s.Frame.Visible and s.Button.Visible then
+				s.Open()
+				return
+			end
+		end
+	end)
 	for _, name in ipairs({ "CheckpointRoomId", "CheckpointPercent" }) do
 		player:GetAttributeChangedSignal(name):Connect(function()
 			if lobbyFrame.Visible then

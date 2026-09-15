@@ -612,13 +612,15 @@ local function roomView(): View?
 		local free = player:GetAttribute("FreeUpgrade") == true
 		if open == "Upgrades" then
 			if upgradeBought then
-				return { Text = "Close the menu to keep going.", Tag = "3/4", Gui = menuClose("Upgrades") }
+				return { Text = platformText("Close the menu to keep going.", "Close the menu to keep going.", "Press B to close the menu."), Tag = "3/4", Gui = menuClose("Upgrades") }
 			end
-			return { Text = free and "Tap UPGRADE on STRENGTH - your first one is FREE!" or "Buy STRENGTH when you have enough Cash - it lifts heavier junk.", Tag = "3/4", Gui = Controllers.UpgradeController.GetButton("Strength") }
+			local buyFree = platformText("Tap UPGRADE on STRENGTH - your first one is FREE!", "Tap UPGRADE on STRENGTH - your first one is FREE!", "Press A to upgrade STRENGTH - your first one is FREE!")
+			return { Text = free and buyFree or "Buy STRENGTH when you have enough Cash - it lifts heavier junk.", Tag = "3/4", Gui = Controllers.UpgradeController.GetButton("Strength") }
 		elseif open then
 			return nil
 		end
-		return { Text = free and "Nice! Your first upgrade is FREE - open UPGRADES." or "Nice! Spend your Cash on UPGRADES to get stronger.", Tag = "3/4", Gui = hud.Buttons.Upgrades, Side = "Left" }
+		local openIt = platformText("open UPGRADES", "open UPGRADES", "press D-pad LEFT for UPGRADES")
+		return { Text = free and ("Nice! Your first upgrade is FREE - " .. openIt .. ".") or ("Nice! Spend your Cash on UPGRADES to get stronger" .. (if UI.IsGamepad() then " (D-pad LEFT)." else ".")), Tag = "3/4", Gui = hud.Buttons.Upgrades, Side = "Left" }
 	end
 	if open then
 		return nil
@@ -650,7 +652,7 @@ local function lobbyView(): View?
 	if (player:GetAttribute("QueueId") or "") ~= "" then
 		local create = Controllers.RoomSelectController.GetCreateButton()
 		if create then
-			return { Text = platformText("Pick a room, then press CREATE!", "Pick a room, then tap CREATE!", "Pick a room, then press CREATE!"), Gui = create, Side = "Left" }
+			return { Text = platformText("Pick a room, then press CREATE!", "Pick a room, then tap CREATE!", "Pick a room, then press A to CREATE!"), Gui = create, Side = "Left" }
 		end
 		return { Text = "Get ready - your room is about to start!" }
 	end
@@ -758,6 +760,7 @@ local function buildVideo()
 	end
 	local back = UI.Button({ Text = "BACK", Color = UI.Colors.PanelLight, Size = UDim2.fromOffset(120, 44), Position = UDim2.new(0, 20, 1, -46), TextSize = 18 }, menu.Content)
 	local nextButton = UI.Button({ Text = "NEXT", Color = UI.Colors.Green, Size = UDim2.fromOffset(120, 44), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -20, 1, -46), TextSize = 18 }, menu.Content)
+	menu.Primary = nextButton -- controllers: A steps through
 	local demo = newPlayer(stage)
 	local index, token = 1, 0
 

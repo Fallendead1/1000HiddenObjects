@@ -152,6 +152,10 @@ function ShopController.Init()
 		end)
 	end
 	tabHint = UI.Label({ Text = "", TextSize = 14, Font = UI.FontBody, TextColor3 = UI.Colors.TextDim, Size = UDim2.new(1, 0, 0, 18), Position = UDim2.fromOffset(0, 52) }, menu.Content)
+	-- Controllers: the open tab is selected when the shop opens (down reaches its offers).
+	menu.Primary = function()
+		return tabButtons[currentTab]
+	end
 
 	listFrame = UI.New("ScrollingFrame", {
 		BackgroundTransparency = 1,

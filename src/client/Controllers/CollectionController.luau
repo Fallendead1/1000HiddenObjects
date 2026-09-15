@@ -92,6 +92,7 @@ function CollectionController.Init()
 	-- Pager:  <   #001 - #100 · PAGE 1 / 10   >
 	prevButton = UI.Button({ Text = "<", Color = UI.Colors.PanelLight, Size = UDim2.fromOffset(56, 36), Position = UDim2.fromOffset(4, 38), TextSize = 26 }, menu.Content)
 	nextButton = UI.Button({ Text = ">", Color = UI.Colors.PanelLight, Size = UDim2.fromOffset(56, 36), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -4, 0, 38), TextSize = 26 }, menu.Content)
+	menu.Primary = nextButton -- controllers: A pages on
 	pageLabel = UI.Label({ Text = "", TextSize = 16, Font = UI.FontBody, TextColor3 = UI.Colors.TextDim, TextWrapped = false, Size = UDim2.new(1, -140, 0, 36), Position = UDim2.fromOffset(70, 38) }, menu.Content)
 	grid = UI.New("ScrollingFrame", {
 		BackgroundTransparency = 1,

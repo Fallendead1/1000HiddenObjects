@@ -10,6 +10,7 @@ local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 
 local Shared = ReplicatedStorage.Shared
 local GameConfig = require(Shared.Config.GameConfig)
@@ -140,11 +141,20 @@ local function close()
 	root.Visible = false
 	activeZone = nil
 	sent = false
+	UI.ClearSelection(root)
 	UI.Tween(dim, { BackgroundTransparency = 1 }, 0.15).Completed:Once(function()
 		if not root.Visible then
 			dim.Visible = false
 		end
 	end)
+end
+
+-- BACK (or B on a controller): out of the circle.
+local function leaveCircle()
+	if activeZone then
+		Remotes.Event("LeaveQueue"):FireServer(activeZone:GetAttribute("QueueId"))
+	end
+	close()
 end
 
 local function open(zone: BasePart)
@@ -171,6 +181,8 @@ local function open(zone: BasePart)
 	UI.PopIn(root, 0.85, 0.22)
 	dim.Visible = true
 	UI.Tween(dim, { BackgroundTransparency = 0.5 }, 0.2)
+	-- Controllers: CREATE is selected, so A creates; the D-pad reaches everything else.
+	UI.SelectForGamepad(createButton)
 end
 
 local function evaluate()
@@ -209,42 +221,58 @@ function RoomSelectController.Init()
 	UI.Stroke(panel, UI.Colors.Gold, 3)
 	UI.Glow(panel, UI.Colors.Gold, 26, 0.55)
 
-	titleLabel = UI.Label({ Text = "ROOM #001", TextSize = 38, TextColor3 = UI.Colors.Gold, Size = UDim2.new(1, 0, 0, 44), Position = UDim2.fromOffset(0, 12) }, panel)
+	-- Every line in this panel is one line that fits its box (FitText), on any screen.
+	titleLabel = UI.Label({ Text = "ROOM #001", FitText = 38, TextColor3 = UI.Colors.Gold, Size = UDim2.new(1, -20, 0, 44), Position = UDim2.fromOffset(10, 12) }, panel)
 	UI.Stroke(titleLabel, Color3.new(0, 0, 0), 2, 0.3)
-	UI.Label({ Text = "CREATE PARTY", TextSize = 24, Size = UDim2.new(1, 0, 0, 30), Position = UDim2.fromOffset(0, 56) }, panel)
+	UI.Label({ Text = "CREATE PARTY", FitText = 24, Size = UDim2.new(1, -20, 0, 30), Position = UDim2.fromOffset(10, 56) }, panel)
 	UI.Frame({ Size = UDim2.new(0.84, 0, 0, 2), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 94), BackgroundColor3 = UI.Colors.Text, BackgroundTransparency = 0.35 }, panel)
 
-	-- Room picker.
-	iconFrame = UI.Frame({ Size = UDim2.fromOffset(52, 52), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 106), BackgroundColor3 = UI.Colors.Gold }, panel)
+	-- Room picker. Phones leave the room's name out: its icon sits centred between the arrows,
+	-- with what to find under it in a size that reads easily.
+	local touch = UI.IsTouch()
+	local arrowY = if touch then 104 else 124
+	local iconSize = if touch then 60 else 52
+	iconFrame = UI.Frame({ Size = UDim2.fromOffset(iconSize, iconSize), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 106), BackgroundColor3 = UI.Colors.Gold }, panel)
 	UI.Corner(iconFrame, 12)
 	UI.Stroke(iconFrame, Color3.new(1, 1, 1), 2)
 	iconGlyph = UI.Label({ Text = "G", TextSize = 30, TextColor3 = UI.Colors.PanelDark }, iconFrame)
 	iconImage = UI.Image({ Size = UDim2.new(1, -8, 1, -8), Position = UDim2.fromOffset(4, 4), Visible = false }, iconFrame)
-	nameLabel = UI.Label({ Text = "", TextSize = 19, Size = UDim2.new(1, -150, 0, 24), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 162), TextTruncate = Enum.TextTruncate.AtEnd }, panel)
-	targetLabel = UI.Label({ Text = "", TextSize = 15, Font = UI.FontBody, TextColor3 = UI.Colors.Gold, Size = UDim2.new(1, -150, 0, 20), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 186) }, panel)
-	starsLabel = UI.Label({ Text = "", TextSize = 14, Font = UI.FontBody, TextColor3 = UI.Colors.TextDim, Size = UDim2.new(1, -40, 0, 18), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 206) }, panel)
-	prevButton = UI.Button({ Text = "<", Color = UI.Colors.PanelLight, Size = UDim2.fromOffset(46, 64), Position = UDim2.fromOffset(18, 124), TextSize = 30 }, panel)
-	nextButton = UI.Button({ Text = ">", Color = UI.Colors.PanelLight, Size = UDim2.fromOffset(46, 64), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -18, 0, 124), TextSize = 30 }, panel)
+	nameLabel = UI.Label({ Text = "", FitText = 19, Size = UDim2.new(1, -150, 0, 24), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 162), Visible = not touch }, panel)
+	if touch then
+		targetLabel = UI.Label({ Text = "", FitText = 20, TextColor3 = UI.Colors.Gold, Size = UDim2.new(1, -40, 0, 26), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 174) }, panel)
+	else
+		targetLabel = UI.Label({ Text = "", FitText = 15, Font = UI.FontBody, TextColor3 = UI.Colors.Gold, Size = UDim2.new(1, -150, 0, 20), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 186) }, panel)
+	end
+	starsLabel = UI.Label({ Text = "", FitText = 14, Font = UI.FontBody, TextColor3 = UI.Colors.TextDim, Size = UDim2.new(1, -40, 0, 18), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, if touch then 203 else 206) }, panel)
+	prevButton = UI.Button({ Text = "<", Color = UI.Colors.PanelLight, Size = UDim2.fromOffset(46, 64), Position = UDim2.fromOffset(18, arrowY), TextSize = 30 }, panel)
+	nextButton = UI.Button({ Text = ">", Color = UI.Colors.PanelLight, Size = UDim2.fromOffset(46, 64), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -18, 0, arrowY), TextSize = 30 }, panel)
 
-	-- Party size stepper.
-	UI.Label({ Text = "Party Size:", TextSize = 26, Size = UDim2.new(1, 0, 0, 30), Position = UDim2.fromOffset(0, 228) }, panel)
+	-- Party size stepper (a smaller heading on phones).
+	UI.Label({ Text = "Party Size:", FitText = if touch then 20 else 26, Size = UDim2.new(1, -40, 0, if touch then 24 else 30), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 228) }, panel)
 	minusButton = stepButton("-", panel, -72)
 	local sizeBox = UI.Frame({ Size = UDim2.fromOffset(58, 58), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 262), BackgroundColor3 = UI.Colors.PanelDark }, panel)
 	UI.Corner(sizeBox, 10)
 	sizeLabel = UI.Label({ Text = "1", TextSize = 34 }, sizeBox)
 	plusButton = stepButton("+", panel, 72)
-	sizeHint = UI.Label({ Text = "", TextSize = 14, Font = UI.FontBody, TextColor3 = UI.Colors.TextDim, Size = UDim2.new(1, -40, 0, 18), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 326) }, panel)
+	sizeHint = UI.Label({ Text = "", FitText = 14, Font = UI.FontBody, TextColor3 = UI.Colors.TextDim, Size = UDim2.new(1, -40, 0, 18), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 326) }, panel)
 
 	-- Hard Mode: locked (padlock) until this room's object has been found once.
-	hardButton = UI.Button({ Name = "HardModeButton", Text = "HARD MODE", Color = UI.Colors.Locked, Size = UDim2.fromOffset(250, 42), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 352), TextSize = 20 }, panel)
+	hardButton = UI.Button({ Name = "HardModeButton", Text = "HARD MODE", Color = UI.Colors.Locked, Size = UDim2.fromOffset(250, 42), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 352), FitText = 20 }, panel)
 	hardLock = makeLock(hardButton)
-	hardHint = UI.Label({ Text = "", TextSize = 13, Font = UI.FontBody, TextColor3 = UI.Colors.TextDim, Size = UDim2.new(1, -40, 0, 16), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 398) }, panel)
+	hardHint = UI.Label({ Text = "", FitText = 13, Font = UI.FontBody, TextColor3 = UI.Colors.TextDim, Size = UDim2.new(1, -40, 0, 16), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 398) }, panel)
 
-	createButton = UI.Button({ Name = "CreateButton", Text = "CREATE", Color = UI.Colors.Green, Size = UDim2.fromOffset(250, 56), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 424), TextSize = 30, Shine = 2.4 }, panel)
+	createButton = UI.Button({ Name = "CreateButton", Text = "CREATE", Color = UI.Colors.Green, Size = UDim2.fromOffset(250, 56), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 424), FitText = 30, Shine = 2.4 }, panel)
 	UI.Pulse(createButton, 0.03, 3)
-	footerLabel = UI.Label({ Text = "", TextSize = 13, Font = UI.FontBody, TextColor3 = UI.Colors.TextDim, Size = UDim2.new(1, -20, 0, 18), Position = UDim2.fromOffset(10, 486) }, panel)
+	footerLabel = UI.Label({ Text = "", FitText = 13, Font = UI.FontBody, TextColor3 = UI.Colors.TextDim, Size = UDim2.new(1, -20, 0, 18), Position = UDim2.fromOffset(10, 486) }, panel)
 
-	local backButton = UI.Button({ Name = "BackButton", Text = "BACK", Color = UI.Colors.Red, Size = UDim2.fromOffset(190, 56), AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.fromScale(0.5, 1), TextSize = 30 }, root)
+	local backButton = UI.Button({ Name = "BackButton", Text = "BACK", Color = UI.Colors.Red, Size = UDim2.fromOffset(190, 56), AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.fromScale(0.5, 1), FitText = 30 }, root)
+	UI.PadBadge(backButton, Enum.KeyCode.ButtonB)
+	-- Controllers: B backs out like BACK does (A presses whatever is selected: CREATE at first).
+	UserInputService.InputBegan:Connect(function(input)
+		if input.KeyCode == Enum.KeyCode.ButtonB and root.Visible and not UI.GetOpenMenu() then
+			leaveCircle()
+		end
+	end)
 
 	prevButton.Activated:Connect(function()
 		if index > 1 then
@@ -290,12 +318,7 @@ function RoomSelectController.Init()
 		Remotes.Event("CreateParty"):FireServer(activeZone:GetAttribute("QueueId"), rooms[index], partySize, hard)
 		Controllers.AudioController.Play("QueueEnter")
 	end)
-	backButton.Activated:Connect(function()
-		if activeZone then
-			Remotes.Event("LeaveQueue"):FireServer(activeZone:GetAttribute("QueueId"))
-		end
-		close()
-	end)
+	backButton.Activated:Connect(leaveCircle)
 
 	player:GetAttributeChangedSignal("QueueId"):Connect(evaluate)
 	local function watchZone(zone: Instance)

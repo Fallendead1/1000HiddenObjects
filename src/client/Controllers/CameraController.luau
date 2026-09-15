@@ -67,6 +67,7 @@ local function apply()
 	modal.Visible = cursorFree
 	crosshair.Visible = fp and not cursorFree
 	hint.Visible = fp and not cursorFree and not UI.IsTouch()
+	hint.Text = if UI.IsGamepad() then "[R2] grab / throw   [B] drop   [Y] shop   D-pad left: upgrades   right: hints" else "[ALT] mouse   [Q] drop   [U] upgrades   [B] shop   [H] hints"
 end
 
 function CameraController.IsFirstPerson(): boolean
@@ -180,6 +181,7 @@ function CameraController.Init()
 	UI.OnMenuChanged(function()
 		apply()
 	end)
+	UI.OnInputModeChanged(apply)
 	apply()
 end
 

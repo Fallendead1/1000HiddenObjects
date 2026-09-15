@@ -220,6 +220,12 @@ local function showResults(payload)
 		nextButton.Text = string.format("ROOM %s - COMING SOON", FormatUtil.RoomNumber(nextNum))
 		UI.SetButtonEnabled(nextButton, false)
 	end
+	-- Controllers: RETURN TO LOBBY is selected once the card has settled, so A goes back.
+	task.delay(0.35, function()
+		if results.Visible then
+			UI.SelectForGamepad(returnButton)
+		end
+	end)
 end
 
 function ResultsController.Init()
@@ -265,11 +271,13 @@ function ResultsController.Init()
 
 	returnButton.Activated:Connect(function()
 		results.Visible = false
+		UI.ClearSelection(results)
 		Remotes.Event("ReturnToLobby"):FireServer()
 	end)
 	nextButton.Activated:Connect(function()
 		if nextButton.Active then
 			results.Visible = false
+			UI.ClearSelection(results)
 			Remotes.Event("ReturnToLobby"):FireServer()
 		end
 	end)

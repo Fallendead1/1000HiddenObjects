@@ -140,6 +140,11 @@ function UpgradeController.Init()
 	for i, def in ipairs(UpgradeConfig.List) do
 		cards[def.Key] = buildCard(def, scroll, i)
 	end
+	-- Controllers: the first card's UPGRADE button is selected when the menu opens.
+	menu.Primary = function()
+		local first = UpgradeConfig.List[1]
+		return first and cards[first.Key] and cards[first.Key].Button
+	end
 
 	for _, def in ipairs(UpgradeConfig.List) do
 		player:GetAttributeChangedSignal(def.Attribute):Connect(refreshAll)
