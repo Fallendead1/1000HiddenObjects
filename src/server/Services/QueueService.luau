@@ -258,7 +258,7 @@ local function launch(q: Queue)
 		player:SetAttribute("Teleporting", true)
 	end
 	Services.AnalyticsService.Log("queue_start", party[1], { QueueId = q.Id, PartySize = #party, RoomId = roomId, Hard = hard })
-	task.wait(0.8)
+	task.wait(0.3) -- a beat for the loading screen to come up
 
 	local ok = Services.TeleportServiceWrapper.TeleportParty({
 		Players = party,

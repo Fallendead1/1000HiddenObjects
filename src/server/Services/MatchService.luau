@@ -257,7 +257,11 @@ local function rattleKey()
 	end
 	lastRattle = os.clock()
 	for _, root in ipairs(MatchService.GetCoveringObjects()) do
-		if not root.Anchored then
+		if not Services.ObjectService.GetHolder(root) then
+			-- Resting junk is anchored: it hops loose and goes dead again once it lands.
+			if root.Anchored then
+				Services.ObjectService.Activate(root)
+			end
 			root.AssemblyLinearVelocity += Vector3.new(rattleRng:NextNumber(-1.2, 1.2), rattleRng:NextNumber(2.5, 4), rattleRng:NextNumber(-1.2, 1.2))
 			root.AssemblyAngularVelocity += Vector3.new(rattleRng:NextNumber(-3, 3), rattleRng:NextNumber(-3, 3), rattleRng:NextNumber(-3, 3))
 		end
@@ -487,13 +491,10 @@ function MatchService.BeginMatch(params: LaunchParams, origin: CFrame): boolean
 
 	local runtime = Services.RoomService.Build(config, origin)
 	Services.ObjectService.SetRoom(runtime)
-	-- Hand every object to real physics and let the room settle before anyone enters.
-	local settled = Services.RoomService.SettleAndSnapshot(runtime, GameConfig.RoomSettleSeconds)
-	print(string.format("[MatchService] %d objects released to physics, settled in %.1fs", #runtime.Objects, settled))
-	local ok, report = RoomValidator.Validate(runtime, config)
-	if RunService:IsStudio() or not ok then
-		print(report)
-	end
+	-- Hand every object to real physics. The room settles behind the intro (the loading screen
+	-- stays up), is anchored where it came to rest, and the key goes in: see the start sequence.
+	Services.RoomService.Release(runtime)
+	local releasedAt = os.clock()
 
 	match = {
 		Id = params.MatchId,
@@ -520,7 +521,6 @@ function MatchService.BeginMatch(params: LaunchParams, origin: CFrame): boolean
 		Hard = params.Hard == true,
 	}
 
-	selectTarget()
 	-- Treasures in the room (loose + packed in junk) for the "every treasure" mastery star.
 	local treasures = 0
 	for _, obj in ipairs(runtime.Objects) do
@@ -536,9 +536,6 @@ function MatchService.BeginMatch(params: LaunchParams, origin: CFrame): boolean
 	end
 	match.TreasuresTotal = treasures
 	match.TreasuresCleaned = 0
-	if match.ResumePercent > 0 then
-		preClean(match.ResumePercent)
-	end
 
 	resetStateConfig()
 	stateConfig:SetAttribute("RoomId", config.Id)
@@ -562,6 +559,9 @@ function MatchService.BeginMatch(params: LaunchParams, origin: CFrame): boolean
 		if cp and match.ResumePercent > 0 then
 			Services.PlayerSessionService.RestoreFromCheckpoint(player, cp)
 		end
+		-- A player's very first room (the tutorial) gets one upgrade free (see UpgradeService).
+		local data = Services.DataService.Get(player)
+		player:SetAttribute("FreeUpgrade", data ~= nil and data.TutorialCompleted ~= true)
 		player:SetAttribute("InMatch", true)
 		player:SetAttribute("MatchId", match.Id)
 		Services.PlayerSessionService.RecomputeDerived(player)
@@ -570,9 +570,6 @@ function MatchService.BeginMatch(params: LaunchParams, origin: CFrame): boolean
 			moveCharacterTo(player, spawnCF)
 		end
 	end
-
-	Services.HintService.ResetForMatch(match)
-	Services.HintService.ApplyStagesForProgress(match, match.Progress)
 
 	fireMatch("Intro", {
 		RoomNumber = config.DisplayNumber,
@@ -586,12 +583,33 @@ function MatchService.BeginMatch(params: LaunchParams, origin: CFrame): boolean
 
 	task.spawn(function()
 		local thisMatch = match
-		task.wait(1.5)
+		-- The room settles behind the intro and goes dead (anchored); then the key goes in and the
+		-- 3, 2, 1 starts.
+		local settled, loose = Services.RoomService.FinishSettle(runtime, releasedAt, GameConfig.RoomSettleSeconds)
+		if match ~= thisMatch then
+			return
+		end
+		local falling = Services.ObjectService.FreezeRoom(loose)
+		print(string.format("[MatchService] %d objects settled in %.1fs and anchored (%d still falling)", #runtime.Objects, settled, falling))
+		selectTarget()
+		if match.ResumePercent > 0 then
+			preClean(match.ResumePercent)
+			stateConfig:SetAttribute("TreasuresCleaned", match.TreasuresCleaned)
+		end
+		publishProgress()
+		Services.HintService.ResetForMatch(match)
+		Services.HintService.ApplyStagesForProgress(match, match.Progress)
+		local ok, report = RoomValidator.Validate(runtime, config)
+		if RunService:IsStudio() or not ok then
+			print(report)
+		end
+		-- The room name and the object reveal always get their moment.
+		task.wait(math.max(0, GameConfig.IntroMinSeconds - (os.clock() - releasedAt)))
 		if match ~= thisMatch then
 			return
 		end
 		setState("Countdown")
-		task.wait(GameConfig.IntroSequenceSeconds - 1.5)
+		task.wait(GameConfig.CountdownSeconds)
 		if match ~= thisMatch then
 			return
 		end

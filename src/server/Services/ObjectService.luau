@@ -2,17 +2,21 @@
 	Server authority for every individual clutter object.
 
 	States (attribute "State"):
-	  Resting -> Held (no collision; the holder owns its physics while an AlignPosition keeps it
-	  in front of them; server leashes it) -> Flying (thrown) -> Resting once it has been still
-	  for SettleTime. It stays wherever physics leaves it.
+	  Resting (anchored) -> Held (unanchored, no collision; the holder owns its physics while an
+	  AlignPosition keeps it in front of them; server leashes it) -> Flying (thrown or dropped:
+	  normal physics, it rolls and tumbles) -> Resting once it has been still for SettleTime,
+	  anchored wherever physics left it.
 
 	Smooth throws: the holder already simulates the object, so on release they keep simulating
 	it (no ownership hand-off hitch). The server checks the flight against the allowed throw
 	speed and takes it back after the first impact or OwnedFlightTime.
 
-	Nothing is ever anchored: every object is a real, server-owned physics body that sleeps when
-	still. Players walk on the mess and kick it around; thrown objects pass through players until
-	they land. Pulling something out of a pile lets whatever was on it fall.
+	Resting objects are anchored ("dead"): the room settles under real physics behind the loading
+	screen and is then anchored where it came to rest (FreezeRoom), so nothing creeps, shakes
+	underfoot or gets shoved by walking. Only what is grabbed, thrown, burst or knocked loose is a
+	physics body, and only until it lands. Nothing floats: when a resting object is taken out of a
+	pile, whatever rested on it wakes up and falls (wakeAbove). Thrown objects pass through players
+	until they land.
 
 	Cash is never paid here: objects pay when deposited in a bin (DepositService).
 ]]
@@ -47,18 +51,17 @@ export type Flight = {
 	Owned: boolean?,
 	Cheated: boolean?,
 	LaunchVelocity: Vector3?,
+	CheckPos: Vector3?,
+	CheckAt: number?,
 }
 
 local runtime = nil
 local held: { [Player]: Held } = {}
 local heldBy: { [BasePart]: Player } = {}
 local active: { [BasePart]: Flight } = {}
--- Objects someone is standing on, anchored while they stand there (see lockFooting): root ->
--- the last time a foot was on it.
-local footing: { [BasePart]: number } = {}
-local footParams = OverlapParams.new()
-footParams.FilterType = Enum.RaycastFilterType.Include
-local FOOTING_RELEASE = 0.5 -- seconds after the last foot leaves
+-- Landed but still moving (a flight that timed out mid-roll, or junk jittering in place):
+-- anchored as soon as it's still or stops going anywhere.
+local unsettled: { [BasePart]: { Pos: Vector3, At: number } } = {}
 local grabLimiter = RateLimiter.new(GameConfig.GrabRateLimit, GameConfig.GrabRateLimit)
 -- Throws get their own, looser budget so a legitimate release is never swallowed.
 local throwLimiter = RateLimiter.new(GameConfig.GrabRateLimit * 2, GameConfig.GrabRateLimit * 2)
@@ -142,9 +145,29 @@ local function serverOwns(root: BasePart)
 	end
 end
 
-local function clutterRootOf(part: BasePart): BasePart?
+-- Dead where it lies. An anchored part keeps the velocity it had and would carry anyone standing
+-- on it like a conveyor belt, so that is cleared too.
+local function anchorAtRest(root: BasePart)
+	root.Anchored = true
+	root.AssemblyLinearVelocity = Vector3.zero
+	root.AssemblyAngularVelocity = Vector3.zero
+end
+
+-- A loose, server-tracked physics body from now until it lands (see settle).
+local function activate(root: BasePart, by: Player?, state: string, keepOwner: boolean?)
+	root.Anchored = false
+	root.CanCollide = true
+	if not keepOwner then
+		serverOwns(root)
+	end
+	active[root] = { Since = os.clock(), StillFor = 0, By = by }
+	unsettled[root] = nil
+	setState(root, state)
+end
+
+local function clutterRootOf(part: Instance, folder: Instance): BasePart?
 	local node: Instance? = part
-	while node and node ~= runtime.Model do
+	while node and node ~= folder do
 		if node:IsA("BasePart") and CollectionService:HasTag(node, "Clutter") then
 			return node :: BasePart
 		end
@@ -153,46 +176,47 @@ local function clutterRootOf(part: BasePart): BasePart?
 	return nil
 end
 
-local function unlockFooting(root: BasePart)
-	if footing[root] then
-		footing[root] = nil
-		if root.Parent then
-			root.Anchored = false
-			serverOwns(root)
-		end
-	end
-end
+--[[
+	Nothing floats: when a resting object is taken, burst or knocked loose, whatever rests on it
+	or leans on it wakes up and falls, and so on up the pile. Anything anchored from the base's
+	middle to just above its top (a little wider than it) whose centre is higher counts. Generous
+	on purpose: waking something that was fine costs a moment of physics (it is anchored again
+	once still), missing one leaves it hanging in the air.
+]]
+local WAKE_LIMIT = 150
+local WAKE_PAD = 0.3
+local wakeParams = OverlapParams.new()
+wakeParams.FilterType = Enum.RaycastFilterType.Include
 
--- Whatever a player stands on is anchored while they stand on it, so walking and turning on the
--- piles is smooth: server-simulated junk under a client-simulated character otherwise slides and
--- spins under the feet, and the first-person camera shakes. Released half a second after the last
--- foot leaves, or the moment it's grabbed or knocked into flight.
-local function lockFooting(now: number)
-	local clutter = runtime.Model:FindFirstChild("Clutter")
-	if clutter then
-		footParams.FilterDescendantsInstances = { clutter }
-		for _, player in ipairs(Players:GetPlayers()) do
-			local hrp = characterRoot(player)
-			local humanoid = hrp and (hrp.Parent :: Instance):FindFirstChildOfClass("Humanoid")
-			local match = humanoid and Services.MatchService.GetMatchForPlayer(player)
-			if hrp and humanoid and match and match.State == "Searching" then
-				local feet = hrp.Position.Y - hrp.Size.Y / 2 - humanoid.HipHeight
-				local box = CFrame.new(hrp.Position.X, feet - 0.35, hrp.Position.Z)
-				for _, part in ipairs(workspace:GetPartBoundsInBox(box, Vector3.new(2.4, 0.9, 2.4), footParams)) do
-					local root = clutterRootOf(part)
-					if root and not heldBy[root] and not active[root] and (footing[root] or not root.Anchored) then
-						root.Anchored = true
-						footing[root] = now
-					end
-				end
-			end
-		end
+local function wakeAbove(base: BasePart)
+	local folder = runtime and runtime.Model:FindFirstChild("Clutter")
+	if not folder then
+		return
 	end
-	for root, t in pairs(footing) do
-		if not root.Parent then
-			footing[root] = nil
-		elseif now - t > FOOTING_RELEASE then
-			unlockFooting(root)
+	wakeParams.FilterDescendantsInstances = { folder }
+	local queue = { base }
+	local seen = { [base] = true }
+	local i = 1
+	while queue[i] and #queue <= WAKE_LIMIT do
+		local cf, half = queue[i].CFrame, queue[i].Size / 2
+		i += 1
+		-- World-space half extents of the (possibly rotated) box.
+		local ext = Vector3.new(
+			math.abs(cf.XVector.X) * half.X + math.abs(cf.YVector.X) * half.Y + math.abs(cf.ZVector.X) * half.Z,
+			math.abs(cf.XVector.Y) * half.X + math.abs(cf.YVector.Y) * half.Y + math.abs(cf.ZVector.Y) * half.Z,
+			math.abs(cf.XVector.Z) * half.X + math.abs(cf.YVector.Z) * half.Y + math.abs(cf.ZVector.Z) * half.Z
+		)
+		local centre = cf.Position
+		local height = ext.Y + 0.6
+		local box = CFrame.new(centre.X, centre.Y + height / 2, centre.Z)
+		local size = Vector3.new(ext.X * 2 + WAKE_PAD * 2, height, ext.Z * 2 + WAKE_PAD * 2)
+		for _, part in ipairs(workspace:GetPartBoundsInBox(box, size, wakeParams)) do
+			local root = clutterRootOf(part, folder)
+			if root and not seen[root] and root.Anchored and not heldBy[root] and root.Position.Y > centre.Y then
+				seen[root] = true
+				activate(root, nil, "Falling")
+				table.insert(queue, root)
+			end
 		end
 	end
 end
@@ -230,7 +254,7 @@ local function landSound(root: BasePart): string
 	return "LandHard"
 end
 
-local function settle(root: BasePart, info: Flight)
+local function settle(root: BasePart, info: Flight, stopped: boolean?)
 	active[root] = nil
 	if not root.Parent then
 		return
@@ -243,6 +267,13 @@ local function settle(root: BasePart, info: Flight)
 	if root.CollisionGroup == "ClutterFlying" then
 		root.CollisionGroup = restingGroup(root)
 	end
+	-- Landed: dead again, anchored where it stopped (or the moment it stops, if the flight timed
+	-- out while it was still rolling).
+	if stopped or (root.AssemblyLinearVelocity.Magnitude < GameConfig.SettleSpeed and root.AssemblyAngularVelocity.Magnitude < 3) then
+		anchorAtRest(root)
+	else
+		unsettled[root] = { Pos = root.Position, At = os.clock() }
+	end
 	setState(root, "Resting")
 	if info.Thrown then
 		local match = Services.MatchService.GetMatch()
@@ -254,14 +285,11 @@ local function settle(root: BasePart, info: Flight)
 end
 
 local function makeActive(root: BasePart, by: Player?, state: string, keepOwner: boolean?)
-	footing[root] = nil
-	root.Anchored = false
-	root.CanCollide = true
-	if not keepOwner then
-		serverOwns(root)
+	local wasResting = root.Anchored
+	activate(root, by, state, keepOwner)
+	if wasResting then
+		wakeAbove(root)
 	end
-	active[root] = { Since = os.clock(), StillFor = 0, By = by }
-	setState(root, state)
 end
 
 local function release(player: Player, velocity: Vector3)
@@ -332,6 +360,10 @@ function ObjectService.Grab(player: Player, root: any): (boolean, string?)
 	if not hasLineOfSight(hrp.Position + Vector3.new(0, 1.5, 0), root) then
 		return false, "Blocked"
 	end
+	-- Whatever rested on it falls instead of hanging in the air.
+	if root.Anchored then
+		wakeAbove(root)
+	end
 	-- Packed junk bursts into its pieces instead of being carried.
 	if root:GetAttribute("IsChunk") then
 		active[root] = nil
@@ -342,7 +374,7 @@ function ObjectService.Grab(player: Player, root: any): (boolean, string?)
 	active[root] = nil
 	clearLift(root)
 	heldBy[root] = player
-	footing[root] = nil
+	unsettled[root] = nil
 	root.Anchored = false
 	root.CanCollide = false
 	local attachment = Instance.new("Attachment")
@@ -431,23 +463,63 @@ function ObjectService.Activate(root: BasePart, by: Player?)
 	makeActive(root, by, "Falling")
 end
 
--- Stop tracking an object that is leaving the room (deposited); drops it first if held.
+-- Stop tracking an object that is leaving the room (deposited); drops it first if held. Whatever
+-- rested on it falls.
 function ObjectService.Forget(root: BasePart)
 	local holder = heldBy[root]
 	if holder then
 		release(holder, Vector3.zero)
 	end
 	active[root] = nil
-	footing[root] = nil
+	unsettled[root] = nil
+	if root.Anchored then
+		wakeAbove(root)
+	end
 end
 
--- Teleport an object (dev tools); it stays a physics body.
+-- Whatever rests on this object falls (call before it disappears, e.g. a chunk bursting).
+function ObjectService.Wake(root: BasePart)
+	wakeAbove(root)
+end
+
+-- Teleport an object (dev tools); it drops from there and is anchored once it lands.
 function ObjectService.Relocate(root: BasePart, cframe: CFrame)
-	active[root] = nil
+	if root.Anchored then
+		wakeAbove(root)
+	end
 	root.CFrame = cframe
+	activate(root, nil, "Falling")
 	root.AssemblyLinearVelocity = Vector3.zero
 	root.AssemblyAngularVelocity = Vector3.zero
-	setState(root, "Resting")
+end
+
+--[[
+	The freshly settled room goes dead: everything is anchored where physics left it, so nothing
+	creeps, shakes underfoot or gets shoved. The objects in stillLoose (still moving when the room
+	settled, or put back by hand) and whatever rests on them stay physics bodies until they land.
+	Returns how many were left loose.
+]]
+function ObjectService.FreezeRoom(stillLoose: { [BasePart]: boolean }?): number
+	if not runtime then
+		return 0
+	end
+	local falling = {}
+	for _, obj in ipairs(runtime.Objects) do
+		if obj.Parent and not obj.Anchored and not heldBy[obj] and not active[obj] then
+			if stillLoose and stillLoose[obj] then
+				table.insert(falling, obj)
+			else
+				anchorAtRest(obj)
+			end
+		end
+	end
+	for _, obj in ipairs(falling) do
+		activate(obj, nil, "Falling")
+	end
+	for _, obj in ipairs(falling) do
+		wakeAbove(obj)
+	end
+	return #falling
 end
 
 function ObjectService.SetRoom(rt)
@@ -459,7 +531,7 @@ function ObjectService.ClearRoom()
 	for player in pairs(held) do
 		release(player, Vector3.zero)
 	end
-	held, heldBy, active, footing = {}, {}, {}, {}
+	held, heldBy, active, unsettled = {}, {}, {}, {}
 	runtime = nil
 end
 
@@ -504,21 +576,19 @@ function ObjectService.Start()
 				for _, obj in ipairs(runtime.Objects) do
 					if obj.Parent and not heldBy[obj] and Services.RoomService.IsOutOfRoom(runtime, obj) then
 						Services.RoomService.RecoverObject(runtime, obj)
+						if not active[obj] then
+							-- It drops back to the floor and is anchored once it lands.
+							activate(obj, nil, "Falling")
+						end
 					end
 				end
 			end
 		end
 	end)
 
-	local footingClock = 0
 	RunService.Heartbeat:Connect(function(dt)
 		if not runtime then
 			return
-		end
-		footingClock += dt
-		if footingClock >= 0.1 then
-			footingClock = 0
-			lockFooting(os.clock())
 		end
 		-- Leash held objects: a client can only move what it holds, and only near itself.
 		for player, h in pairs(held) do
@@ -531,6 +601,22 @@ function ObjectService.Start()
 			end
 		end
 		local now = os.clock()
+		for root, u in pairs(unsettled) do
+			if not root.Parent or heldBy[root] or active[root] then
+				unsettled[root] = nil
+			elseif root.AssemblyLinearVelocity.Magnitude < GameConfig.SettleSpeed and root.AssemblyAngularVelocity.Magnitude < 3 then
+				unsettled[root] = nil
+				anchorAtRest(root)
+			elseif now - u.At >= 0.5 then
+				if (root.Position - u.Pos).Magnitude < 0.25 then
+					-- Only jittering in place.
+					unsettled[root] = nil
+					anchorAtRest(root)
+				else
+					u.Pos, u.At = root.Position, now
+				end
+			end
+		end
 		for root, info in pairs(active) do
 			if not root.Parent then
 				active[root] = nil
@@ -587,6 +673,15 @@ function ObjectService.Start()
 					info.Lift = false
 				end
 				info.LastSpeed = speed
+			end
+			if not info.Thrown and now >= (info.CheckAt or 0) then
+				-- Knocked-loose junk (a woken pile, chunk pieces) has landed once it stops going
+				-- anywhere, even if it keeps jittering in place (the speed check never calls that still).
+				if info.CheckPos and (root.Position - info.CheckPos).Magnitude < 0.25 then
+					settle(root, info, true)
+					continue
+				end
+				info.CheckPos, info.CheckAt = root.Position, now + 0.5
 			end
 			if speed < GameConfig.SettleSpeed and root.AssemblyAngularVelocity.Magnitude < 3 then
 				info.StillFor += dt

@@ -28,6 +28,7 @@ local updateVipTag: (Player) -> ()
 local SessionDefaults = {
 	InMatch = false,
 	RoomCash = 0,
+	FreeUpgrade = false, -- the tutorial room's free first upgrade (see UpgradeService)
 	StrengthLevel = 1,
 	ThrowPowerLevel = 1,
 	MoveSpeedLevel = 1,

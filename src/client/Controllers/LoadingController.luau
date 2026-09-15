@@ -1,6 +1,7 @@
 --[[
 	Teleport overlay ("FINDING YOUR ROOM...") and the match intro sequence:
-	ROOM #001 -> OBJECT TO FIND -> SOMEWHERE IN THIS ROOM... -> 3 2 1 -> SEARCH!
+	ROOM #001 -> OBJECT TO FIND (held while the room settles behind it) -> 3 2 1 -> SEARCH!
+	The 3, 2, 1 and SEARCH! follow the server's Countdown / Searching states.
 ]]
 
 local Players = game:GetService("Players")
@@ -14,6 +15,7 @@ local UI = require(script.Parent.Parent.UI.UI)
 local Controllers = require(script.Parent)
 
 local player = Players.LocalPlayer
+local matchState = ReplicatedStorage:WaitForChild("MatchState")
 
 local LoadingController = {}
 
@@ -68,11 +70,12 @@ local function runIntro(payload)
 	if payload.ResumePercent and payload.ResumePercent > 0 then
 		smallLabel.Text = string.format("%s  -  RESUMING FROM %d%%", roomName, math.floor(payload.ResumePercent * 100))
 	end
-	task.wait(1.5)
+	task.wait(1)
 	if not alive() then return end
 
+	-- The object to find stays up while the room settles; the server starts the 3, 2, 1.
 	local def = TargetData.GetById(payload.TargetId or "")
-	setText(string.upper(payload.TargetName or "???"), "OBJECT TO FIND", UI.Colors.Gold)
+	setText(string.upper(payload.TargetName or "???"), "OBJECT TO FIND  ·  SOMEWHERE IN THIS ROOM", UI.Colors.Gold)
 	iconFrame.Visible = true
 	iconFrame.BackgroundColor3 = def and def.Color or UI.Colors.Gold
 	iconGlyph.Text = def and string.upper(string.sub(def.Name, 1, 1)) or "?"
@@ -81,25 +84,35 @@ local function runIntro(payload)
 	iconImage.Visible = art ~= nil
 	iconGlyph.Visible = art == nil
 	UI.PopIn(iconFrame, 0.4, 0.45)
-	task.wait(2)
-	if not alive() then return end
+end
 
+-- 3, 2, 1 (server state Countdown; GameConfig.CountdownSeconds = 3 x 0.7).
+local function runCountdown()
+	token += 1
+	local myToken = token
 	iconFrame.Visible = false
-	setText("SOMEWHERE IN THIS ROOM...", "", UI.Colors.TextDim, 40)
-	task.wait(1)
-	if not alive() then return end
-
 	for i = 3, 1, -1 do
 		setText(tostring(i), "", UI.Colors.Text, 96)
 		Controllers.AudioController.Play("Countdown")
-		task.wait(0.83)
-		if not alive() then return end
+		task.wait(0.7)
+		if token ~= myToken then
+			return
+		end
 	end
+end
+
+-- SEARCH! (server state Searching), then the room.
+local function showSearch()
+	token += 1
+	local myToken = token
+	iconFrame.Visible = false
 	setText("SEARCH!", "", UI.Colors.Green, 90)
-	Controllers.AudioController.Play("Countdown")
-	task.wait(0.7)
-	if not alive() then return end
-	hide(0.4)
+	Controllers.AudioController.Play("CountdownGo")
+	task.delay(0.6, function()
+		if token == myToken then
+			hide(0.4)
+		end
+	end)
 end
 
 function LoadingController.Init()
@@ -124,6 +137,18 @@ function LoadingController.Init()
 	iconGlyph = UI.Label({ Text = "K", TextSize = 80, TextColor3 = UI.Colors.PanelDark }, iconFrame)
 	iconImage = UI.Image({ Size = UDim2.new(1, -18, 1, -18), Position = UDim2.fromOffset(9, 9), Visible = false }, iconFrame)
 	UI.Glow(iconFrame, UI.Colors.Gold, 36, 0.35)
+
+	matchState:GetAttributeChangedSignal("State"):Connect(function()
+		local state = matchState:GetAttribute("State")
+		if not overlay.Visible or not player:GetAttribute("InMatch") then
+			return
+		end
+		if state == "Countdown" then
+			task.spawn(runCountdown)
+		elseif state == "Searching" then
+			showSearch()
+		end
+	end)
 
 	Remotes.Event("MatchUpdate").OnClientEvent:Connect(function(eventName, payload)
 		if eventName == "Intro" then

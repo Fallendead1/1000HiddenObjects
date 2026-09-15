@@ -607,15 +607,18 @@ local function roomView(): View?
 	local hud = Controllers.HUDController
 	local open = UI.GetOpenMenu()
 	if roomStep == 3 then
+		-- The first room's first upgrade is free (the server grants FreeUpgrade), so this step
+		-- always ends with a real purchase.
+		local free = player:GetAttribute("FreeUpgrade") == true
 		if open == "Upgrades" then
 			if upgradeBought then
 				return { Text = "Close the menu to keep going.", Tag = "3/4", Gui = menuClose("Upgrades") }
 			end
-			return { Text = "Buy STRENGTH when you have enough Cash - it lifts heavier junk.", Tag = "3/4", Gui = Controllers.UpgradeController.GetButton("Strength") }
+			return { Text = free and "Tap UPGRADE on STRENGTH - your first one is FREE!" or "Buy STRENGTH when you have enough Cash - it lifts heavier junk.", Tag = "3/4", Gui = Controllers.UpgradeController.GetButton("Strength") }
 		elseif open then
 			return nil
 		end
-		return { Text = "Nice! Spend your Cash on UPGRADES to get stronger.", Tag = "3/4", Gui = hud.Buttons.Upgrades, Side = "Left" }
+		return { Text = free and "Nice! Your first upgrade is FREE - open UPGRADES." or "Nice! Spend your Cash on UPGRADES to get stronger.", Tag = "3/4", Gui = hud.Buttons.Upgrades, Side = "Left" }
 	end
 	if open then
 		return nil

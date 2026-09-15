@@ -100,10 +100,12 @@ local function refreshCard(entry)
 	-- The next value in green: what you get for the price.
 	entry.Stat.Text = string.format('%s  →  <font color="#7DFF28">%s</font>', def.Format(current), def.Format(nextValue))
 	UI.TextGradient(entry.Stat, UI.Colors.Text)
-	entry.Price.Text = FormatUtil.CashExact(cost)
+	-- The tutorial room's first upgrade is on the house (the server decides; see UpgradeService).
+	local free = player:GetAttribute("FreeUpgrade") == true
+	entry.Price.Text = free and "FREE" or FormatUtil.CashExact(cost)
 	local cash = player:GetAttribute("RoomCash") or 0
-	local affordable = cash >= cost
-	UI.TextGradient(entry.Price, affordable and UI.Colors.Cash or UI.Colors.Red)
+	local affordable = free or cash >= cost
+	UI.TextGradient(entry.Price, free and UI.Colors.Gold or (affordable and UI.Colors.Cash or UI.Colors.Red))
 	UI.SetButtonEnabled(entry.Button, true)
 	entry.Button.Text = "UPGRADE"
 	entry.Button.BackgroundColor3 = affordable and entry.Color or UI.Colors.Locked
@@ -149,6 +151,7 @@ function UpgradeController.Init()
 	end)
 	player:GetAttributeChangedSignal("InMatch"):Connect(refreshAll)
 	player:GetAttributeChangedSignal("LiftByLevel"):Connect(refreshAll)
+	player:GetAttributeChangedSignal("FreeUpgrade"):Connect(refreshAll)
 	menu.OnOpen(refreshAll)
 	refreshAll()
 end

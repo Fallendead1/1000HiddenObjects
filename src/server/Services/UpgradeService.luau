@@ -34,17 +34,23 @@ function UpgradeService.TryUpgrade(player: Player, key: string): (boolean, strin
 	if not cost then
 		return false, "MAXED"
 	end
-	local cash = player:GetAttribute("RoomCash") or 0
-	if cash < cost then
-		return false, string.format("Need %s more.", FormatUtil.CashExact(cost - cash))
+	-- A player's very first room (the tutorial) has one upgrade on the house, so the tutorial's
+	-- "buy an upgrade" step works before they've earned enough Cash. Set per room by MatchService.
+	local free = player:GetAttribute("FreeUpgrade") == true
+	if not free then
+		local cash = player:GetAttribute("RoomCash") or 0
+		if cash < cost then
+			return false, string.format("Need %s more.", FormatUtil.CashExact(cost - cash))
+		end
+		if not Services.EconomyService.TrySpend(player, cost) then
+			return false, "Not enough Cash."
+		end
 	end
-	if not Services.EconomyService.TrySpend(player, cost) then
-		return false, "Not enough Cash."
-	end
+	player:SetAttribute("FreeUpgrade", false)
 	player:SetAttribute(def.Attribute, level + 1)
 	Services.PlayerSessionService.RecomputeDerived(player)
 	Remotes.Event("FXEvent"):FireClient(player, "Upgrade", { Key = key, Level = level + 1 })
-	Services.AnalyticsService.Log("upgrade_purchase_cash", player, { Upgrade = key, Level = level + 1, RoomId = match.RoomId })
+	Services.AnalyticsService.Log("upgrade_purchase_cash", player, { Upgrade = key, Level = level + 1, RoomId = match.RoomId, Free = free })
 	return true, string.format("%s upgraded!", def.Name)
 end
 

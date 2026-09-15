@@ -5,8 +5,9 @@
 	Each object is ONE BasePart root (the physics body + all gameplay attributes), tagged
 	"Clutter", named by ObjectId. Placeholder detail parts and final-art parts are welded,
 	massless, non-colliding children of that root, so every system only ever deals with the root.
-	Objects are built anchored (placement needs static geometry to stack against) and then
-	released to real physics by RoomService.SettleAndSnapshot before anyone plays.
+	Objects are built anchored (placement needs static geometry to stack against), released to
+	real physics so the piles settle naturally before anyone plays (RoomService.Release /
+	FinishSettle), then anchored again where they came to rest (ObjectService.FreezeRoom).
 
 	Layouts:
 	  Heap   - a mound stacked with a height map (heavier items tend to sit lower)

@@ -503,7 +503,7 @@ function RoomService.ComputeBlockers(runtime: RoomRuntime)
 	end
 end
 
--- Put an object that left the room back inside it, on the floor, at rest.
+-- Put an object that left the room back inside it, just above the floor (it drops from there).
 function RoomService.RecoverObject(runtime: RoomRuntime, obj: BasePart)
 	local inset = math.max(obj.Size.X, obj.Size.Y, obj.Size.Z) / 2 + 0.5
 	local pos = obj.Position
@@ -517,32 +517,52 @@ function RoomService.IsOutOfRoom(runtime: RoomRuntime, obj: BasePart): boolean
 	return pos.Y < runtime.FloorY - 5 or not RoomService.IsInsideRoom(runtime, pos, 1)
 end
 
---[[
-	Release every clutter object to real physics (unanchored, server-owned so no client can
-	shove things around), let the room settle, then record where everything actually came to
-	rest. OriginalCFrame and the key's blocker groups are taken from the settled room, so
-	natural settling never counts as a player moving something. Yields up to maxSeconds.
-]]
-function RoomService.SettleAndSnapshot(runtime: RoomRuntime, maxSeconds: number): number
-	local started = os.clock()
+-- Release every clutter object to real physics (unanchored, server-owned so no client can shove
+-- things around). The room then settles (FinishSettle) and is anchored where it came to rest
+-- (ObjectService.FreezeRoom).
+function RoomService.Release(runtime: RoomRuntime)
 	for _, obj in ipairs(runtime.Objects) do
 		obj.Anchored = false
 		pcall(function()
 			obj:SetNetworkOwner(nil)
 		end)
 	end
-	task.wait(0.75)
-	while os.clock() - started < maxSeconds do
-		local moving = 0
-		for _, obj in ipairs(runtime.Objects) do
-			if obj.AssemblyLinearVelocity.Magnitude > 0.6 then
-				moving += 1
+end
+
+--[[
+	Wait for a released room to settle (at most maxSeconds after startedAt), then record where
+	everything actually came to rest. OriginalCFrame and the key's blocker groups are taken from
+	the settled room, so natural settling never counts as a player moving something. Returns the
+	seconds since startedAt and the objects it put back by hand (they still have to drop).
+]]
+function RoomService.FinishSettle(runtime: RoomRuntime, startedAt: number, maxSeconds: number): (number, { [BasePart]: boolean })
+	-- Wait until the piles stop sliding: under 1% of objects still going anywhere (net movement,
+	-- so junk that only jitters in place doesn't hold the room up). The room is anchored right
+	-- after; whatever is still moving stays loose until it lands (ObjectService.FreezeRoom).
+	task.wait(math.max(0, 0.5 - (os.clock() - startedAt)))
+	local objects = runtime.Objects
+	local last = {}
+	for i, obj in ipairs(objects) do
+		last[i] = obj.Position
+	end
+	local loose = {}
+	while true do
+		task.wait(0.25)
+		local moving = {}
+		for i, obj in ipairs(objects) do
+			local p = obj.Position
+			-- Faster than 1 stud/s.
+			if (p - last[i]).Magnitude > 0.25 then
+				table.insert(moving, obj)
 			end
+			last[i] = p
 		end
-		if moving <= #runtime.Objects * 0.01 then
+		if #moving <= #objects * 0.01 or os.clock() - startedAt >= maxSeconds then
+			for _, obj in ipairs(moving) do
+				loose[obj] = true
+			end
 			break
 		end
-		task.wait(0.5)
 	end
 	-- Anything that slid into a bin while settling goes back on the pile beside it (otherwise
 	-- it would be cleaned for free the moment the search starts).
@@ -568,6 +588,7 @@ function RoomService.SettleAndSnapshot(runtime: RoomRuntime, maxSeconds: number)
 						local y = hit and hit.Position.Y or runtime.FloorY
 						root.CFrame = CFrame.new(spot.X, y + root.Size.Y / 2 + 0.05, spot.Z)
 						root.AssemblyLinearVelocity = Vector3.zero
+						loose[root] = true
 					end
 				end
 			end
@@ -576,11 +597,12 @@ function RoomService.SettleAndSnapshot(runtime: RoomRuntime, maxSeconds: number)
 	for _, obj in ipairs(runtime.Objects) do
 		if RoomService.IsOutOfRoom(runtime, obj) then
 			RoomService.RecoverObject(runtime, obj)
+			loose[obj] = true
 		end
 		obj:SetAttribute("OriginalCFrame", obj.CFrame)
 	end
 	RoomService.ComputeBlockers(runtime)
-	return os.clock() - started
+	return os.clock() - startedAt, loose
 end
 
 -- Add an object created during play (junk chunk pieces) to the room.

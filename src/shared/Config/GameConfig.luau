@@ -18,7 +18,7 @@ return {
 	-- Queue / matchmaking
 	MaxPartySize = 4,
 	QueueCountdown = 20, -- how long a party waits for players (the host can start early)
-	FullQueueCountdown = 3,
+	FullQueueCountdown = 2, -- a full party (or a solo run) starts this soon
 	QueueRadius = 8.5,
 	QueuePollInterval = 0.2,
 	MatchWaitForPartySeconds = 20,
@@ -77,7 +77,10 @@ return {
 	},
 
 	-- Match flow
-	IntroSequenceSeconds = 7, -- loading -> object reveal -> 3,2,1 -> SEARCH!
+	-- Room start: the intro (room name, then the object to find) plays while the fresh room
+	-- settles behind the loading screen; the 3, 2, 1 starts once it has, then SEARCH!
+	IntroMinSeconds = 2.4, -- the room name and the object reveal always get this long
+	CountdownSeconds = 2.1, -- 3, 2, 1 at 0.7 s each (LoadingController ticks the same)
 	CeremonySeconds = 6,
 	ReturnToLobbyDelay = 1,
 	FallProtectionDepth = 40,

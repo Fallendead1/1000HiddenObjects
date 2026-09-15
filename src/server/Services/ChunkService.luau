@@ -29,6 +29,8 @@ function ChunkService.Burst(chunk: BasePart, player: Player?)
 	local center, size = chunk.Position, chunk.Size
 	local meta = { RegionId = chunk:GetAttribute("RegionId") or "", PileId = chunk:GetAttribute("OriginalClusterId") or "" }
 	local bottom = center.Y - size.Y / 2
+	-- Whatever lay on the chunk falls into the gap.
+	Services.ObjectService.Wake(chunk)
 	chunk:Destroy()
 
 	local spawned = 0

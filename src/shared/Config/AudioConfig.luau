@@ -22,6 +22,7 @@ local THROW = 71538862113293
 local DEPOSIT = 85132289764366 -- anything cleaned into a bin
 local STREAK = 79891625289030 -- deposit streaks, new stars on the results screen
 local KEY_FOUND = 83724048837339 -- the Golden Key found: the win
+local COUNTDOWN = 117751546358455 -- the 3, 2, 1 before a room starts (1 s tick)
 
 return {
 	Music = {
@@ -34,7 +35,8 @@ return {
 		UIClose = { Id = CLICK, Volume = 0.45, Pitch = 0.88 },
 		QueueEnter = { Id = "rbxasset://sounds/volume_slider.ogg", Volume = 0.5, Pitch = 1.8 },
 		QueueLeave = { Id = "rbxasset://sounds/volume_slider.ogg", Volume = 0.5, Pitch = 0.8 },
-		Countdown = { Id = "rbxasset://sounds/volume_slider.ogg", Volume = 0.6, Pitch = 1.2 },
+		Countdown = { Id = COUNTDOWN, Volume = 0.7, Pitch = 1 },
+		CountdownGo = { Id = COUNTDOWN, Volume = 0.8, Pitch = 1.35 }, -- "SEARCH!"
 		TeleportWhoosh = { Id = "rbxasset://sounds/action_swim.mp3", Volume = 0.6, Pitch = 0.7 },
 		Grab = { Id = CLICK, Volume = 0.5, Pitch = { 0.92, 1.08 } },
 		Throw = { Id = THROW, Volume = 0.5, Pitch = { 0.95, 1.05 } },
