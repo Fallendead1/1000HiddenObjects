@@ -274,10 +274,22 @@ local function refreshMatchStatic()
 	roomTargetLabel.Text = "Find the " .. (matchState:GetAttribute("TargetName") or "")
 end
 
-local function refreshProgress()
+-- ROOM CLEANED with two decimals, rolled in hundredths of a percent, so every object that goes
+-- into a bin visibly moves it (1.20% -> 1.23%). Never shows 100% before the room is done.
+local shownHundredths = 0
+local function cleanedText(hundredths: number): string
+	if hundredths >= 10000 then
+		return "ROOM CLEANED: 100%"
+	end
+	return string.format("ROOM CLEANED: %.2f%%", hundredths / 100)
+end
+
+local function refreshProgress(instant: boolean?)
 	local p = matchState:GetAttribute("Progress") or 0
 	progressBar.Set(p, true)
-	progressLabel.Text = "ROOM CLEANED: " .. FormatUtil.Percent(p)
+	local target = math.floor(p * 10000 + 1e-6)
+	UI.CountUp(progressLabel, instant and target or shownHundredths, target, cleanedText, 0.35)
+	shownHundredths = target
 end
 
 local function refreshCash()
@@ -302,7 +314,7 @@ local function refreshVisibility()
 	matchFrame.Visible = inMatch
 	if inMatch then
 		refreshMatchStatic()
-		refreshProgress()
+		refreshProgress(true)
 		refreshCash()
 	else
 		refreshLobby()
