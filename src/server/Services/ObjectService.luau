@@ -53,6 +53,12 @@ local runtime = nil
 local held: { [Player]: Held } = {}
 local heldBy: { [BasePart]: Player } = {}
 local active: { [BasePart]: Flight } = {}
+-- Objects someone is standing on, anchored while they stand there (see lockFooting): root ->
+-- the last time a foot was on it.
+local footing: { [BasePart]: number } = {}
+local footParams = OverlapParams.new()
+footParams.FilterType = Enum.RaycastFilterType.Include
+local FOOTING_RELEASE = 0.5 -- seconds after the last foot leaves
 local grabLimiter = RateLimiter.new(GameConfig.GrabRateLimit, GameConfig.GrabRateLimit)
 -- Throws get their own, looser budget so a legitimate release is never swallowed.
 local throwLimiter = RateLimiter.new(GameConfig.GrabRateLimit * 2, GameConfig.GrabRateLimit * 2)
@@ -136,6 +142,61 @@ local function serverOwns(root: BasePart)
 	end
 end
 
+local function clutterRootOf(part: BasePart): BasePart?
+	local node: Instance? = part
+	while node and node ~= runtime.Model do
+		if node:IsA("BasePart") and CollectionService:HasTag(node, "Clutter") then
+			return node :: BasePart
+		end
+		node = node.Parent
+	end
+	return nil
+end
+
+local function unlockFooting(root: BasePart)
+	if footing[root] then
+		footing[root] = nil
+		if root.Parent then
+			root.Anchored = false
+			serverOwns(root)
+		end
+	end
+end
+
+-- Whatever a player stands on is anchored while they stand on it, so walking and turning on the
+-- piles is smooth: server-simulated junk under a client-simulated character otherwise slides and
+-- spins under the feet, and the first-person camera shakes. Released half a second after the last
+-- foot leaves, or the moment it's grabbed or knocked into flight.
+local function lockFooting(now: number)
+	local clutter = runtime.Model:FindFirstChild("Clutter")
+	if clutter then
+		footParams.FilterDescendantsInstances = { clutter }
+		for _, player in ipairs(Players:GetPlayers()) do
+			local hrp = characterRoot(player)
+			local humanoid = hrp and (hrp.Parent :: Instance):FindFirstChildOfClass("Humanoid")
+			local match = humanoid and Services.MatchService.GetMatchForPlayer(player)
+			if hrp and humanoid and match and match.State == "Searching" then
+				local feet = hrp.Position.Y - hrp.Size.Y / 2 - humanoid.HipHeight
+				local box = CFrame.new(hrp.Position.X, feet - 0.35, hrp.Position.Z)
+				for _, part in ipairs(workspace:GetPartBoundsInBox(box, Vector3.new(2.4, 0.9, 2.4), footParams)) do
+					local root = clutterRootOf(part)
+					if root and not heldBy[root] and not active[root] and (footing[root] or not root.Anchored) then
+						root.Anchored = true
+						footing[root] = now
+					end
+				end
+			end
+		end
+	end
+	for root, t in pairs(footing) do
+		if not root.Parent then
+			footing[root] = nil
+		elseif now - t > FOOTING_RELEASE then
+			unlockFooting(root)
+		end
+	end
+end
+
 -- Thrown objects feel reduced gravity until their first impact so throws carry across the room.
 local function addLift(root: BasePart)
 	local attachment = Instance.new("Attachment")
@@ -193,6 +254,7 @@ local function settle(root: BasePart, info: Flight)
 end
 
 local function makeActive(root: BasePart, by: Player?, state: string, keepOwner: boolean?)
+	footing[root] = nil
 	root.Anchored = false
 	root.CanCollide = true
 	if not keepOwner then
@@ -280,6 +342,7 @@ function ObjectService.Grab(player: Player, root: any): (boolean, string?)
 	active[root] = nil
 	clearLift(root)
 	heldBy[root] = player
+	footing[root] = nil
 	root.Anchored = false
 	root.CanCollide = false
 	local attachment = Instance.new("Attachment")
@@ -375,6 +438,7 @@ function ObjectService.Forget(root: BasePart)
 		release(holder, Vector3.zero)
 	end
 	active[root] = nil
+	footing[root] = nil
 end
 
 -- Teleport an object (dev tools); it stays a physics body.
@@ -395,7 +459,7 @@ function ObjectService.ClearRoom()
 	for player in pairs(held) do
 		release(player, Vector3.zero)
 	end
-	held, heldBy, active = {}, {}, {}
+	held, heldBy, active, footing = {}, {}, {}, {}
 	runtime = nil
 end
 
@@ -446,9 +510,15 @@ function ObjectService.Start()
 		end
 	end)
 
+	local footingClock = 0
 	RunService.Heartbeat:Connect(function(dt)
 		if not runtime then
 			return
+		end
+		footingClock += dt
+		if footingClock >= 0.1 then
+			footingClock = 0
+			lockFooting(os.clock())
 		end
 		-- Leash held objects: a client can only move what it holds, and only near itself.
 		for player, h in pairs(held) do

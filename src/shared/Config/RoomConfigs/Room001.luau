@@ -58,7 +58,6 @@ local Room = {
 
 Room.Regions = {
 	{ Id = "BedPile", Name = "BED", Center = Vector3.new(-30, 6, -18), Size = Vector3.new(16, 8, 24) },
-	{ Id = "UnderBed", Name = "UNDER THE BED", Center = Vector3.new(-30, 1, -18), Size = Vector3.new(16, 3, 24) },
 	{ Id = "Desk", Name = "DESK", Center = Vector3.new(30, 5, -26), Size = Vector3.new(24, 10, 18) },
 	{ Id = "Closet", Name = "CLOSET", Center = Vector3.new(-38, 7, 10), Size = Vector3.new(14, 14, 28) },
 	{ Id = "Bookshelf", Name = "BOOKSHELF", Center = Vector3.new(39, 7, -6), Size = Vector3.new(12, 14, 20) },
@@ -72,7 +71,7 @@ Room.Regions = {
 }
 
 Room.HintAreas = {
-	{ Label = "BED / UNDER BED / CLOSET", Regions = { "BedPile", "UnderBed", "Closet" } },
+	{ Label = "BED / CLOSET", Regions = { "BedPile", "Closet" } },
 	{ Label = "DESK / BOOKSHELF / WINDOW", Regions = { "Desk", "Bookshelf", "WindowArea" } },
 	{ Label = "LAUNDRY / LEFT FLOOR / DRESSER", Regions = { "LaundryCorner", "LeftFloor", "Dresser" } },
 	{ Label = "TOYS / RIGHT FLOOR / CENTER", Regions = { "ToyCorner", "RightFloor", "CenterFloor" } },
@@ -102,10 +101,15 @@ Room.Containers = {
 	{ Id = "Hamper", Center = Vector3.new(-36, 0, 29), Size = Vector3.new(10.6, 3.4, 8.6), Color = Color3.fromRGB(235, 235, 240) },
 }
 
+-- Solid blocks added to the shell. The bed is a platform bed: its base is closed down to the floor
+-- so nothing can spawn or roll under it, where players could never reach.
+Room.Fills = {
+	{ Name = "BedBase", Center = Vector3.new(-30, 0.9, -18), Size = Vector3.new(13.6, 1.8, 21.6), LookLike = "BedFrame" },
+}
+
 -- AssetKey mixes (key = relative frequency).
 local Mix = {
 	Bed = { Pillow_A = 4, Blanket_A = 3, Shirt_A = 6, Hoodie_A = 3, Sock_A = 4, Book_A = 3, Plush_A = 2, TeddyBear_A = 1, Laptop_A = 1, Headphones_A = 1, Controller_A = 1, Magazine_A = 2, Backpack_A = 1 },
-	UnderBed = { Shoe_A = 4, Sock_A = 3, Magazine_A = 3, Book_A = 3, Paper_A = 2, PizzaBox_A = 2, ToyCar_A = 2, Controller_A = 1, Remote_A = 1, Can_A = 2, Notebook_A = 2 },
 	Desk = { Paper_A = 5, Notebook_A = 4, Book_A = 3, Book_C = 2, Pencil_A = 4, Cup_A = 2, Can_A = 2, Bottle_A = 2, Remote_A = 1, Controller_A = 1, Headphones_A = 1, Camera_A = 1, Cable_A = 2, Laptop_A = 1 },
 	DeskFloor = { CardboardBox_A = 3, StorageBin_A = 1, Book_B = 3, Paper_A = 3, Backpack_A = 1, Cable_A = 2, PizzaBox_A = 2, Bottle_A = 2, Controller_A = 1, Shirt_A = 2 },
 	Closet = { Shirt_A = 6, Hoodie_A = 5, Sock_A = 3, Shoe_A = 4, CardboardBox_A = 2, CardboardBox_B = 1, StorageBin_A = 1, Basket_A = 1, Backpack_A = 1, Blanket_A = 1 },
@@ -139,8 +143,6 @@ end
 Room.Piles = {
 	heap("Bed_Top", "BedPile", "Bed", Vector3.new(-30, 4.2, -16), Vector2.new(12, 18), 95, 5.5),
 	heap("Bed_Side", "BedPile", "Laundry", Vector3.new(-20.5, 0, -14), Vector2.new(5, 14), 40, 4.5),
-	heap("UnderBed_A", "UnderBed", "UnderBed", Vector3.new(-30, 0, -22), Vector2.new(11, 9), 38, 1.5),
-	heap("UnderBed_B", "UnderBed", "UnderBed", Vector3.new(-30, 0, -12), Vector2.new(11, 8), 34, 1.5),
 	heap("Desk_Top", "Desk", "Desk", Vector3.new(27.5, 3.4, -28.6), Vector2.new(9, 3.4), 45, 2.8),
 	heap("Desk_Floor_L", "Desk", "DeskFloor", Vector3.new(21, 0, -22), Vector2.new(8, 8), 40, 4.5),
 	heap("Desk_Floor_R", "Desk", "DeskFloor", Vector3.new(38, 0, -21), Vector2.new(8, 7), 36, 4.5),
@@ -195,7 +197,6 @@ end
 Room.Sockets = {
 	socket("S_Bed_01", "Bed_Top", -3, -5), socket("S_Bed_02", "Bed_Top", 2.5, 3), socket("S_Bed_03", "Bed_Top", 0, -1),
 	socket("S_BedSide_01", "Bed_Side", 0, -3),
-	socket("S_UnderBed_01", "UnderBed_A", -3, 0, 3), socket("S_UnderBed_02", "UnderBed_A", 3, 1, 3), socket("S_UnderBed_03", "UnderBed_B", 0, 0, 3),
 	socket("S_Desk_01", "Desk_Top", -1.5, 0), socket("S_Desk_02", "Desk_Floor_L", 0, 1), socket("S_Desk_03", "Desk_Floor_R", 0, 0),
 	socket("S_Closet_01", "Closet_Floor", 0, -5), socket("S_Closet_02", "Closet_Floor", 0, 3), socket("S_Closet_03", "Closet_Front", 0, 0),
 	socket("S_Books_01", "Bookshelf_Floor_A", 0, 0), socket("S_Books_02", "Bookshelf_Floor_B", 0.5, -0.5),
@@ -209,7 +210,6 @@ Room.Sockets = {
 	-- More hiding spots: searching every pile is part of the hunt.
 	socket("S_Bed_04", "Bed_Top", 4, -6), socket("S_Bed_05", "Bed_Top", -4, 6),
 	socket("S_BedSide_02", "Bed_Side", 0, 4),
-	socket("S_UnderBed_04", "UnderBed_B", -3, 2, 3),
 	socket("S_Desk_04", "Desk_Floor_L", -2, -2), socket("S_Desk_05", "Desk_Floor_R", 2, 1),
 	socket("S_Closet_04", "Closet_Floor", 0, 7), socket("S_Closet_05", "Closet_Front", 1, -2),
 	socket("S_Books_03", "Bookshelf_Floor_A", -1.5, 1.5), socket("S_Books_04", "Bookshelf_Floor_B", -1, 2),

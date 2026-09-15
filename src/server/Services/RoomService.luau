@@ -244,6 +244,114 @@ local function scaleBins(model: Model)
 	end
 end
 
+-- Solid blocks a room adds to its shell (config.Fills), e.g. closing the gap under a bed so
+-- nothing can hide where players can't reach. LookLike copies an existing part's colour.
+local function addFills(model: Model, config, origin: CFrame)
+	local structure = model:FindFirstChild("Structure")
+	if not structure or not config.Fills then
+		return
+	end
+	for _, fill in ipairs(config.Fills) do
+		local part = Instance.new("Part")
+		part.Name = fill.Name
+		part.Anchored = true
+		part.CanCollide = true
+		part.TopSurface = Enum.SurfaceType.Smooth
+		part.BottomSurface = Enum.SurfaceType.Smooth
+		part.Size = fill.Size
+		part.CFrame = origin * CFrame.new(fill.Center)
+		local look = fill.LookLike and structure:FindFirstChild(fill.LookLike, true)
+		if look and look:IsA("BasePart") then
+			part.Color = look.Color
+			part.Material = look.Material
+			part.MaterialVariant = look.MaterialVariant
+		end
+		part.Parent = structure
+	end
+end
+
+-- Shell parts whose faces sit exactly on top of each other flicker (z-fighting): a baseboard
+-- flush with the wainscot, layers of a poster, a cap on a headboard... For every such pair with
+-- different looks, the smaller part moves out through the shared face, a hair toward the room,
+-- so it clearly draws in front. Only faces seen from inside the room count, and only boxes
+-- square to the world axes are checked (walls, trim, panels).
+local COPLANAR_TOLERANCE = 0.02
+local COPLANAR_NUDGE = 0.05
+local AXES = { Vector3.xAxis, Vector3.yAxis, Vector3.zAxis }
+
+local function on(v: Vector3, axis: number): number
+	return if axis == 1 then v.X elseif axis == 2 then v.Y else v.Z
+end
+
+local function separateCoplanar(model: Model, centre: Vector3): number
+	local boxes = {}
+	for _, folderName in ipairs({ "Structure", "Decor", "Props" }) do
+		local folder = model:FindFirstChild(folderName)
+		for _, p in ipairs(folder and folder:GetDescendants() or {}) do
+			if p:IsA("BasePart") and p.Transparency < 0.95 then
+				local square = true
+				for _, v in ipairs({ p.CFrame.RightVector, p.CFrame.UpVector, p.CFrame.LookVector }) do
+					if math.max(math.abs(v.X), math.abs(v.Y), math.abs(v.Z)) < 0.999 then
+						square = false
+						break
+					end
+				end
+				if square then
+					table.insert(boxes, { Part = p, Volume = p.Size.X * p.Size.Y * p.Size.Z })
+				end
+			end
+		end
+	end
+	local fixed = 0
+	for _ = 1, 3 do
+		for _, box in ipairs(boxes) do
+			local h = box.Part.CFrame:VectorToWorldSpace(box.Part.Size / 2)
+			h = Vector3.new(math.abs(h.X), math.abs(h.Y), math.abs(h.Z))
+			box.Min, box.Max = box.Part.Position - h, box.Part.Position + h
+		end
+		local nudges: { [BasePart]: Vector3 } = {}
+		for i = 1, #boxes do
+			local a = boxes[i]
+			for j = i + 1, #boxes do
+				local b = boxes[j]
+				local t = COPLANAR_TOLERANCE
+				if (a.Part.Color ~= b.Part.Color or a.Part.Material ~= b.Part.Material)
+					and a.Min.X <= b.Max.X + t and b.Min.X <= a.Max.X + t
+					and a.Min.Y <= b.Max.Y + t and b.Min.Y <= a.Max.Y + t
+					and a.Min.Z <= b.Max.Z + t and b.Min.Z <= a.Max.Z + t
+				then
+					for axis = 1, 3 do
+						local u, w = axis % 3 + 1, (axis + 1) % 3 + 1
+						local overlapU = math.min(on(a.Max, u), on(b.Max, u)) - math.max(on(a.Min, u), on(b.Min, u))
+						local overlapW = math.min(on(a.Max, w), on(b.Max, w)) - math.max(on(a.Min, w), on(b.Min, w))
+						if overlapU > 0.05 and overlapW > 0.05 then
+							-- The shared face and which way it looks (+1 / -1 along the axis).
+							local face, normal = nil, 0
+							if math.abs(on(a.Max, axis) - on(b.Max, axis)) < t then
+								face, normal = on(a.Max, axis), 1
+							elseif math.abs(on(a.Min, axis) - on(b.Min, axis)) < t then
+								face, normal = on(a.Min, axis), -1
+							end
+							if face and (on(centre, axis) - face) * normal > 0 then
+								local small = if a.Volume <= b.Volume then a.Part else b.Part
+								nudges[small] = (nudges[small] or Vector3.zero) + AXES[axis] * normal * COPLANAR_NUDGE
+							end
+						end
+					end
+				end
+			end
+		end
+		if next(nudges) == nil then
+			break
+		end
+		for part, offset in pairs(nudges) do
+			part.CFrame += offset
+			fixed += 1
+		end
+	end
+	return fixed
+end
+
 function RoomService.Build(config, origin: CFrame): RoomRuntime
 	local roomsFolder = ServerStorage:FindFirstChild("Rooms")
 	local prebuilt = roomsFolder and roomsFolder:FindFirstChild("Room" .. config.DisplayNumber)
@@ -259,6 +367,11 @@ function RoomService.Build(config, origin: CFrame): RoomRuntime
 	model.Name = "Room" .. config.DisplayNumber
 	model:SetAttribute("RoomId", config.Id)
 	scaleBins(model)
+	addFills(model, config, origin)
+	local fixedFaces = separateCoplanar(model, origin.Position + Vector3.new(0, config.Size.Y / 2, 0))
+	if fixedFaces > 0 then
+		print(string.format("[RoomService] %s: moved %d parts off flickering shared faces", config.Name, fixedFaces))
+	end
 
 	-- The shell must be in Workspace first: clutter placement queries it to avoid clipping.
 	model.Parent = workspace
@@ -313,10 +426,24 @@ function RoomService.Build(config, origin: CFrame): RoomRuntime
 		end
 	end
 
+	-- A prebuilt shell can carry regions and sockets its config has since dropped (e.g. the old
+	-- under-bed spots): the config decides which are real.
+	local configRegions, configSockets = {}, {}
+	for _, r in ipairs(config.Regions or {}) do
+		configRegions[r.Id] = true
+	end
+	for _, s in ipairs(config.Sockets or {}) do
+		configSockets[s.Id] = true
+	end
+
 	for _, inst in ipairs(taggedIn(model, "SearchRegion")) do
 		if inst:IsA("BasePart") then
 			local id = inst:GetAttribute("RegionId") or inst.Name
-			runtime.Regions[id] = { Part = inst, Name = inst:GetAttribute("RegionName") or id }
+			if next(configRegions) and not configRegions[id] then
+				inst:Destroy()
+			else
+				runtime.Regions[id] = { Part = inst, Name = inst:GetAttribute("RegionName") or id }
+			end
 		end
 	end
 
@@ -335,7 +462,9 @@ function RoomService.Build(config, origin: CFrame): RoomRuntime
 	end
 
 	for _, inst in ipairs(taggedIn(model, "TargetSocket")) do
-		if inst:IsA("BasePart") then
+		if inst:IsA("BasePart") and next(configSockets) and not configSockets[inst:GetAttribute("SocketId") or inst.Name] then
+			inst:Destroy()
+		elseif inst:IsA("BasePart") then
 			local socket: SocketRuntime = {
 				Id = inst:GetAttribute("SocketId") or inst.Name,
 				PileId = inst:GetAttribute("PileId") or "",
