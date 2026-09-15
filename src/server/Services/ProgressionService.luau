@@ -13,10 +13,13 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage.Shared
 local ProgressionConfig = require(Shared.Config.ProgressionConfig)
 local Remotes = require(Shared.Utility.Remotes)
+local RateLimiter = require(Shared.Utility.RateLimiter)
 
 local Services = require(script.Parent)
 
 local ProgressionService = {}
+
+local claimLimiter = RateLimiter.new(1, 2)
 
 local function today(): number
 	return math.floor(workspace:GetServerTimeNow() / 86400)
@@ -44,6 +47,19 @@ end
 
 local function rewardFor(day: number, slot: number)
 	return ProgressionConfig.Rewards[(day + slot - 1) % #ProgressionConfig.Rewards + 1]
+end
+
+-- Daily login: today's reward in the 7-day cycle (1-7), whether it can still be claimed, and the
+-- streak it counts as. Missing a day starts the streak (and the cycle) over.
+local function loginStatus(data): (number, boolean, number)
+	local day = today()
+	local login = data.Login
+	local count = #ProgressionConfig.LoginRewards
+	if login.Day == day then
+		return (login.Streak - 1) % count + 1, false, login.Streak
+	end
+	local streak = login.Day == day - 1 and login.Streak + 1 or 1
+	return (streak - 1) % count + 1, true, streak
 end
 
 function ProgressionService.RefreshTag(player: Player)
@@ -122,6 +138,11 @@ function ProgressionService.Publish(player: Player)
 	end
 	player:SetAttribute("DailyChallenges", HttpService:JSONEncode(list))
 	player:SetAttribute("DailyResetAt", (data.Daily.Day + 1) * 86400)
+	local loginDay, claimable, streak = loginStatus(data)
+	player:SetAttribute("LoginDay", loginDay)
+	player:SetAttribute("LoginClaimable", claimable)
+	player:SetAttribute("LoginStreak", claimable and streak - 1 or streak) -- days claimed in a row so far
+	player:SetAttribute("LoginResetAt", (today() + 1) * 86400)
 	for roomId, mask in pairs(data.Stars) do
 		player:SetAttribute("Stars_" .. roomId, mask)
 	end
@@ -156,6 +177,19 @@ local function grantReward(player: Player, data, reward, challenge)
 	addXP(player, data, ProgressionConfig.XP.Challenge, "Challenge")
 	Remotes.Event("FXEvent"):FireClient(player, "ChallengeDone", { Text = string.format(challenge.Text, challenge.Goal), Reward = reward.Text })
 	Services.AnalyticsService.Log("daily_done", player, { Id = challenge.Id })
+end
+
+-- Daily login reward: XP now; hints and boosts are banked for the next room.
+local function grantLoginReward(player: Player, data, reward)
+	if reward.XP then
+		addXP(player, data, reward.XP, "Daily")
+	end
+	if reward.Hint then
+		data.Banked[reward.Hint] = (data.Banked[reward.Hint] or 0) + 1
+	end
+	if reward.Boost then
+		data.Banked[reward.Boost] = (data.Banked[reward.Boost] or 0) + (reward.Seconds or 0)
+	end
 end
 
 local function track(player: Player, data, stat: string, amount: number)
@@ -252,6 +286,28 @@ function ProgressionService.OnRoomComplete(player: Player, match, isFinder: bool
 end
 
 function ProgressionService.Init()
+	Remotes.Event("ClaimDailyReward").OnServerEvent:Connect(function(player)
+		if not claimLimiter:Allow(player) then
+			return
+		end
+		local data = Services.DataService.Get(player)
+		if not data then
+			return
+		end
+		local cycleDay, claimable, streak = loginStatus(data)
+		if not claimable then
+			return
+		end
+		local reward = ProgressionConfig.LoginRewards[cycleDay]
+		data.Login = { Day = today(), Streak = streak }
+		grantLoginReward(player, data, reward)
+		Services.DataService.MarkDirty(player)
+		Services.DataService.Save(player)
+		Remotes.Event("FXEvent"):FireClient(player, "DailyClaimed", { Day = cycleDay, Streak = streak, Reward = reward.Text, Later = reward.Hint ~= nil or reward.Boost ~= nil })
+		Services.AnalyticsService.Log("daily_login_claim", player, { Day = cycleDay, Streak = streak })
+		ProgressionService.Publish(player)
+	end)
+
 	local function onPlayer(player: Player)
 		task.spawn(function()
 			if Services.DataService.WaitFor(player, 15) then

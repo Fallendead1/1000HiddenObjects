@@ -63,9 +63,10 @@ local function runIntro(payload)
 	end
 	show()
 	iconFrame.Visible = false
-	setText("ROOM #" .. (payload.RoomNumber or "001"), string.upper(payload.RoomName or ""), UI.Colors.Text)
+	local roomName = string.upper(payload.RoomName or "") .. (payload.Hard and "  ·  HARD MODE" or "")
+	setText("ROOM #" .. (payload.RoomNumber or "001"), roomName, payload.Hard and UI.Colors.Red or UI.Colors.Text)
 	if payload.ResumePercent and payload.ResumePercent > 0 then
-		smallLabel.Text = string.format("%s  -  RESUMING FROM %d%%", string.upper(payload.RoomName or ""), math.floor(payload.ResumePercent * 100))
+		smallLabel.Text = string.format("%s  -  RESUMING FROM %d%%", roomName, math.floor(payload.ResumePercent * 100))
 	end
 	task.wait(1.5)
 	if not alive() then return end
@@ -137,19 +138,29 @@ function LoadingController.Init()
 		end
 	end)
 
+	-- The overlay stays up until the room is really ready (building and settling a room can take
+	-- several seconds), so the lobby never flashes back in between.
 	player:GetAttributeChangedSignal("Teleporting"):Connect(function()
 		if player:GetAttribute("Teleporting") then
 			token += 1
 			show()
 			setText("FINDING YOUR ROOM...", "", UI.Colors.TextDim, 44)
 			Controllers.AudioController.Play("TeleportWhoosh")
-			-- Safety: if nothing follows (teleport failed), clear the overlay.
+			-- Last-resort safety if nothing ever follows.
 			local myToken = token
-			task.delay(6, function()
+			task.delay(30, function()
 				if token == myToken and overlay.Visible and not player:GetAttribute("InMatch") then
 					hide(0.4)
 				end
 			end)
+		else
+			-- Same-server matches clear Teleporting once the room is ready. Still in the lobby by
+			-- then means the launch failed. (A real teleport leaves the server instead.)
+			local info = ReplicatedStorage:FindFirstChild("ServerInfo")
+			if info and info:GetAttribute("Role") == "Combined" and not player:GetAttribute("InMatch") and overlay.Visible then
+				token += 1
+				hide(0.4)
+			end
 		end
 	end)
 end

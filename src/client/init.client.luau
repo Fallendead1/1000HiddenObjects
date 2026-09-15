@@ -44,6 +44,7 @@ local order = {
 	"ResultsController",
 	"ProgressionController",
 	"TutorialController",
+	"DailyRewardController",
 	"LobbyController",
 	"PromptController",
 	"RoomSelectController",

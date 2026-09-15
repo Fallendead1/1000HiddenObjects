@@ -58,6 +58,18 @@ local ProgressionConfig = {
 		{ Id = "Room1", Text = "Complete %d room", Stat = "RoomComplete", Goal = 1 },
 	},
 
+	-- Daily login rewards: a 7-day cycle; missing a day starts over at day 1. Hints and boosts are
+	-- saved for your next room (a boost never ticks away in the lobby). Never a currency.
+	LoginRewards = {
+		{ Kind = "XP", XP = 150, Text = "+150 XP" },
+		{ Kind = "Hint", Hint = "QuickHint", Text = "Free Quick Hint" },
+		{ Kind = "Boost", Boost = "CashBoost", Seconds = 600, Text = "10 min 2X Cash" },
+		{ Kind = "XP", XP = 300, Text = "+300 XP" },
+		{ Kind = "Hint", Hint = "SuperHint", Text = "Free Super Hint" },
+		{ Kind = "Boost", Boost = "StrengthBoost", Seconds = 600, Text = "10 min 2X Strength" },
+		{ Kind = "Bundle", XP = 600, Boost = "CashBoost", Seconds = 900, Text = "+600 XP & 15 min 2X Cash" },
+	},
+
 	-- Challenge rewards rotate by day and slot (never a currency).
 	Rewards = {
 		{ Kind = "Boost", Attribute = "CashBoostExpires", Seconds = 300, Text = "5 min 2X Cash" },

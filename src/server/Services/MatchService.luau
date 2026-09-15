@@ -61,6 +61,7 @@ local function resetStateConfig()
 		PartySize = 0, StartTime = 0, EndTime = 0, TotalObjects = 0, CleanedObjects = 0, Progress = 0,
 		HintStage = 0, TargetRevealed = false, TargetFound = false, FinderName = "", OutlinedObjects = "",
 		TeamMuscleExpires = 0, PlayerNames = "", ResumePercent = 0, TreasuresTotal = 0, TreasuresCleaned = 0,
+		Hard = false,
 	}) do
 		stateConfig:SetAttribute(name, value)
 	end
@@ -407,6 +408,7 @@ export type LaunchParams = {
 	ResumePercent: number,
 	Seed: number,
 	MatchId: string,
+	Hard: boolean?,
 }
 
 function MatchService.StartLocalMatch(params: LaunchParams): boolean
@@ -451,7 +453,17 @@ function MatchService.StartFromTeleport()
 		ResumePercent = tonumber(data.ResumePercent) or 0,
 		Seed = tonumber(data.Seed) or Random.new():NextInteger(1, 2 ^ 30),
 		MatchId = tostring(data.MatchId or "local"),
+		Hard = data.Hard == true,
 	}, CFrame.new(GameConfig.CombinedRoomOffset))
+end
+
+-- Hard Mode: the same room with its HardMode overrides (more packed junk). Records don't count.
+local function hardVariant(config)
+	local hard = table.clone(config)
+	for key, value in pairs(config.HardMode or {}) do
+		hard[key] = value
+	end
+	return hard
 end
 
 function MatchService.BeginMatch(params: LaunchParams, origin: CFrame): boolean
@@ -459,6 +471,9 @@ function MatchService.BeginMatch(params: LaunchParams, origin: CFrame): boolean
 	if not config then
 		warn("[MatchService] Unknown room", params.RoomId)
 		return false
+	end
+	if params.Hard then
+		config = hardVariant(config)
 	end
 	local players = {}
 	for _, p in ipairs(params.Players) do
@@ -502,6 +517,7 @@ function MatchService.BeginMatch(params: LaunchParams, origin: CFrame): boolean
 		TeamMuscleExpires = 0,
 		ResumePercent = params.ResumePercent or 0,
 		ClaimLock = false,
+		Hard = params.Hard == true,
 	}
 
 	selectTarget()
@@ -536,6 +552,7 @@ function MatchService.BeginMatch(params: LaunchParams, origin: CFrame): boolean
 	stateConfig:SetAttribute("ResumePercent", match.ResumePercent)
 	stateConfig:SetAttribute("TreasuresTotal", match.TreasuresTotal)
 	stateConfig:SetAttribute("TreasuresCleaned", match.TreasuresCleaned)
+	stateConfig:SetAttribute("Hard", match.Hard)
 	publishProgress()
 	setState("Loading")
 
@@ -563,8 +580,9 @@ function MatchService.BeginMatch(params: LaunchParams, origin: CFrame): boolean
 		TargetName = config.TargetName,
 		TargetId = config.TargetId,
 		ResumePercent = match.ResumePercent,
+		Hard = match.Hard,
 	})
-	Services.AnalyticsService.Log("match_start", players[1], { RoomId = config.Id, PartySize = params.PartySize, Resume = match.ResumePercent, Objects = runtime.TotalObjects })
+	Services.AnalyticsService.Log("match_start", players[1], { RoomId = config.Id, PartySize = params.PartySize, Resume = match.ResumePercent, Objects = runtime.TotalObjects, Hard = match.Hard })
 
 	task.spawn(function()
 		local thisMatch = match
@@ -802,7 +820,7 @@ function MatchService.CompleteMatch(finder: Player)
 				data.FinderWins += 1
 			end
 			local key = tostring(roomId)
-			if not match.DevCompleted and elapsed >= GameConfig.MinimumLegitimateRoomTime and (not data.BestTimes[key] or elapsed < data.BestTimes[key]) then
+			if not match.DevCompleted and not match.Hard and elapsed >= GameConfig.MinimumLegitimateRoomTime and (not data.BestTimes[key] or elapsed < data.BestTimes[key]) then
 				data.BestTimes[key] = math.floor(elapsed)
 				newBestByUser[tostring(player.UserId)] = true
 			end
@@ -814,12 +832,12 @@ function MatchService.CompleteMatch(finder: Player)
 		if data then
 			Services.LeaderboardService.SubmitObjectsFound(player, data.ObjectsFound)
 			Services.LeaderboardService.SubmitMostCleaned(player, data.TotalMessCleared)
-			if not match.DevCompleted then
+			if not match.DevCompleted and not match.Hard then
 				Services.LeaderboardService.SubmitRoomTime(player, roomId, elapsed)
 			end
 		end
 		Services.MonetizationService.CheckBadges(player)
-		Services.AnalyticsService.Log("room_complete", player, { RoomId = roomId, PartySize = match.PartySize, ElapsedTime = math.floor(elapsed), FirstClear = firstClear, Progress = match.Progress })
+		Services.AnalyticsService.Log("room_complete", player, { RoomId = roomId, PartySize = match.PartySize, ElapsedTime = math.floor(elapsed), FirstClear = firstClear, Progress = match.Progress, Hard = match.Hard })
 	end
 	Services.AnalyticsService.Log("target_found", finder, { RoomId = roomId, ElapsedTime = math.floor(elapsed) })
 
@@ -858,6 +876,7 @@ function MatchService.CompleteMatch(finder: Player)
 			RoomSearched = match.Progress,
 			Stars = starsByUser,
 			NewBest = newBestByUser,
+			Hard = match.Hard,
 			TreasuresTotal = match.TreasuresTotal,
 			TreasuresCleaned = match.TreasuresCleaned,
 			NextRoomAvailable = RoomRegistry.Exists(roomId + 1),

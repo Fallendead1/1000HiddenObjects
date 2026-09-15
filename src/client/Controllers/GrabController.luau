@@ -461,8 +461,12 @@ local function updateVisuals()
 		card.Visible = true
 		cardName.Text = heldRoot:GetAttribute("DisplayName") or "OBJECT"
 		if arcBin then
-			cardStats.Text = "IN THE " .. (arcBin:GetAttribute("BinName") or "BIN") .. "!"
-			cardStats.TextColor3 = UI.Colors.Gold
+			-- Where it will land and what it pays there: the right bin doubles it.
+			local matchType = DepositConfig.MatchingType(heldRoot:GetAttribute("Category"), heldRoot:GetAttribute("Weight"))
+			local right = matchType == nil or arcBin:GetAttribute("BinType") == matchType
+			local payout = matchType == nil and "x1" or (right and "x2 PAY!" or ("x1  -  the " .. DepositConfig.Types[matchType].Name .. " pays x2"))
+			cardStats.Text = string.format("IN THE %s!   %s", arcBin:GetAttribute("BinName") or "BIN", payout)
+			cardStats.TextColor3 = right and UI.Colors.Gold or UI.Colors.Text
 		else
 			cardStats.Text = valueText(heldRoot)
 			cardStats.TextColor3 = UI.Colors.TextDim
@@ -581,7 +585,11 @@ local function drawArc()
 		pos = nextPos
 	end
 	arcBin = bin
-	local color = bin and UI.Colors.Gold or Color3.new(1, 1, 1)
+	-- Gold into the bin that pays most (the right one, or any when nothing is special about it),
+	-- pale blue into another bin.
+	local matchType = DepositConfig.MatchingType(root:GetAttribute("Category"), root:GetAttribute("Weight"))
+	local best = bin ~= nil and (matchType == nil or bin:GetAttribute("BinType") == matchType)
+	local color = bin and (best and UI.Colors.Gold or Color3.fromRGB(150, 220, 255)) or Color3.new(1, 1, 1)
 	for i, dot in ipairs(arcDots) do
 		local idx = math.floor(i * #points / ARC_DOTS)
 		if idx >= 1 then

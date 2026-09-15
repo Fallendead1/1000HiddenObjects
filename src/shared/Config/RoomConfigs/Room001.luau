@@ -43,6 +43,11 @@ local Room = {
 	ChunkFraction = 0.28,
 	ChunkContents = { 5, 8 },
 	FloorHeapHeightBonus = 4, -- taller floor heaps (light clutter never blocks players)
+	-- Hard Mode (unlocks after finding this room's object): far more junk packed into about the
+	-- same number of physics bodies (bigger, more common chunks), so the room stays smooth.
+	-- (Measured with { 8, 12 }: 3,875 real objects vs 3,178 at the same ~1,760 bodies; the builder
+	-- fits about the same number of chunks, so fuller chunks are the lever.)
+	HardMode = { ChunkFraction = 0.5, ChunkContents = { 12, 16 } },
 
 	Size = Vector3.new(90, 26, 70),
 	SpawnPosition = Vector3.new(0, 3, 29),
@@ -71,6 +76,13 @@ Room.HintAreas = {
 	{ Label = "DESK / BOOKSHELF / WINDOW", Regions = { "Desk", "Bookshelf", "WindowArea" } },
 	{ Label = "LAUNDRY / LEFT FLOOR / DRESSER", Regions = { "LaundryCorner", "LeftFloor", "Dresser" } },
 	{ Label = "TOYS / RIGHT FLOOR / CENTER", Regions = { "ToyCorner", "RightFloor", "CenterFloor" } },
+}
+
+-- Wall signs that make LEFT / RIGHT clues readable from the door (you walk in facing -Z, so -X is
+-- on your left). Z = where the sign sits along its side wall, clear of the posters there.
+Room.SideSigns = {
+	LEFT = { Z = -17, Width = 16, Landmarks = "BED · CLOSET · LAUNDRY" },
+	RIGHT = { Z = 10, Width = 15, Landmarks = "DESK · BOOKSHELF · TOYS" },
 }
 
 -- Where cleaned objects go (see DepositConfig). Center = floor centre of the bin, Size = inner

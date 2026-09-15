@@ -93,12 +93,13 @@ local function describe(zone: BasePart): (string, string)
 		return countText, (zone:GetAttribute("OwnerName") or "Someone") .. " is creating a party"
 	elseif state == "CountingDown" then
 		local cd = zone:GetAttribute("Countdown") or 0
+		local hard = zone:GetAttribute("Hard") == true and "HARD · " or ""
 		if max == 1 then
-			return countText, "Solo run - starting in " .. cd
+			return countText, hard .. "Solo run - starting in " .. cd
 		elseif count >= max then
-			return countText, "Party full - starting in " .. cd
+			return countText, hard .. "Party full - starting in " .. cd
 		end
-		return countText, "Touch to join - starting in " .. cd
+		return countText, hard .. "Touch to join - starting in " .. cd
 	elseif state == "Locked" or state == "Teleporting" then
 		return countText, "Starting..."
 	elseif state == "Resetting" then
@@ -115,24 +116,24 @@ local WallColors = {
 	Closed = UI.Colors.Red,
 }
 
--- Wall colour, and whether the circle is closed to the local player right now.
-local function wallState(zone: BasePart): (Color3, boolean)
+-- Wall colour: what touching this circle would do for the local player right now.
+local function wallState(zone: BasePart): Color3
 	local state = zoneState(zone)
 	if state == "Empty" then
-		return WallColors.Open, false
+		return WallColors.Open
 	elseif player:GetAttribute("QueueId") == zone:GetAttribute("QueueId") then
-		return WallColors.Member, false
+		return WallColors.Member
 	elseif zone:GetAttribute("Joinable") == true then
-		return WallColors.Joinable, false
+		return WallColors.Joinable
 	elseif state == "Selecting" then
-		return WallColors.Setup, true
+		return WallColors.Setup
 	end
-	return WallColors.Closed, true
+	return WallColors.Closed
 end
 
--- A see-through ring wall around a circle, with a glowing top edge. Built locally, so it can
--- block only the local player (whose character physics is their own) when the circle is closed
--- to them. The server moves anyone out regardless.
+-- A see-through ring wall around a circle, with a glowing top edge. Always solid for the local
+-- player (built locally, so it only ever blocks your own character): touching it teleports you
+-- in when you may join, and BACK / LEAVE teleports you out (the server does both).
 local function buildWall(zone: BasePart): ({ BasePart }, { BasePart }, number)
 	if not wallFolder then
 		wallFolder = Instance.new("Folder")
@@ -155,7 +156,7 @@ local function buildWall(zone: BasePart): ({ BasePart }, { BasePart }, number)
 		local wall = Instance.new("Part")
 		wall.Name = "QueueWall"
 		wall.Anchored = true
-		wall.CanCollide = false
+		wall.CanCollide = true
 		wall.CanQuery = false
 		wall.CanTouch = false
 		wall.CastShadow = false
@@ -272,7 +273,7 @@ local function attachQueueZone(zone: BasePart)
 		local countText, status = describe(zone)
 		countLabel.Text = countText
 		countdown.Text = status
-		local wallColor, blocked = wallState(zone)
+		local wallColor = wallState(zone)
 		tagStroke.Color = wallColor
 		if wallColor ~= lastWallColor then
 			lastWallColor = wallColor
@@ -282,9 +283,6 @@ local function attachQueueZone(zone: BasePart)
 			for _, r in ipairs(rims) do
 				UI.Tween(r, { Color = wallColor }, 0.3)
 			end
-		end
-		for _, w in ipairs(walls) do
-			w.CanCollide = blocked
 		end
 		refreshPlate()
 
@@ -322,7 +320,7 @@ local function attachQueueZone(zone: BasePart)
 		end
 		LobbyController.RefreshPill()
 	end
-	for _, name in ipairs({ "State", "Count", "MaxPlayers", "Joinable", "Countdown", "RoomNumber", "OwnerUserId", "OwnerName" }) do
+	for _, name in ipairs({ "State", "Count", "MaxPlayers", "Joinable", "Countdown", "RoomNumber", "OwnerUserId", "OwnerName", "Hard" }) do
 		zone:GetAttributeChangedSignal(name):Connect(refresh)
 	end
 	player:GetAttributeChangedSignal("QueueId"):Connect(refresh)
@@ -351,7 +349,7 @@ function LobbyController.RefreshPill()
 				text = "WAITING FOR THE HOST TO SET UP THE PARTY"
 			elseif state == "CountingDown" then
 				local sub = max == 1 and "Solo run" or (count >= max and "Party full!" or "Waiting for players...")
-				text = string.format("ROOM #%s  ·  %d/%d  ·  STARTING IN %d\n%s", zone:GetAttribute("RoomNumber") or "", count, max, cd, sub)
+				text = string.format("ROOM #%s%s  ·  %d/%d  ·  STARTING IN %d\n%s", zone:GetAttribute("RoomNumber") or "", zone:GetAttribute("Hard") and " HARD" or "", count, max, cd, sub)
 			else
 				text = "STARTING..."
 			end

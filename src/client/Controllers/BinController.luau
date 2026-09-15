@@ -67,6 +67,53 @@ local function addLabel(mouth: Instance)
 	end)
 end
 
+local guide: BillboardGui? = nil
+local guideHeight = 0
+
+-- The bin guide: a gold "x2" and a down chevron that float over the right bin, drawn on top of
+-- everything so it can be found from anywhere in the room.
+local function makeGuide(): BillboardGui
+	local gui = Instance.new("BillboardGui")
+	gui.Name = "BinGuide"
+	gui.Size = UDim2.fromOffset(90, 96)
+	gui.AlwaysOnTop = true
+	gui.LightInfluence = 0
+	gui.MaxDistance = 500
+	gui.Enabled = false
+	gui.Parent = player:WaitForChild("PlayerGui")
+	local tag = UI.Label({ Text = "x2", TextSize = 30, TextWrapped = false, Size = UDim2.new(1, 0, 0, 36) }, gui)
+	UI.TextGradient(tag, UI.Colors.Gold)
+	for _, angle in ipairs({ 45, -45 }) do
+		local bar = UI.Frame({ Size = UDim2.fromOffset(40, 12), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, angle > 0 and -12 or 12, 0, 62), Rotation = angle, BackgroundColor3 = UI.Colors.Gold }, gui)
+		UI.New("UICorner", { CornerRadius = UDim.new(0, 6) }, bar)
+		UI.New("UIStroke", { Color = Color3.new(0, 0, 0), Thickness = 2.5 }, bar)
+	end
+	return gui
+end
+
+local function refreshGuide()
+	local target: BasePart? = nil
+	if heldMatch then
+		for mouth, label in pairs(labels) do
+			if label.Type == heldMatch and mouth.Parent then
+				target = mouth :: BasePart
+				break
+			end
+		end
+	end
+	if not target then
+		if guide then
+			guide.Enabled = false
+		end
+		return
+	end
+	local g = guide or makeGuide()
+	guide = g
+	g.Adornee = target
+	guideHeight = target.Size.Y / 2 + 5.4
+	g.Enabled = true
+end
+
 local function refreshHighlight()
 	for _, label in pairs(labels) do
 		local lit = heldMatch == label.Type
@@ -75,6 +122,7 @@ local function refreshHighlight()
 		label.Bonus.TextColor3 = lit and UI.Colors.Gold or UI.Colors.TextDim
 		UI.Tween(label.Scale, { Scale = lit and 1.15 or 1 }, 0.15)
 	end
+	refreshGuide()
 end
 
 -- GrabController tells us what is being held so its bin lights up (nil = nothing).
@@ -158,6 +206,15 @@ function BinController.Init()
 	end
 	CollectionService:GetInstanceAddedSignal("DepositBin"):Connect(function(mouth)
 		task.defer(addLabel, mouth)
+	end)
+	-- The guide bobs gently so the eye catches it.
+	task.spawn(function()
+		while true do
+			if guide and guide.Enabled then
+				guide.StudsOffset = Vector3.new(0, guideHeight + math.sin(os.clock() * 5) * 0.4, 0)
+			end
+			task.wait(0.03)
+		end
 	end)
 end
 

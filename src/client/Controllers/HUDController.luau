@@ -115,6 +115,20 @@ local function buildLobbyHUD()
 	HUDController.Buttons.LobbyShop = menuTile(buttons, "SHOP", UI.Colors.Purple, 3, "$", "Icon_Shop")
 	HUDController.Buttons.Invite = menuTile(buttons, "INVITE", UI.Colors.Green, 4, "+", "Icon_Invite")
 	HUDController.Buttons.LobbySettings = menuTile(buttons, "SETTINGS", UI.Colors.Locked, 5, "*", "Icon_Settings")
+	HUDController.Buttons.Daily = menuTile(buttons, "DAILY", UI.Colors.Orange, 6, "7", "Icon_Streak")
+	-- A red dot on DAILY while today's login reward is waiting.
+	local dailyDot = UI.Frame({ Name = "Dot", Size = UDim2.fromOffset(18, 18), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(1, -4, 0, 4), BackgroundColor3 = UI.Colors.Red, Visible = false, ZIndex = 20 }, HUDController.Buttons.Daily)
+	UI.New("UICorner", { CornerRadius = UDim.new(1, 0) }, dailyDot)
+	UI.New("UIStroke", { Color = Color3.new(1, 1, 1), Thickness = 2 }, dailyDot)
+	UI.Pulse(dailyDot, 0.15, 1.6)
+	local function refreshDailyDot()
+		dailyDot.Visible = player:GetAttribute("LoginClaimable") == true
+	end
+	player:GetAttributeChangedSignal("LoginClaimable"):Connect(refreshDailyDot)
+	refreshDailyDot()
+	HUDController.Buttons.Daily.Activated:Connect(function()
+		Controllers.DailyRewardController.Open()
+	end)
 	HUDController.Buttons.Collection.Activated:Connect(function()
 		Controllers.CollectionController.Open()
 	end)
@@ -242,7 +256,13 @@ local function refreshLobby()
 end
 
 local function refreshMatchStatic()
-	roomTitleLabel.Text = "ROOM " .. FormatUtil.RoomNumber(matchState:GetAttribute("RoomId") or 1)
+	local hard = matchState:GetAttribute("Hard") == true
+	roomTitleLabel.Text = "ROOM " .. FormatUtil.RoomNumber(matchState:GetAttribute("RoomId") or 1) .. (hard and "  ·  HARD MODE" or "")
+	if hard then
+		UI.TextGradient(roomTitleLabel, UI.Colors.Red)
+	else
+		UI.Gradient(roomTitleLabel, Color3.new(1, 1, 1), Color3.new(1, 1, 1))
+	end
 	roomTargetLabel.Text = "Find the " .. (matchState:GetAttribute("TargetName") or "")
 end
 
@@ -394,6 +414,7 @@ function HUDController.Init()
 	matchState:GetAttributeChangedSignal("Progress"):Connect(refreshProgress)
 	matchState:GetAttributeChangedSignal("RoomId"):Connect(refreshMatchStatic)
 	matchState:GetAttributeChangedSignal("TargetName"):Connect(refreshMatchStatic)
+	matchState:GetAttributeChangedSignal("Hard"):Connect(refreshMatchStatic)
 	matchState:GetAttributeChangedSignal("PlayerNames"):Connect(refreshTeam)
 	local function watch(p: Player)
 		p:GetAttributeChangedSignal("ObjectsCleaned"):Connect(refreshTeam)

@@ -22,9 +22,13 @@ return {
 	QueueRadius = 8.5,
 	QueuePollInterval = 0.2,
 	MatchWaitForPartySeconds = 20,
-	-- The first player in an empty circle picks the room. After this many seconds without a
-	-- choice the queue auto-selects their highest unlocked room so groups never stall.
+	-- The first player in an empty circle hosts it. If they haven't created a party after this
+	-- many seconds, they're moved out of the circle so it frees up for everyone else.
 	QueueSelectionTimeout = 25,
+	-- Circles are walled: touching the ring teleports you in (if you may join) and BACK / LEAVE
+	-- teleports you out. Studs past the ring that count as touching it:
+	QueueTouchMargin = 2,
+	QueueRejoinCooldown = 3, -- seconds before someone moved out of a circle can be pulled back in
 
 	-- Physical grab / throw
 	GrabDistance = 9, -- studs from the character to the closest point of the object

@@ -44,6 +44,10 @@ function HintController.ShowClue(text: string, duration: number?)
 	end)
 end
 
+function HintController.IsClueShowing(): boolean
+	return banner ~= nil and banner.Visible
+end
+
 function HintController.HighlightRegion(regionId: string, duration: number, super: boolean?)
 	for _, p in ipairs(activeRegionParts) do
 		p:Destroy()
@@ -139,6 +143,26 @@ local function updateOutline()
 	end)
 end
 
+-- A LEFT / RIGHT clue makes that side's wall sign flash for a few seconds.
+local function pulseSideSign(side: string)
+	local room = workspace:FindFirstChild("Room" .. (matchState:GetAttribute("RoomNumber") or ""))
+	local folder = room and room:FindFirstChild("Wayfinding")
+	local sign = folder and folder:FindFirstChild("SideSign_" .. side)
+	local border = sign and sign:FindFirstChild("Border", true)
+	if not border or not border:IsA("UIStroke") then
+		return
+	end
+	local base, thickness = border.Color, border.Thickness
+	task.spawn(function()
+		for _ = 1, 6 do
+			UI.Tween(border, { Color = Color3.new(1, 1, 1), Thickness = thickness * 2.2 }, 0.35)
+			task.wait(0.4)
+			UI.Tween(border, { Color = base, Thickness = thickness }, 0.35)
+			task.wait(0.45)
+		end
+	end)
+end
+
 function HintController.Init()
 	banner = UI.Panel({ Size = UDim2.fromOffset(580, 60), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 180), Visible = false, BackgroundTransparency = 0.05 }, UI.Layers.HUD)
 	UI.Stroke(banner, UI.Colors.Cyan, 2.5)
@@ -151,6 +175,9 @@ function HintController.Init()
 	Remotes.Event("MatchUpdate").OnClientEvent:Connect(function(eventName, payload)
 		if eventName == "Clue" then
 			HintController.ShowClue(payload.Text, 8)
+			if payload.Side then
+				pulseSideSign(payload.Side)
+			end
 			if payload.Stage and payload.Stage > 0 then
 				Controllers.NotificationController.Show("Info", string.format("Clue unlocked at %d%%!", payload.Percent or 0))
 			end

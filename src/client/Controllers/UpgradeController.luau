@@ -191,4 +191,10 @@ function UpgradeController.IsOpen(): boolean
 	return menu.IsOpen()
 end
 
+-- A card's UPGRADE button (the tutorial points at Strength's).
+function UpgradeController.GetButton(key: string): TextButton?
+	local entry = cards[key]
+	return entry and entry.Button
+end
+
 return UpgradeController

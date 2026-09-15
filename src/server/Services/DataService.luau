@@ -45,11 +45,15 @@ local Template = {
 		StrengthBoostExpires = 0,
 		CashBoostExpires = 0,
 	},
-	-- Paid hints waiting for the next room.
+	-- Hints (paid or rewarded) and reward boosts (seconds) waiting for the next room.
 	Banked = {
 		QuickHint = 0,
 		SuperHint = 0,
+		CashBoost = 0,
+		StrengthBoost = 0,
 	},
+	-- Daily login reward: the last UTC day claimed and the streak up to it.
+	Login = { Day = 0, Streak = 0 },
 	-- Lasting progression (not a currency): Cleaner XP, room mastery stars, daily challenges.
 	CleanerXP = 0,
 	Stars = {}, -- [tostring(roomId)] = bitmask: 1 object found, 2 cleaned 25%, 4 every treasure

@@ -120,6 +120,21 @@ function MonetizationService.ApplyBanked(player: Player)
 	if not data then
 		return
 	end
+	-- Reward boosts (daily login) start here, in the room, instead of ticking away in the lobby.
+	local cash, strength = data.Banked.CashBoost or 0, data.Banked.StrengthBoost or 0
+	if cash > 0 then
+		Services.PlayerSessionService.ExtendBoost(player, "CashBoostExpires", cash)
+	end
+	if strength > 0 then
+		Services.PlayerSessionService.ExtendBoost(player, "StrengthBoostExpires", strength)
+	end
+	if cash > 0 or strength > 0 then
+		Services.DataService.Update(player, function(d)
+			d.Banked.CashBoost = 0
+			d.Banked.StrengthBoost = 0
+		end)
+		Services.NotificationService.Send(player, "Success", "Your daily reward boost is on for this room!")
+	end
 	local quick, super = data.Banked.QuickHint or 0, data.Banked.SuperHint or 0
 	if quick == 0 and super == 0 then
 		return

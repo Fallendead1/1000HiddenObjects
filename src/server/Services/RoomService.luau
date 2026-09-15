@@ -74,6 +74,119 @@ function RoomService.FootprintDistanceXZ(root: BasePart, cframe: CFrame, point: 
 	return math.sqrt(dx * dx + dz * dz)
 end
 
+-- ===== Wayfinding =====
+-- Big LEFT SIDE / RIGHT SIDE signs on the side walls and a CENTER sign hanging over the middle,
+-- so "left / right side" clues read the same way from the door (you walk in facing -Z, so -X is
+-- your left). Visual only: no collision, invisible to queries and throws.
+local SIGN_COLORS = {
+	LEFT = Color3.fromRGB(0, 180, 255),
+	RIGHT = Color3.fromRGB(255, 150, 0),
+	CENTER = Color3.fromRGB(255, 196, 0),
+}
+
+local function signPart(parent: Instance, name: string, cframe: CFrame, size: Vector3, side: string): Part
+	local p = Instance.new("Part")
+	p.Name = name
+	p.Anchored = true
+	p.CanCollide = false
+	p.CanQuery = false
+	p.CanTouch = false
+	p.CastShadow = false
+	p.Transparency = 1
+	p.Size = size
+	p.CFrame = cframe
+	p:SetAttribute("Side", side)
+	p.Parent = parent
+	return p
+end
+
+local function signGui(part: BasePart, face: Enum.NormalId, title: string, subtitle: string?, color: Color3)
+	local gui = Instance.new("SurfaceGui")
+	gui.Name = "SignGui_" .. face.Name
+	gui.Face = face
+	gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+	gui.PixelsPerStud = 40
+	gui.LightInfluence = 0
+	gui.Parent = part
+	local panel = Instance.new("Frame")
+	panel.Name = "Panel"
+	panel.Size = UDim2.fromScale(1, 1)
+	panel.BackgroundColor3 = Color3.fromRGB(20, 22, 34)
+	panel.BackgroundTransparency = 0.08
+	panel.Parent = gui
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 28)
+	corner.Parent = panel
+	local border = Instance.new("UIStroke")
+	border.Name = "Border"
+	border.Color = color
+	border.Thickness = 10
+	border.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	border.Parent = panel
+	local label = Instance.new("TextLabel")
+	label.Name = "Title"
+	label.BackgroundTransparency = 1
+	label.Size = UDim2.new(1, -48, subtitle and 0.56 or 0.78, 0)
+	label.Position = UDim2.new(0, 24, subtitle and 0.08 or 0.11, 0)
+	label.Font = Enum.Font.GothamBlack
+	label.TextScaled = true
+	label.TextColor3 = Color3.new(1, 1, 1)
+	label.Text = title
+	label.Parent = panel
+	local outline = Instance.new("UIStroke")
+	outline.Color = Color3.new(0, 0, 0)
+	outline.Thickness = 5
+	outline.Parent = label
+	local gradient = Instance.new("UIGradient")
+	gradient.Rotation = 90
+	gradient.Color = ColorSequence.new(Color3.new(1, 1, 1), color)
+	gradient.Parent = label
+	if subtitle then
+		local sub = Instance.new("TextLabel")
+		sub.Name = "Subtitle"
+		sub.BackgroundTransparency = 1
+		sub.Size = UDim2.new(1, -48, 0.24, 0)
+		sub.Position = UDim2.new(0, 24, 0.68, 0)
+		sub.Font = Enum.Font.GothamBold
+		sub.TextScaled = true
+		sub.TextColor3 = color
+		sub.Text = subtitle
+		sub.Parent = panel
+	end
+end
+
+local function addWayfinding(model: Model, config, origin: CFrame)
+	local folder = Instance.new("Folder")
+	folder.Name = "Wayfinding"
+	folder.Parent = model
+	local size = config.Size
+	local signs = config.SideSigns or {}
+	local height = 5
+	local y = math.min(21, size.Y - height / 2 - 1.5)
+	for _, side in ipairs({ "LEFT", "RIGHT" }) do
+		local def = signs[side] or {}
+		local inward = side == "LEFT" and 1 or -1
+		local pos = Vector3.new(-inward * (size.X / 2 - 0.2), y, def.Z or 0)
+		local part = signPart(folder, "SideSign_" .. side, origin * CFrame.lookAt(pos, pos + Vector3.new(inward, 0, 0)), Vector3.new(def.Width or 16, height, 0.2), side)
+		signGui(part, Enum.NormalId.Front, side .. " SIDE", def.Landmarks, SIGN_COLORS[side])
+	end
+	-- CENTER hangs from the ceiling over the middle of the room, readable from both ends.
+	local centerPos = Vector3.new(0, math.min(21.5, size.Y - 4.5), 0)
+	local board = signPart(folder, "CenterSign", origin * CFrame.lookAt(centerPos, centerPos + Vector3.zAxis), Vector3.new(12, 3.6, 0.3), "CENTER")
+	board.Transparency = 0
+	board.Material = Enum.Material.SmoothPlastic
+	board.Color = Color3.fromRGB(20, 22, 34)
+	signGui(board, Enum.NormalId.Front, "CENTER", nil, SIGN_COLORS.CENTER)
+	signGui(board, Enum.NormalId.Back, "CENTER", nil, SIGN_COLORS.CENTER)
+	local top, bottom = size.Y, centerPos.Y + 1.8
+	for _, dx in ipairs({ -4.5, 4.5 }) do
+		local cord = signPart(folder, "SignCord", origin * CFrame.new(dx, (top + bottom) / 2, 0), Vector3.new(0.12, top - bottom, 0.12), "")
+		cord.Transparency = 0
+		cord.Material = Enum.Material.Metal
+		cord.Color = Color3.fromRGB(40, 40, 50)
+	end
+end
+
 function RoomService.Init() end
 
 function RoomService.Build(config, origin: CFrame): RoomRuntime
@@ -93,6 +206,7 @@ function RoomService.Build(config, origin: CFrame): RoomRuntime
 
 	-- The shell must be in Workspace first: clutter placement queries it to avoid clipping.
 	model.Parent = workspace
+	addWayfinding(model, config, origin)
 
 	-- Final room shells may ship without clutter: generate it from the room config.
 	local clutterFolder = model:FindFirstChild("Clutter")

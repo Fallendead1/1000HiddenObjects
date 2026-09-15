@@ -3,6 +3,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Remotes = require(ReplicatedStorage.Shared.Utility.Remotes)
 local UI = require(script.Parent.Parent.UI.UI)
+local Controllers = require(script.Parent)
 
 local player = Players.LocalPlayer
 
@@ -34,7 +35,7 @@ local function push()
 end
 
 function SettingsController.Init()
-	menu = UI.Menu("Settings", "SETTINGS", UDim2.fromOffset(420, 360), UI.Colors.Locked)
+	menu = UI.Menu("Settings", "SETTINGS", UDim2.fromOffset(420, 430), UI.Colors.Locked)
 	local list = UI.Frame({ BackgroundTransparency = 1 }, menu.Content)
 	UI.ListLayout(list, Enum.FillDirection.Vertical, 6)
 	UI.Padding(list, 8)
@@ -48,6 +49,11 @@ function SettingsController.Init()
 			toggles[def.Key].Set(current(def.Key))
 		end)
 	end
+	-- Replays the tutorial as a short video, from anywhere.
+	local howTo = UI.Button({ Text = "HOW TO PLAY", Color = UI.Colors.Cyan, Size = UDim2.new(1, 0, 0, 48), LayoutOrder = 100, TextSize = 22, Shine = 4 }, list)
+	howTo.Activated:Connect(function()
+		Controllers.TutorialController.PlayVideo()
+	end)
 end
 
 function SettingsController.Open()

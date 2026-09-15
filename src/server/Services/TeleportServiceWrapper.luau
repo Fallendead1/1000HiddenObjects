@@ -31,6 +31,7 @@ export type PartyLaunch = {
 	RoomId: number,
 	ResumePercent: number,
 	QueueId: string?,
+	Hard: boolean?,
 }
 
 -- Returns true when the party is on its way (or a local match started).
@@ -47,6 +48,7 @@ function TeleportServiceWrapper.TeleportParty(launch: PartyLaunch): boolean
 			ResumePercent = launch.ResumePercent,
 			Seed = seed,
 			MatchId = matchId,
+			Hard = launch.Hard == true,
 		})
 	end
 
@@ -68,6 +70,7 @@ function TeleportServiceWrapper.TeleportParty(launch: PartyLaunch): boolean
 		PartySize = partySize,
 		ResumePercent = launch.ResumePercent,
 		Seed = seed,
+		Hard = launch.Hard == true,
 		ExpectedUserIds = (function()
 			local ids = {}
 			for _, p in ipairs(launch.Players) do

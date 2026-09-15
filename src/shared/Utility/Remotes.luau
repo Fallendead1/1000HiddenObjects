@@ -15,12 +15,13 @@ local Remotes = {
 		"RequestHint", -- C->S (kind: "Free" | "Quick" | "Super")
 		"RequestPurchase", -- C->S (productKey)
 		"ReturnToLobby", -- C->S
-		"CreateParty", -- C->S (queueId, roomId, partySize) a circle's host sets up the party
+		"CreateParty", -- C->S (queueId, roomId, partySize, hard?) a circle's host sets up the party
 		"LeaveQueue", -- C->S (queueId) leave a circle (BACK / LEAVE)
 		"StartParty", -- C->S (queueId) the host starts before the countdown ends
 		"UpdateSettings", -- C->S (settingsTable)
 		"TutorialComplete", -- C->S
 		"DiscardCheckpoint", -- C->S
+		"ClaimDailyReward", -- C->S () claim today's login reward
 		"DevCommand", -- C->S (command, ...)
 		"MatchUpdate", -- S->C (eventName, payload)
 		"Notification", -- S->C (kind, text, duration?)

@@ -68,7 +68,8 @@ local function deliverStage(match, stage: number, players: { Player }, silent: b
 	local percent = math.floor((match.Config.HintMilestones[stage] or 0) * 100)
 	local target = match.Config.TargetName
 	if stage == 1 then
-		fire(players, "Clue", { Stage = stage, Percent = percent, Text = string.format("The %s is on the %s side of the room.", target, getTargetSide(match)) })
+		local side = getTargetSide(match)
+		fire(players, "Clue", { Stage = stage, Percent = percent, Side = side, Text = string.format("The %s is on the %s side of the room - look for the %s SIDE sign.", target, side, side) })
 	elseif stage == 2 then
 		fire(players, "Clue", { Stage = stage, Percent = percent, Text = string.format("Search around the %s side.", getTargetAreaLabel(match)) })
 	elseif stage == 3 then
