@@ -18,6 +18,7 @@ local UI = require(script.Parent.Parent.UI.UI)
 local Controllers = require(script.Parent)
 
 local player = Players.LocalPlayer
+local matchState = ReplicatedStorage:WaitForChild("MatchState")
 
 local ProgressionController = {}
 
@@ -136,21 +137,21 @@ local function showXP(amount: number)
 	end)
 end
 
--- Big centred two-line banner (level up, challenge complete) that pops in and fades.
-local function banner(big: string, small: string, color: Color3)
+-- Big centred two-line banner (level up, challenge complete) that pops in and fades (yields).
+local function showBanner(big: string, small: string, color: Color3, hold: number)
 	local holder = UI.Frame({ BackgroundTransparency = 1, Size = UDim2.fromOffset(640, 120), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.3) }, UI.Layers.Overlay)
 	local top = UI.Label({ Text = big, TextSize = 56, TextWrapped = false, Size = UDim2.new(1, 0, 0, 70) }, holder)
 	UI.Stroke(top, Color3.new(0, 0, 0), 4.5, 0)
 	UI.TextGradient(top, color)
 	local bottom = UI.Label({ Text = small, TextSize = 24, TextWrapped = false, Size = UDim2.new(1, 0, 0, 36), Position = UDim2.fromOffset(0, 72) }, holder)
+	UI.Stroke(bottom, Color3.new(0, 0, 0), 3, 0)
 	UI.TextGradient(bottom, UI.Colors.Gold)
 	UI.PopIn(holder, 0.4, 0.35)
-	task.delay(2.6, function()
-		UI.Tween(top, { TextTransparency = 1 }, 0.4)
-		UI.Tween(bottom, { TextTransparency = 1 }, 0.4)
-		task.wait(0.45)
-		holder:Destroy()
-	end)
+	task.wait(hold)
+	UI.Tween(top, { TextTransparency = 1 }, 0.4)
+	UI.Tween(bottom, { TextTransparency = 1 }, 0.4)
+	task.wait(0.45)
+	holder:Destroy()
 end
 
 local function celebrate(color: Color3)
@@ -163,6 +164,39 @@ local function celebrate(color: Color3)
 	for _, b in ipairs(badges) do
 		UI.PopIn(b.Frame, 0.8, 0.3)
 	end
+end
+
+-- The key-found moment belongs to its own sound and ceremony: what the finder's XP brings (a
+-- level up) waits until you're back in the lobby.
+local function roomFinished(): boolean
+	return player:GetAttribute("InMatch") == true and matchState:GetAttribute("TargetFound") == true
+end
+
+-- Banners never stack: a challenge's XP often levels you up in the same instant, so each one
+-- (with its sound and celebration) waits for the one before it.
+local bannerQueue = {}
+local bannerRunning = false
+local function banner(big: string, small: string, color: Color3, sound: string?)
+	table.insert(bannerQueue, { Big = big, Small = small, Color = color, Sound = sound })
+	if bannerRunning then
+		return
+	end
+	bannerRunning = true
+	task.spawn(function()
+		while #bannerQueue > 0 do
+			while roomFinished() do
+				task.wait(0.5)
+			end
+			local b = table.remove(bannerQueue, 1)
+			if b.Sound then
+				Controllers.AudioController.Play(b.Sound)
+			end
+			celebrate(b.Color)
+			-- Shorter while another one is waiting.
+			showBanner(b.Big, b.Small, b.Color, #bannerQueue > 0 and 1.6 or 2.6)
+		end
+		bannerRunning = false
+	end)
 end
 
 -- ===== Daily challenges =====
@@ -251,15 +285,15 @@ function ProgressionController.Init()
 	Remotes.Event("FXEvent").OnClientEvent:Connect(function(name, payload)
 		payload = payload or {}
 		if name == "XP" then
-			showXP(payload.Amount or 0)
+			-- A challenge's XP is on its banner already, and the room's end has its own screens.
+			if payload.Reason ~= "Challenge" and not roomFinished() then
+				showXP(payload.Amount or 0)
+			end
 		elseif name == "LevelUp" then
-			Controllers.AudioController.Play("LevelUp")
-			celebrate(UI.Colors.Cyan)
-			banner("LEVEL " .. tostring(payload.Level or "?") .. "!", (payload.NewTitle and "NEW TITLE: " or "") .. string.upper(payload.Title or ""), UI.Colors.Cyan)
+			-- A moment later, so a challenge that caused it shows first.
+			task.delay(0.1, banner, "LEVEL " .. tostring(payload.Level or "?") .. "!", (payload.NewTitle and "NEW TITLE: " or "") .. string.upper(payload.Title or ""), UI.Colors.Cyan, "LevelUp")
 		elseif name == "ChallengeDone" then
-			Controllers.AudioController.Play("CashAward")
-			celebrate(UI.Colors.Green)
-			banner("CHALLENGE COMPLETE!", "+" .. (payload.Reward or "") .. "  ·  +100 XP", UI.Colors.Green)
+			banner("CHALLENGE COMPLETE!", "+" .. (payload.Reward or "") .. "   +100 XP", UI.Colors.Green, "CashAward")
 		end
 	end)
 

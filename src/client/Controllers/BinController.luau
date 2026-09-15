@@ -2,8 +2,9 @@
 	Room props on the client:
 	  - a big sign on a post over every deposit bin: its colour, icon and one word (TOYS,
 	    BOOKS...), plus a white outline around the bin so it stands out from the junk. While you
-	    hold something, the bin it belongs in lights up gold and grows (a gold "x2" arrow floats
-	    over it, seen from anywhere) and the other signs dim
+	    hold something, the bin it belongs in lights up gold and grows with a gold "x2" arrow over
+	    it, and every other bin gets a green "x1" (any bin takes it, the right one pays double);
+	    both are seen from anywhere
 	  - treasures sparkle once they're uncovered (nothing lying on top of them)
 ]]
 
@@ -141,12 +142,14 @@ local function outlineFor(mouth: BasePart, board: BasePart, def): Highlight?
 	}, board) :: Highlight
 end
 
-local guide: BillboardGui? = nil
-local guideHeight = 0
+local holding = false
+local guides: { [Instance]: BillboardGui } = {}
+local guideHeights: { [Instance]: number } = {}
 
--- The bin guide: a gold "x2" and a down chevron that float over the right bin, drawn on top of
--- everything so it can be found from anywhere in the room.
-local function makeGuide(): BillboardGui
+-- The bin guides while you hold something: a gold "x2" and chevron over the bin it belongs in,
+-- a smaller green "x1" over every other bin. Drawn on top of everything so they can be found
+-- from anywhere in the room.
+local function makeGuide(mouth: BasePart): BillboardGui
 	local gui = Instance.new("BillboardGui")
 	gui.Name = "BinGuide"
 	gui.Size = UDim2.fromOffset(90, 96)
@@ -154,39 +157,53 @@ local function makeGuide(): BillboardGui
 	gui.LightInfluence = 0
 	gui.MaxDistance = 500
 	gui.Enabled = false
+	gui.Adornee = mouth
 	gui.Parent = player:WaitForChild("PlayerGui")
-	local tag = UI.Label({ Text = "x2", TextSize = 30, TextWrapped = false, Size = UDim2.new(1, 0, 0, 36) }, gui)
-	UI.TextGradient(tag, UI.Colors.Gold)
+	UI.Label({ Name = "Tag", Text = "x2", TextSize = 30, TextWrapped = false, Size = UDim2.new(1, 0, 0, 36) }, gui)
 	for _, angle in ipairs({ 45, -45 }) do
-		local bar = UI.Frame({ Size = UDim2.fromOffset(40, 12), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, angle > 0 and -12 or 12, 0, 62), Rotation = angle, BackgroundColor3 = UI.Colors.Gold }, gui)
+		local bar = UI.Frame({ Name = "Chevron", Size = UDim2.fromOffset(40, 12), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, angle > 0 and -12 or 12, 0, 62), Rotation = angle, BackgroundColor3 = UI.Colors.Gold }, gui)
+		bar:SetAttribute("Side", angle > 0 and -1 or 1)
 		UI.New("UICorner", { CornerRadius = UDim.new(0, 6) }, bar)
 		UI.New("UIStroke", { Color = Color3.new(0, 0, 0), Thickness = 2.5 }, bar)
 	end
 	return gui
 end
 
-local function refreshGuide()
-	local target: BasePart? = nil
-	if heldMatch then
-		for mouth, bin in pairs(bins) do
-			if bin.Type == heldMatch and mouth.Parent then
-				target = mouth :: BasePart
-				break
-			end
+local function styleGuide(gui: BillboardGui, best: boolean)
+	local color = best and UI.Colors.Gold or UI.Colors.Green
+	local tag = gui:FindFirstChild("Tag") :: TextLabel
+	tag.Text = best and "x2" or "x1"
+	tag.TextSize = best and 30 or 24
+	local old = tag:FindFirstChildOfClass("UIGradient")
+	if old then
+		old:Destroy()
+	end
+	UI.TextGradient(tag, color)
+	for _, bar in ipairs(gui:GetChildren()) do
+		if bar.Name == "Chevron" and bar:IsA("Frame") then
+			local side = bar:GetAttribute("Side") or 1
+			bar.BackgroundColor3 = color
+			bar.Size = best and UDim2.fromOffset(40, 12) or UDim2.fromOffset(30, 10)
+			bar.Position = UDim2.new(0.5, side * (best and 12 or 9), 0, best and 62 or 54)
 		end
 	end
-	if not target then
-		if guide then
-			guide.Enabled = false
+end
+
+local function refreshGuides()
+	for mouth, bin in pairs(bins) do
+		local gui = guides[mouth]
+		if holding and mouth.Parent then
+			gui = gui or makeGuide(mouth :: BasePart)
+			guides[mouth] = gui
+			local best = heldMatch == bin.Type
+			styleGuide(gui, best)
+			-- Just above the sign (the right one has grown).
+			guideHeights[mouth] = (mouth :: BasePart).Size.Y / 2 + SIGN_LIFT + SIGN_SIZE.Y * (best and SIGN_GROW or 1) / 2 + 1.7
+			gui.Enabled = true
+		elseif gui then
+			gui.Enabled = false
 		end
-		return
 	end
-	local g = guide or makeGuide()
-	guide = g
-	g.Adornee = target
-	-- Just above the (grown) sign.
-	guideHeight = target.Size.Y / 2 + SIGN_LIFT + SIGN_SIZE.Y * SIGN_GROW / 2 + 1.7
-	g.Enabled = true
 end
 
 local function refreshHighlight()
@@ -196,7 +213,8 @@ local function refreshHighlight()
 		for _, f in ipairs(bin.Faces) do
 			f.Stroke.Color = lit and UI.Colors.Gold or BLACK
 			f.Stroke.Thickness = lit and 9 or 5
-			UI.Tween(f.Dim, { BackgroundTransparency = faded and 0.45 or 1 }, 0.2)
+			-- Only a light dim: the other bins still take it (x1).
+			UI.Tween(f.Dim, { BackgroundTransparency = faded and 0.7 or 1 }, 0.2)
 		end
 		local grow = lit and SIGN_GROW or 1
 		UI.Tween(bin.Sign, { Size = Vector3.new(SIGN_SIZE.X * grow, SIGN_SIZE.Y * grow, 0.1) }, 0.18, Enum.EasingStyle.Back)
@@ -206,7 +224,7 @@ local function refreshHighlight()
 			bin.Outline.OutlineTransparency = faded and 0.8 or 0
 		end
 	end
-	refreshGuide()
+	refreshGuides()
 end
 
 local function addBin(mouth: Instance)
@@ -235,9 +253,13 @@ local function addBin(mouth: Instance)
 		if not mouth:IsDescendantOf(workspace) and bins[mouth] then
 			bins[mouth].Sign:Destroy()
 			bins[mouth] = nil
+			if guides[mouth] then
+				guides[mouth]:Destroy()
+				guides[mouth] = nil
+			end
 		end
 	end)
-	if heldMatch then
+	if holding then
 		refreshHighlight()
 	end
 end
@@ -245,8 +267,9 @@ end
 -- GrabController tells us what is being held so its bin lights up (nil = nothing).
 function BinController.SetHeld(root: BasePart?)
 	local match = root and DepositConfig.MatchingType(root:GetAttribute("Category"), root:GetAttribute("Weight")) or nil
-	if match ~= heldMatch then
+	if match ~= heldMatch or (root ~= nil) ~= holding then
 		heldMatch = match
+		holding = root ~= nil
 		refreshHighlight()
 	end
 end
@@ -324,11 +347,13 @@ function BinController.Init()
 	CollectionService:GetInstanceAddedSignal("DepositBin"):Connect(function(mouth)
 		task.defer(addBin, mouth)
 	end)
-	-- The guide bobs gently so the eye catches it.
+	-- The guides bob gently so the eye catches them.
 	task.spawn(function()
 		while true do
-			if guide and guide.Enabled then
-				guide.StudsOffset = Vector3.new(0, guideHeight + math.sin(os.clock() * 5) * 0.4, 0)
+			for mouth, gui in pairs(guides) do
+				if gui.Enabled then
+					gui.StudsOffset = Vector3.new(0, (guideHeights[mouth] or 0) + math.sin(os.clock() * 5) * 0.4, 0)
+				end
 			end
 			task.wait(0.03)
 		end

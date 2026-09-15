@@ -115,21 +115,25 @@ function AudioController.Init()
 	UI.SetClickSound(AudioController.Play)
 end
 
-local function spawnSound(key: string, parent: Instance): Sound?
+local function spawnSound(key: string, parent: Instance, pitch: number?): Sound?
 	local template = templates[key]
 	if not template or not sfxEnabled() then
 		return nil
 	end
 	local def = AudioConfig.SFX[key]
 	local clone = template:Clone()
-	clone.PlaybackSpeed = resolvePitch(def.Pitch)
+	clone.PlaybackSpeed = pitch or resolvePitch(def.Pitch)
 	clone.Parent = parent
 	return clone
 end
 
 local lastPlayed: { [string]: number } = {} -- by sound file, for MinInterval
 
-function AudioController.Play(key: string)
+-- pitch (optional) replaces the configured pitch, e.g. a streak that climbs a note per step.
+function AudioController.Play(key: string, pitch: number?)
+	if type(pitch) ~= "number" then
+		pitch = nil
+	end
 	local def = AudioConfig.SFX[key]
 	local template = templates[key]
 	if def and def.MinInterval and template then
@@ -139,7 +143,7 @@ function AudioController.Play(key: string)
 		end
 		lastPlayed[template.SoundId] = now
 	end
-	local s = spawnSound(key, SoundService)
+	local s = spawnSound(key, SoundService, pitch)
 	if s then
 		s:Play()
 		s.Ended:Once(function()

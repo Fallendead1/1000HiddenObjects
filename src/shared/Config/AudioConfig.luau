@@ -47,6 +47,7 @@ return {
 		CashAward = { Id = "rbxasset://sounds/impact_water.mp3", Volume = 0.45, Pitch = { 1.5, 1.7 } },
 		Deposit = { Id = DEPOSIT, Volume = 0.6, Pitch = { 0.96, 1.04 } },
 		DepositMatch = { Id = DEPOSIT, Volume = 0.65, Pitch = 1.12 },
+		CashPickup = { Id = CLICK, Volume = 0.35, Pitch = 1.5 }, -- each bill of your pay landing on you (pitch climbs per bill)
 		Swish = { Id = "rbxasset://sounds/action_swim.mp3", Volume = 0.6, Pitch = 2.2 },
 		Streak = { Id = STREAK, Volume = 0.5, Pitch = 1 },
 		Treasure = { Id = "rbxasset://sounds/action_get_up.mp3", Volume = 0.8, Pitch = 2.2 },

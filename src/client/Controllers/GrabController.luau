@@ -458,21 +458,8 @@ local function updateVisuals()
 	if heldRoot then
 		highlight.OutlineColor = arcBin and UI.Colors.Gold or UI.Colors.Green
 		crosshair = "hold"
-		card.Visible = true
-		cardName.Text = heldRoot:GetAttribute("DisplayName") or "OBJECT"
-		if arcBin then
-			-- Where it will land and what it pays there: the right bin doubles it.
-			local matchType = DepositConfig.MatchingType(heldRoot:GetAttribute("Category"), heldRoot:GetAttribute("Weight"))
-			local right = matchType == nil or arcBin:GetAttribute("BinType") == matchType
-			local payout = matchType == nil and "x1" or (right and "x2 PAY!" or ("x1  -  the " .. DepositConfig.Types[matchType].Name .. " pays x2"))
-			cardStats.Text = string.format("IN THE %s!   %s", arcBin:GetAttribute("BinName") or "BIN", payout)
-			cardStats.TextColor3 = right and UI.Colors.Gold or UI.Colors.Text
-		else
-			cardStats.Text = valueText(heldRoot)
-			cardStats.TextColor3 = UI.Colors.TextDim
-		end
-		cardAction.Text = UI.IsTouch() and "TAP THROW  •  DROP" or (UI.IsGamepad() and "RELEASE R2 TO THROW  •  B DROP" or "RELEASE TO THROW  •  [Q] DROP")
-		cardAction.TextColor3 = UI.Colors.Green
+		-- No card while holding: the x2 / x1 over the bins say where it pays.
+		card.Visible = false
 	elseif hovered then
 		local weight = hovered:GetAttribute("Weight") or 1
 		local tooHeavy = weight > maxWeight()

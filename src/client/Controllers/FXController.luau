@@ -1,6 +1,7 @@
 --[[
 	Feedback for every gameplay beat: bin deposits (a ghost of the object zips into the bin,
-	+$ popup with MATCH / SWISH / STREAK tags, coins to the HUD), chunk bursts, the key rattle,
+	+$ popup with MATCH / SWISH / STREAK tags, the pay bursting out as bills that fly into you),
+	chunk bursts, the key rattle,
 	upgrades, landing dust + material sounds, Golden Key reveal sparkle. Respects Reduce VFX
 	and Camera Shake settings.
 ]]
@@ -166,6 +167,134 @@ local function ghostIntoBin(payload)
 	end)
 end
 
+-- ===== Pay that comes to you =====
+-- Your pay bursts out of the bin as stacks of bills, hangs for a beat, then gets pulled into you
+-- on gold streaks; each one ticks as it lands and the cash counter rolls up when they arrive.
+
+local BILL_GREEN = Color3.fromRGB(64, 196, 88)
+local BILL_BAND = Color3.fromRGB(250, 226, 140)
+local STREAK_GOLD = Color3.fromRGB(255, 236, 140)
+local BILL_GRAVITY = 55
+
+type Bill = { Part: BasePart, From: Vector3, Velocity: Vector3, Spin: Vector3, Born: number, PullAt: number, PullTime: number, PullFrom: Vector3?, Curve: Vector3, Index: number }
+local bills: { Bill } = {}
+
+local function makeBill(withTrail: boolean): BasePart
+	local bill = Instance.new("Part")
+	bill.Name = "CashBill"
+	bill.Anchored = true
+	bill.CanCollide = false
+	bill.CanQuery = false
+	bill.CanTouch = false
+	bill.CastShadow = false
+	bill.Material = Enum.Material.SmoothPlastic
+	bill.Color = BILL_GREEN
+	bill.Size = Vector3.new(0.95, 0.24, 0.55)
+	local band = Instance.new("Part")
+	band.Name = "Band"
+	band.CanCollide = false
+	band.CanQuery = false
+	band.CanTouch = false
+	band.CastShadow = false
+	band.Massless = true
+	band.Material = Enum.Material.SmoothPlastic
+	band.Color = BILL_BAND
+	band.Size = Vector3.new(0.24, 0.26, 0.57)
+	band.CFrame = bill.CFrame
+	local weld = Instance.new("WeldConstraint")
+	weld.Part0 = bill
+	weld.Part1 = band
+	weld.Parent = band
+	band.Parent = bill
+	if withTrail then
+		local a0 = Instance.new("Attachment")
+		a0.Position = Vector3.new(0, 0.22, 0)
+		a0.Parent = bill
+		local a1 = Instance.new("Attachment")
+		a1.Position = Vector3.new(0, -0.22, 0)
+		a1.Parent = bill
+		local trail = Instance.new("Trail")
+		trail.Attachment0 = a0
+		trail.Attachment1 = a1
+		trail.FaceCamera = true
+		trail.Lifetime = 0.2
+		trail.LightEmission = 1
+		trail.Color = ColorSequence.new(STREAK_GOLD)
+		trail.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.15), NumberSequenceKeypoint.new(1, 1) })
+		trail.WidthScale = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(1, 0.1) })
+		trail.Parent = bill
+	end
+	bill.Parent = workspace.CurrentCamera
+	return bill
+end
+
+-- Where the money goes: just under your view in first person (into your hands), else your body.
+local function pocket(): Vector3?
+	local camera = workspace.CurrentCamera
+	if camera and Controllers.CameraController.IsFirstPerson() then
+		return camera.CFrame.Position + camera.CFrame.LookVector * 1.6 - camera.CFrame.UpVector * 1.1
+	end
+	local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+	return root and (root :: BasePart).Position + Vector3.new(0, 0.5, 0)
+end
+
+local function cashToYou(from: Vector3, amount: number)
+	local count = reduceVFX() and 2 or math.clamp(2 + math.floor(amount / 3), 3, 10)
+	local now = os.clock()
+	local firstArrival = math.huge
+	for i = 1, count do
+		local angle = math.random() * math.pi * 2
+		local out = Vector3.new(math.cos(angle), 0, math.sin(angle)) * (5 + math.random() * 5)
+		local pullAt = now + 0.42 + math.random() * 0.12 + i * 0.045
+		local pullTime = 0.32 + math.random() * 0.1
+		firstArrival = math.min(firstArrival, pullAt + pullTime)
+		table.insert(bills, {
+			Part = makeBill(not reduceVFX()),
+			From = from,
+			Velocity = out + Vector3.new(0, 16 + math.random() * 8, 0),
+			Spin = Vector3.new(math.random() * 10 - 5, math.random() * 14 - 7, math.random() * 10 - 5),
+			Born = now,
+			PullAt = pullAt,
+			PullTime = pullTime,
+			Curve = Vector3.new(math.random() - 0.5, math.random() * 0.6, math.random() - 0.5) * 3,
+			Index = i,
+		})
+	end
+	-- The counter waits for the money to get to you.
+	Controllers.HUDController.HoldCash(firstArrival - now)
+end
+
+local function stepBills()
+	local now = os.clock()
+	local target: Vector3? = nil
+	for i = #bills, 1, -1 do
+		local b = bills[i]
+		local part = b.Part
+		local t = now - b.Born
+		local spin = CFrame.Angles(b.Spin.X * t, b.Spin.Y * t, b.Spin.Z * t)
+		if now < b.PullAt then
+			-- Burst: tossed up and out of the bin.
+			part.CFrame = CFrame.new(b.From + b.Velocity * t + Vector3.new(0, -0.5 * BILL_GRAVITY * t * t, 0)) * spin
+		else
+			target = target or pocket()
+			local u = math.clamp((now - b.PullAt) / b.PullTime, 0, 1)
+			if target then
+				b.PullFrom = b.PullFrom or part.Position
+				-- Slow to start, then sucked in, on a slight curve.
+				part.CFrame = CFrame.new((b.PullFrom :: Vector3):Lerp(target, u * u * u) + b.Curve * math.sin(u * math.pi)) * spin
+			end
+			if u >= 1 or not target then
+				part:Destroy()
+				table.remove(bills, i)
+				if target then
+					Controllers.AudioController.Play("CashPickup", math.min(1.3 + b.Index * 0.07, 2))
+					Controllers.HUDController.PulseCash()
+				end
+			end
+		end
+	end
+end
+
 local function onDeposit(payload)
 	ghostIntoBin(payload)
 	if not payload.BinPosition then
@@ -175,10 +304,17 @@ local function onDeposit(payload)
 		Controllers.AudioController.PlayAt("Deposit", payload.BinPosition)
 		return
 	end
-	local sound = payload.Treasure and "Treasure" or (payload.Swish and "Swish") or (payload.Match and "DepositMatch") or "Deposit"
-	Controllers.AudioController.Play(sound)
-	if (payload.Streak or 0) >= 3 then
-		Controllers.AudioController.Play("Streak")
+	-- The deposit sound always plays; treasure / swish ring on top of it, and a streak climbs a
+	-- semitone with every deposit it lasts (up to an octave).
+	Controllers.AudioController.Play(payload.Match and "DepositMatch" or "Deposit")
+	if payload.Treasure then
+		Controllers.AudioController.Play("Treasure")
+	elseif payload.Swish then
+		Controllers.AudioController.Play("Swish")
+	end
+	local streak = payload.Streak or 0
+	if streak >= 2 then
+		Controllers.AudioController.Play("Streak", math.min(2 ^ ((streak - 2) / 12), 2))
 	end
 	local tags = {}
 	if payload.Treasure then
@@ -194,7 +330,7 @@ local function onDeposit(payload)
 		table.insert(tags, "STREAK x" .. payload.Streak)
 	end
 	worldCashPopup(payload.BinPosition + Vector3.new(0, 2, 0), payload.Amount or 0, table.concat(tags, "  "), payload.Treasure or payload.Swish)
-	coinsToHud(math.clamp(payload.Amount or 1, 1, 5))
+	cashToYou(payload.BinPosition + Vector3.new(0, 1.5, 0), payload.Amount or 1)
 	FXController.Burst(payload.BinPosition + Vector3.new(0, 1.5, 0), payload.Treasure and UI.Colors.Gold or UI.Colors.Cash, payload.Swish and 18 or 8, 0.3)
 	if payload.Swish or payload.Treasure then
 		FXController.FovPunch(3)
@@ -298,8 +434,10 @@ function FXController.Init()
 			Controllers.AudioController.Play("CashAward")
 			if payload.Position then
 				worldCashPopup(payload.Position, payload.Amount or 0)
+				cashToYou(payload.Position, payload.Amount or 1)
+			else
+				coinsToHud(math.clamp(payload.Amount or 1, 1, 4))
 			end
-			coinsToHud(math.clamp(payload.Amount or 1, 1, 4))
 		elseif name == "Upgrade" then
 			FXController.ScreenFlash(UI.Colors.Green, 0.4)
 			FXController.FovPunch(4)
@@ -323,6 +461,9 @@ function FXController.Start()
 		local camera = workspace.CurrentCamera
 		if not camera then
 			return
+		end
+		if #bills > 0 then
+			stepBills()
 		end
 		if shakeAmount > 0.001 then
 			camera.CFrame = camera.CFrame * CFrame.new((math.random() - 0.5) * shakeAmount, (math.random() - 0.5) * shakeAmount, 0)

@@ -292,9 +292,12 @@ local function refreshProgress(instant: boolean?)
 	shownHundredths = target
 end
 
+-- Deposit pay flies to you as bills first (FXController): gains wait until it lands.
+local cashHoldUntil = 0
+
 local function refreshCash()
 	local cash = attr("RoomCash", 0)
-	if cash ~= shownCash then
+	if cash ~= shownCash and not (cash > shownCash and os.clock() < cashHoldUntil) then
 		local from = shownCash
 		shownCash = cash
 		UI.CountUp(cashLabel, from, cash, FormatUtil.CashExact, 0.45)
@@ -459,7 +462,10 @@ function HUDController.Init()
 			end
 		end)
 	end
-	player:GetAttributeChangedSignal("RoomCash"):Connect(refreshCash)
+	player:GetAttributeChangedSignal("RoomCash"):Connect(function()
+		-- A moment's grace: the deposit's flying pay arrives right after and holds the counter.
+		task.delay(0.1, refreshCash)
+	end)
 	player:GetAttributeChangedSignal("MaxWeight"):Connect(refreshCash)
 	player:GetAttributeChangedSignal("HotCold"):Connect(refreshHotCold)
 	matchState:GetAttributeChangedSignal("Progress"):Connect(refreshProgress)
@@ -482,6 +488,10 @@ function HUDController.Start()
 	RunService.Heartbeat:Connect(function(dt)
 		if not matchFrame.Visible then
 			return
+		end
+		if cashHoldUntil > 0 and os.clock() >= cashHoldUntil then
+			cashHoldUntil = 0
+			refreshCash()
 		end
 		-- Streak meter (every frame so the timer bar drains smoothly).
 		local now = workspace:GetServerTimeNow()
@@ -522,6 +532,13 @@ function HUDController.SetMobileAction(text: string?)
 	if text and mobileActionButton.Text ~= text then
 		mobileActionButton.Text = text
 		mobileActionButton.BackgroundColor3 = (text == "THROW" and UI.Colors.Orange) or (text == "HEAVY" and UI.Colors.Red) or UI.Colors.Green
+	end
+end
+
+-- Pay is flying to you: cash gains show once it lands (at most 1.5 s later).
+function HUDController.HoldCash(seconds: number)
+	if os.clock() >= cashHoldUntil then
+		cashHoldUntil = os.clock() + math.clamp(seconds, 0, 1.5)
 	end
 end
 

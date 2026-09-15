@@ -123,7 +123,6 @@ local function runCeremony(payload)
 		end)
 	end
 	setCeremony(string.upper(payload.TargetName or ""), "Found by @" .. (payload.FinderName or "?"), UI.Colors.Gold, 62)
-	Controllers.AudioController.Play("VictorySting")
 	task.wait(2.2)
 
 	local found = math.max(player:GetAttribute("ObjectsFound") or 0, payload.ObjectNumber or 1)
