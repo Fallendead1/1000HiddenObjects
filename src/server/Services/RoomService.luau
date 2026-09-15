@@ -325,16 +325,16 @@ local function separateCoplanar(model: Model, centre: Vector3): number
 						local overlapU = math.min(on(a.Max, u), on(b.Max, u)) - math.max(on(a.Min, u), on(b.Min, u))
 						local overlapW = math.min(on(a.Max, w), on(b.Max, w)) - math.max(on(a.Min, w), on(b.Min, w))
 						if overlapU > 0.05 and overlapW > 0.05 then
-							-- The shared face and which way it looks (+1 / -1 along the axis).
-							local face, normal = nil, 0
-							if math.abs(on(a.Max, axis) - on(b.Max, axis)) < t then
-								face, normal = on(a.Max, axis), 1
-							elseif math.abs(on(a.Min, axis) - on(b.Min, axis)) < t then
-								face, normal = on(a.Min, axis), -1
-							end
-							if face and (on(centre, axis) - face) * normal > 0 then
-								local small = if a.Volume <= b.Volume then a.Part else b.Part
-								nudges[small] = (nudges[small] or Vector3.zero) + AXES[axis] * normal * COPLANAR_NUDGE
+							-- Check both shared faces (a baseboard can be flush with the wainscot on
+							-- its hidden back too); fix the one that looks into the room.
+							for _, normal in ipairs({ 1, -1 }) do
+								local fa = if normal == 1 then on(a.Max, axis) else on(a.Min, axis)
+								local fb = if normal == 1 then on(b.Max, axis) else on(b.Min, axis)
+								if math.abs(fa - fb) < t and (on(centre, axis) - fa) * normal > 0 then
+									local small = if a.Volume <= b.Volume then a.Part else b.Part
+									nudges[small] = (nudges[small] or Vector3.zero) + AXES[axis] * normal * COPLANAR_NUDGE
+									break
+								end
 							end
 						end
 					end
