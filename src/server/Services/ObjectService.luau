@@ -404,6 +404,7 @@ function ObjectService.Grab(player: Player, root: any): (boolean, string?)
 	root:SetAttribute("LastHolderUserId", player.UserId)
 	setState(root, "Held")
 	player:SetAttribute("HeldObjectId", root:GetAttribute("ObjectId"))
+	Services.AnalyticsService.Grabbed(player)
 	-- Lifting the last thing off the key reveals it right away.
 	Services.MatchService.OnObjectGrabbed(root)
 	return true, nil
@@ -426,6 +427,7 @@ function ObjectService.Throw(player: Player, objectId: any, direction: any)
 		velocity = ObjectService.ThrowVelocity(player, h.Root:GetAttribute("Weight") or 1, direction.Unit)
 	end
 	release(player, velocity)
+	Services.AnalyticsService.Threw(player)
 end
 
 -- Drop in place. With an objectId, only drops if that is really the held object.
@@ -558,7 +560,11 @@ function ObjectService.Init()
 		end
 	end)
 	Remotes.Event("DropObject").OnServerEvent:Connect(function(player, objectId)
+		local had = held[player] ~= nil
 		ObjectService.Drop(player, objectId)
+		if had and not held[player] then
+			Services.AnalyticsService.Threw(player)
+		end
 	end)
 	Players.PlayerRemoving:Connect(function(player)
 		ObjectService.Drop(player)

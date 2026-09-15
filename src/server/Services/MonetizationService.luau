@@ -23,7 +23,6 @@ local MonetizationService = {}
 local passCache: { [Player]: { [string]: boolean } } = {}
 local priceCache: { [string]: { Price: number?, Name: string?, FetchedAt: number } } = {}
 local purchaseLimiter = RateLimiter.new(2, 3)
-local shopOpenLimiter = RateLimiter.new(1, 3) -- shop_open analytics only; the shop data is always returned
 local devGrants: { [Player]: { [string]: boolean } } = {}
 
 local function isMockMode(): boolean
@@ -101,7 +100,6 @@ function MonetizationService.GrantProduct(player: Player, key: string): boolean
 	else
 		return false
 	end
-	Services.AnalyticsService.Log("premium_purchase", player, { Product = key })
 	return true
 end
 
@@ -225,6 +223,7 @@ local function processReceipt(receiptInfo): Enum.ProductPurchaseDecision
 	if not saved and not RunService:IsStudio() then
 		return Enum.ProductPurchaseDecision.NotProcessedYet
 	end
+	Services.AnalyticsService.Purchased(player, key, "Product", receiptInfo.CurrencySpent)
 	return Enum.ProductPurchaseDecision.PurchaseGranted
 end
 
@@ -257,7 +256,7 @@ function MonetizationService.PromptPurchase(player: Player, key: string)
 		end
 		return
 	end
-	Services.AnalyticsService.Log("premium_prompt", player, { Product = key })
+	Services.AnalyticsService.PurchasePrompted(player, key, kind)
 	if kind == "Gamepass" then
 		pcall(function()
 			MarketplaceService:PromptGamePassPurchase(player, def.Id)
@@ -457,10 +456,28 @@ function MonetizationService.Init()
 					if def.Id == passId then
 						Remotes.Event("PurchaseUpdate"):FireClient(player, "PassGranted", { Key = def.Key })
 						Services.NotificationService.Send(player, "Premium", def.Name .. " unlocked!")
-						Services.AnalyticsService.Log("premium_purchase", player, { Product = def.Key })
+						Services.AnalyticsService.Purchased(player, def.Key, "Gamepass", MonetizationService.GetLivePrice(def.Id, Enum.InfoType.GamePass))
 					end
 				end
 			end)
+		else
+			for _, def in ipairs(MonetizationConfig.GamepassDefs) do
+				if def.Id == passId then
+					Services.AnalyticsService.PurchaseCancelled(player, def.Key, "Gamepass")
+				end
+			end
+		end
+	end)
+	-- Product prompts closed without buying (bought ones are counted in processReceipt).
+	MarketplaceService.PromptProductPurchaseFinished:Connect(function(userId, productId, isPurchased)
+		local player = Players:GetPlayerByUserId(userId)
+		if isPurchased or not player then
+			return
+		end
+		for _, def in ipairs(MonetizationConfig.ProductDefs) do
+			if def.Id == productId then
+				Services.AnalyticsService.PurchaseCancelled(player, def.Key, "Product")
+			end
 		end
 	end)
 
@@ -474,10 +491,9 @@ function MonetizationService.Init()
 		MonetizationService.PromptPurchase(player, key)
 	end)
 
-	Remotes.Function("GetShopInfo").OnServerInvoke = function(player)
-		if shopOpenLimiter:Allow(player) then
-			Services.AnalyticsService.Log("shop_open", player)
-		end
+	-- The client also fetches this in the background at start, so it is not a shop visit
+	-- (AnalyticsService counts those when the Shop menu opens).
+	Remotes.Function("GetShopInfo").OnServerInvoke = function()
 		return MonetizationService.GetShopInfo()
 	end
 	task.spawn(MonetizationService.WarmPrices)

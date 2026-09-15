@@ -47,6 +47,7 @@ type Queue = {
 	CountdownEnd: number,
 	SelectionDeadline: number,
 	Busy: boolean,
+	SessionId: string?, -- analytics: this party's Party funnel session
 }
 
 local queues: { Queue } = {}
@@ -147,6 +148,7 @@ local function reset(q: Queue)
 	q.CountdownEnd = 0
 	q.SelectionDeadline = 0
 	q.Busy = false
+	q.SessionId = nil
 	updateDisplay(q)
 end
 
@@ -230,7 +232,12 @@ local function selectRoom(q: Queue, roomId: number)
 	local full = #q.Players >= q.MaxPlayers
 	q.CountdownEnd = os.clock() + (full and GameConfig.FullQueueCountdown or GameConfig.QueueCountdown)
 	updateDisplay(q)
-	Services.AnalyticsService.Log("queue_room_selected", q.Owner or q.Players[1], { QueueId = q.Id, RoomId = roomId, PartySize = q.MaxPlayers, Hard = q.Hard })
+	local host = q.Owner or q.Players[1]
+	if host then
+		local size = q.MaxPlayers <= 1 and "solo" or ("party of " .. tostring(q.MaxPlayers))
+		Services.AnalyticsService.PartyStep(host, q.SessionId, "Ready", "host", size, q.Hard and "hard" or "normal")
+		Services.AnalyticsService.Event(host, "party_created", q.MaxPlayers, "room " .. tostring(roomId), q.Hard and "hard" or "normal")
+	end
 end
 
 local function launch(q: Queue)
@@ -257,7 +264,9 @@ local function launch(q: Queue)
 	for _, player in ipairs(party) do
 		player:SetAttribute("Teleporting", true)
 	end
-	Services.AnalyticsService.Log("queue_start", party[1], { QueueId = q.Id, PartySize = #party, RoomId = roomId, Hard = hard })
+	for _, player in ipairs(party) do
+		Services.AnalyticsService.PartyStep(player, q.SessionId, "Launched", #party <= 1 and "solo" or ("party of " .. tostring(#party)))
+	end
 	task.wait(0.3) -- a beat for the loading screen to come up
 
 	local ok = Services.TeleportServiceWrapper.TeleportParty({
@@ -291,7 +300,7 @@ local function step(q: Queue)
 		local player = q.Players[i]
 		if not player.Parent or not isTouching(q, player) or Services.MatchService.IsPlayerInMatch(player) then
 			removePlayer(q, i)
-			Services.AnalyticsService.Log("queue_leave", player, { QueueId = q.Id })
+			Services.AnalyticsService.Event(player, "party_left", 1, "walked out", q.State)
 		end
 	end
 
@@ -314,7 +323,13 @@ local function step(q: Queue)
 				table.insert(q.Players, player)
 				player:SetAttribute("QueueId", q.Id)
 				pullIn(q, player)
-				Services.AnalyticsService.Log("queue_join", player, { QueueId = q.Id })
+				if q.State == "Empty" then
+					q.SessionId = Services.AnalyticsService.NewId()
+				end
+				Services.AnalyticsService.PartyStep(player, q.SessionId, "EnteredCircle")
+				if q.State == "CountingDown" then
+					Services.AnalyticsService.PartyStep(player, q.SessionId, "Ready", "joined")
+				end
 				if q.State == "Empty" then
 					-- The first one in hosts: the circle closes while they set up the party.
 					q.State = "Selecting"
@@ -354,7 +369,7 @@ local function step(q: Queue)
 			end
 			pushOut(q, host)
 			Services.NotificationService.Send(host, "Warning", "No party was created in time, so you left the circle.")
-			Services.AnalyticsService.Log("queue_timeout", host, { QueueId = q.Id })
+			Services.AnalyticsService.Event(host, "party_left", 1, "timed out", "Selecting")
 			if #q.Players == 0 then
 				reset(q)
 				return
@@ -416,7 +431,7 @@ function QueueService.Init(role: string)
 		end
 		removePlayer(q, index)
 		pushOut(q, player)
-		Services.AnalyticsService.Log("queue_leave", player, { QueueId = q.Id })
+		Services.AnalyticsService.Event(player, "party_left", 1, "pressed back", q.State)
 		if #q.Players == 0 then
 			reset(q)
 		else

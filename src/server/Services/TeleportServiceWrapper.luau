@@ -21,6 +21,8 @@ function TeleportServiceWrapper.Init(role: string)
 	TeleportService.TeleportInitFailed:Connect(function(player, result, message)
 		warn("[Teleport] Init failed for", player.Name, result, message)
 		Services.DataService.Reclaim(player)
+		Services.AnalyticsService.ClearTeleport(player)
+		Services.AnalyticsService.Event(player, "teleport_failed", 1, "init", tostring(result))
 		player:SetAttribute("Leaving", nil)
 		player:SetAttribute("Teleporting", false)
 		player:SetAttribute("QueueId", "")
@@ -41,6 +43,7 @@ export type PartyLaunch = {
 local function handOver(players: { Player })
 	local pending = #players
 	for _, p in ipairs(players) do
+		Services.AnalyticsService.MarkTeleport(p)
 		task.spawn(function()
 			Services.DataService.Release(p)
 			pending -= 1
@@ -57,6 +60,7 @@ local function takeBack(players: { Player })
 	for _, p in ipairs(players) do
 		if p.Parent then
 			Services.DataService.Reclaim(p)
+			Services.AnalyticsService.ClearTeleport(p)
 		end
 	end
 end
@@ -84,6 +88,9 @@ function TeleportServiceWrapper.TeleportParty(launch: PartyLaunch): boolean
 	end)
 	if not okReserve then
 		warn("[Teleport] ReserveServer failed:", accessCode)
+		for _, p in ipairs(launch.Players) do
+			Services.AnalyticsService.Event(p, "teleport_failed", 1, "to room", "reserve failed")
+		end
 		Services.NotificationService.SendMany(launch.Players, "Error", "Teleport failed. Please try again.")
 		return false
 	end
@@ -98,6 +105,7 @@ function TeleportServiceWrapper.TeleportParty(launch: PartyLaunch): boolean
 		ResumePercent = launch.ResumePercent,
 		Seed = seed,
 		Hard = launch.Hard == true,
+		PartySessions = Services.AnalyticsService.PartySessions(launch.Players),
 		ExpectedUserIds = (function()
 			local ids = {}
 			for _, p in ipairs(launch.Players) do
@@ -114,6 +122,9 @@ function TeleportServiceWrapper.TeleportParty(launch: PartyLaunch): boolean
 	if not okTeleport then
 		warn("[Teleport] TeleportAsync failed:", err)
 		takeBack(launch.Players)
+		for _, p in ipairs(launch.Players) do
+			Services.AnalyticsService.Event(p, "teleport_failed", 1, "to room", "teleport failed")
+		end
 		Services.NotificationService.SendMany(launch.Players, "Error", "Teleport failed. Please try again.")
 		return false
 	end
@@ -135,6 +146,7 @@ function TeleportServiceWrapper.ReturnToLobby(player: Player)
 	if not ok then
 		warn("[Teleport] Return to lobby failed:", err)
 		takeBack({ player })
+		Services.AnalyticsService.Event(player, "teleport_failed", 1, "to lobby", "teleport failed")
 		player:SetAttribute("Leaving", nil)
 		Services.NotificationService.Send(player, "Error", "Couldn't get back to the lobby. Please try again.")
 	end

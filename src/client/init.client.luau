@@ -28,6 +28,7 @@ local Controllers = script.Controllers
 
 local order = {
 	"AudioController",
+	"AnalyticsController",
 	"NotificationController",
 	"HUDController",
 	"CameraController",

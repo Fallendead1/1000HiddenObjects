@@ -18,6 +18,8 @@ local Shared = ReplicatedStorage.Shared
 local GameConfig = require(Shared.Config.GameConfig)
 local TableUtil = require(Shared.Utility.TableUtil)
 
+local Services = require(script.Parent)
+
 local DataService = {}
 
 local SCHEMA_VERSION = 1
@@ -63,7 +65,10 @@ local Template = {
 	CleanerXP = 0,
 	Stars = {}, -- [tostring(roomId)] = bitmask: 1 object found, 2 cleaned 25%, 4 every treasure
 	Daily = { Day = 0, Ids = {}, Progress = {}, Done = {} },
-	Stats = { Swishes = 0, Treasures = 0, Chunks = 0, Keys = 0 },
+	Stats = { Swishes = 0, Treasures = 0, Chunks = 0, Keys = 0, Rooms = 0 },
+	-- UTC day this profile was created (0 = before analytics existed); brand-new players are
+	-- tracked through the onboarding funnel for their first days.
+	FirstJoinDay = 0,
 	PurchaseHistory = {},
 }
 
@@ -142,6 +147,9 @@ local function loadProfile(player: Player)
 						return nil
 					end
 					local profile = type(old) == "table" and old or TableUtil.DeepCopy(Template)
+					if type(old) ~= "table" then
+						profile.FirstJoinDay = math.floor(os.time() / 86400)
+					end
 					profile.Session = { Id = SESSION_ID, Time = os.time() }
 					return profile
 				end)
@@ -150,6 +158,7 @@ local function loadProfile(player: Player)
 				data = result
 				if force then
 					warn("[DataService] Took over the profile of", player.Name, "from a server that never let go")
+					Services.AnalyticsService.Event(player, "data_problem", 1, "took over a locked profile")
 				end
 				break
 			elseif not ok then
@@ -161,6 +170,7 @@ local function loadProfile(player: Player)
 				failures += 1
 				if failures >= 3 then
 					warn("[DataService] Failed to load profile for", player.Name, result)
+					Services.AnalyticsService.Event(player, "data_problem", 1, "load failed")
 					usingFallback = true
 					break
 				end
@@ -226,6 +236,7 @@ local function saveProfile(player: Player, isFinal: boolean?)
 	end
 	if lost then
 		warn("[DataService] Not saving", player.Name, "- another server has their profile now")
+		Services.AnalyticsService.Event(player, "data_problem", 1, "save refused: profile moved on")
 		return false
 	end
 	profile.Dirty = false

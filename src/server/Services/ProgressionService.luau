@@ -159,10 +159,11 @@ local function addXP(player: Player, data, amount: number, reason: string)
 	Services.DataService.MarkDirty(player)
 	local after = ProgressionConfig.LevelFor(data.CleanerXP)
 	Remotes.Event("FXEvent"):FireClient(player, "XP", { Amount = amount, Reason = reason })
+	Services.AnalyticsService.XP(player, amount, reason, data.CleanerXP)
 	if after > before then
 		local title = ProgressionConfig.TitleFor(after)
 		Remotes.Event("FXEvent"):FireClient(player, "LevelUp", { Level = after, Title = title, NewTitle = title ~= ProgressionConfig.TitleFor(before) })
-		Services.AnalyticsService.Log("level_up", player, { Level = after })
+		Services.AnalyticsService.LevelUp(player, after, title)
 	end
 end
 
@@ -176,7 +177,7 @@ local function grantReward(player: Player, data, reward, challenge)
 	end
 	addXP(player, data, ProgressionConfig.XP.Challenge, "Challenge")
 	Remotes.Event("FXEvent"):FireClient(player, "ChallengeDone", { Text = string.format(challenge.Text, challenge.Goal), Reward = reward.Text })
-	Services.AnalyticsService.Log("daily_done", player, { Id = challenge.Id })
+	Services.AnalyticsService.Event(player, "challenge_done", 1, challenge.Id, reward.Kind)
 end
 
 -- Daily login reward: XP now; hints and boosts are banked for the next room.
@@ -304,7 +305,8 @@ function ProgressionService.Init()
 		Services.DataService.MarkDirty(player)
 		Services.DataService.Save(player)
 		Remotes.Event("FXEvent"):FireClient(player, "DailyClaimed", { Day = cycleDay, Streak = streak, Reward = reward.Text, Later = reward.Hint ~= nil or reward.Boost ~= nil })
-		Services.AnalyticsService.Log("daily_login_claim", player, { Day = cycleDay, Streak = streak })
+		Services.AnalyticsService.DailyStep(player, "Claimed", "day " .. tostring(cycleDay))
+		Services.AnalyticsService.Event(player, "daily_claim", cycleDay, streak >= 7 and "7+ days" or (tostring(streak) .. " days"), reward.Kind or "reward")
 		ProgressionService.Publish(player)
 	end)
 
@@ -312,6 +314,9 @@ function ProgressionService.Init()
 		task.spawn(function()
 			if Services.DataService.WaitFor(player, 15) then
 				ProgressionService.Publish(player)
+				if player:GetAttribute("LoginClaimable") == true then
+					Services.AnalyticsService.DailyStep(player, "Waiting")
+				end
 			end
 		end)
 	end

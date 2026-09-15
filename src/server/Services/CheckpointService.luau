@@ -78,7 +78,9 @@ function CheckpointService.OnProgress(match, oldProgress: number, newProgress: n
 				CheckpointService.SaveCheckpoint(player, match, threshold)
 			end
 			Services.NotificationService.SendMany(match.Players, "Info", string.format("Room checkpoint saved (%d%%)!", math.floor(threshold * 100)))
-			Services.AnalyticsService.Log("room_" .. math.floor(threshold * 100), match.Players[1], { RoomId = match.RoomId, PartySize = match.PartySize })
+			for _, player in ipairs(match.Players) do
+				Services.AnalyticsService.Event(player, "room_milestone", math.floor(threshold * 100 + 0.5), (match.PartySize or 1) <= 1 and "solo" or ("party of " .. tostring(match.PartySize)))
+			end
 		end
 	end
 end

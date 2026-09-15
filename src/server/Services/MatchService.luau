@@ -300,25 +300,33 @@ function MatchService.Init(role: string)
 				player:SetAttribute("Leaving", nil)
 			end
 		end)
-		Services.AnalyticsService.Log("room_exit_door", player, { RoomId = match.RoomId, Progress = match.Progress })
+		Services.AnalyticsService.RoomEnded(player, "exit_door", match)
 		MatchService.ReturnPlayer(player)
 	end)
 	Remotes.Event("TutorialComplete").OnServerEvent:Connect(function(player)
 		Services.DataService.Update(player, function(data)
 			data.TutorialCompleted = true
 		end)
+		Services.AnalyticsService.TutorialFinished(player)
 	end)
 	Remotes.Event("UpdateSettings").OnServerEvent:Connect(function(player, settings)
 		if type(settings) ~= "table" then
 			return
 		end
+		local changed = {}
 		Services.DataService.Update(player, function(data)
 			for _, key in ipairs({ "Music", "SFX", "ReduceVFX", "CameraShake" }) do
 				if type(settings[key]) == "boolean" then
+					if data.Settings[key] ~= settings[key] then
+						table.insert(changed, key)
+					end
 					data.Settings[key] = settings[key]
 				end
 			end
 		end)
+		for _, key in ipairs(changed) do
+			Services.AnalyticsService.Event(player, "setting_changed", 1, key, settings[key] and "on" or "off")
+		end
 	end)
 	Players.PlayerRemoving:Connect(function(player)
 		MatchService.RemovePlayer(player)
@@ -433,6 +441,7 @@ export type LaunchParams = {
 	Seed: number,
 	MatchId: string,
 	Hard: boolean?,
+	PartySessions: { [string]: string }?, -- analytics party ids by UserId (from the teleport)
 }
 
 function MatchService.StartLocalMatch(params: LaunchParams): boolean
@@ -478,6 +487,7 @@ function MatchService.StartFromTeleport()
 		Seed = tonumber(data.Seed) or Random.new():NextInteger(1, 2 ^ 30),
 		MatchId = tostring(data.MatchId or "local"),
 		Hard = data.Hard == true,
+		PartySessions = type(data.PartySessions) == "table" and data.PartySessions or nil,
 	}, CFrame.new(GameConfig.CombinedRoomOffset))
 end
 
@@ -539,6 +549,7 @@ function MatchService.BeginMatch(params: LaunchParams, origin: CFrame): boolean
 		ResumePercent = params.ResumePercent or 0,
 		ClaimLock = false,
 		Hard = params.Hard == true,
+		PartySessions = params.PartySessions,
 	}
 
 	-- Treasures in the room (loose + packed in junk) for the "every treasure" mastery star.
@@ -599,8 +610,6 @@ function MatchService.BeginMatch(params: LaunchParams, origin: CFrame): boolean
 		ResumePercent = match.ResumePercent,
 		Hard = match.Hard,
 	})
-	Services.AnalyticsService.Log("match_start", players[1], { RoomId = config.Id, PartySize = params.PartySize, Resume = match.ResumePercent, Objects = runtime.TotalObjects, Hard = match.Hard })
-
 	task.spawn(function()
 		local thisMatch = match
 		-- The room settles behind the intro and goes dead (anchored); then the key goes in and the
@@ -637,6 +646,7 @@ function MatchService.BeginMatch(params: LaunchParams, origin: CFrame): boolean
 		stateConfig:SetAttribute("StartTime", match.StartTime)
 		setState("Searching")
 		fireMatch("Started", {})
+		Services.AnalyticsService.RoomStarted(match, os.clock() - releasedAt)
 		checkTargetExposure()
 		-- Hints bought while they couldn't be used are delivered now.
 		for _, player in ipairs(match.Players) do
@@ -724,9 +734,8 @@ function MatchService.RemovePlayer(player: Player)
 		table.remove(match.Players, idx)
 		Services.ObjectService.Drop(player)
 		stateConfig:SetAttribute("PlayerNames", playerNamesString(match.Players))
-		if match.State == "Searching" then
-			Services.AnalyticsService.Log("room_quit", player, { RoomId = match.RoomId, Progress = match.Progress })
-		end
+		-- No-op if their run already ended (key found, exit door).
+		Services.AnalyticsService.RoomEnded(player, "left_game", match)
 	end
 	if #match.Players == 0 and match.State ~= "Ended" then
 		task.delay(3, function()
@@ -807,7 +816,7 @@ function MatchService.RevealTarget()
 	stateConfig:SetAttribute("TargetRevealed", true)
 	stateConfig:SetAttribute("OutlinedObjects", "")
 	fireMatch("TargetRevealed", { Position = model.PrimaryPart and model.PrimaryPart.Position })
-	Services.AnalyticsService.Log("target_revealed", match.Players[1], { RoomId = match.RoomId, Progress = match.Progress })
+	Services.AnalyticsService.KeyUncovered(match, match.StartTime > 0 and math.max(0, now() - match.StartTime) or 0)
 end
 
 function MatchService.OnTargetClaim(player: Player)
@@ -875,9 +884,8 @@ function MatchService.CompleteMatch(finder: Player)
 			end
 		end
 		Services.MonetizationService.CheckBadges(player)
-		Services.AnalyticsService.Log("room_complete", player, { RoomId = roomId, PartySize = match.PartySize, ElapsedTime = math.floor(elapsed), FirstClear = firstClear, Progress = match.Progress, Hard = match.Hard })
 	end
-	Services.AnalyticsService.Log("target_found", finder, { RoomId = roomId, ElapsedTime = math.floor(elapsed) })
+	Services.AnalyticsService.KeyFound(match, finder, elapsed)
 
 	local contributions = {}
 	for _, player in ipairs(match.Players) do

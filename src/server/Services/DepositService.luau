@@ -105,6 +105,7 @@ function DepositService.Deposit(root: BasePart, bin: Bin)
 		Services.EconomyService.AddCash(player, amount)
 		player:SetAttribute("ObjectsCleaned", (player:GetAttribute("ObjectsCleaned") or 0) + 1)
 		Services.ProgressionService.OnDeposit(player, { Match = isMatch, BinType = bin.Type, Swish = swish, Streak = streak, Treasure = category == "Treasure" })
+		Services.AnalyticsService.Deposited(player, { Amount = amount, BinType = bin.Type, Match = isMatch, Swish = swish, Streak = streak, Treasure = category == "Treasure", Balance = player:GetAttribute("RoomCash") or 0 })
 	end
 
 	root:SetAttribute("Deposited", true)

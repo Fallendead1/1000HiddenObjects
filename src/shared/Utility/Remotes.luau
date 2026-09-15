@@ -16,6 +16,7 @@ local Remotes = {
 		"RequestPurchase", -- C->S (productKey)
 		"ReturnToLobby", -- C->S
 		"LeaveRoom", -- C->S () walked into the room's exit door and chose to go back to the lobby
+		"Track", -- C->S (kind, value, extra) UI-only analytics moments (whitelisted by AnalyticsService)
 		"CreateParty", -- C->S (queueId, roomId, partySize, hard?) a circle's host sets up the party
 		"LeaveQueue", -- C->S (queueId) leave a circle (BACK / LEAVE)
 		"StartParty", -- C->S (queueId) the host starts before the countdown ends

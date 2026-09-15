@@ -56,6 +56,7 @@ function ChunkService.Burst(chunk: BasePart, player: Player?)
 	end
 	if player then
 		Services.ProgressionService.OnChunkBurst(player)
+		Services.AnalyticsService.ChunkBurst(player)
 	end
 	-- The packed junk hiding the key releases it.
 	Services.MatchService.OnChunkBurst(chunk, center)

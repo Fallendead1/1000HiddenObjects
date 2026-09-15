@@ -98,7 +98,7 @@ local function deliverStage(match, stage: number, players: { Player }, silent: b
 		fire(players, "Clue", { Stage = stage, Percent = percent, Text = "Almost there! The objects hiding it are outlined." })
 	end
 	if not silent then
-		Services.AnalyticsService.Log("hint_used", players[1], { Stage = stage, RoomId = match.RoomId, Free = true })
+		Services.AnalyticsService.Clue(players, stage, "free", match.Progress)
 	end
 end
 
@@ -212,7 +212,7 @@ function HintService.GrantQuickHint(player: Player): boolean
 	setStage(match, nextStage)
 	deliverStage(match, nextStage, match.Players, true)
 	Services.NotificationService.SendMany(match.Players, "Premium", string.format("%s used a Quick Hint!", player.Name))
-	Services.AnalyticsService.Log("hint_used", player, { Kind = "Quick", RoomId = match.RoomId })
+	Services.AnalyticsService.Clue({ player }, nextStage, "quick", match.Progress)
 	return true
 end
 
@@ -224,7 +224,7 @@ function HintService.GrantSuperHint(player: Player): boolean
 	end
 	fire({ player }, "RegionHighlight", { RegionId = match.TargetSocket.RegionId, Duration = MonetizationConfig.Effects.SuperHintDuration, Super = true })
 	fire({ player }, "Clue", { Stage = 0, Percent = 0, Text = string.format("SUPER HINT: search the %s area!", getRegionName(match)) })
-	Services.AnalyticsService.Log("hint_used", player, { Kind = "Super", RoomId = match.RoomId })
+	Services.AnalyticsService.Clue({ player }, 0, "super", match.Progress)
 	return true
 end
 

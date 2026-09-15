@@ -966,6 +966,10 @@ function UI.Menu(name: string, title: string, size: UDim2, accent: Color3?)
 		end
 		openMenu = name
 		isOpen = true
+		-- Analytics (AnalyticsController sets it): which menus people actually open.
+		if UI.OnMenuOpen then
+			task.spawn(UI.OnMenuOpen, name)
+		end
 		fit()
 		frame.Visible = true
 		setBackdrop(true)

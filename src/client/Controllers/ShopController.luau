@@ -148,6 +148,7 @@ function ShopController.Init()
 		b.Activated:Connect(function()
 			currentTab = name
 			render()
+			Controllers.AnalyticsController.Track("shop_tab", name)
 		end)
 	end
 	tabHint = UI.Label({ Text = "", TextSize = 14, Font = UI.FontBody, TextColor3 = UI.Colors.TextDim, Size = UDim2.new(1, 0, 0, 18), Position = UDim2.fromOffset(0, 52) }, menu.Content)

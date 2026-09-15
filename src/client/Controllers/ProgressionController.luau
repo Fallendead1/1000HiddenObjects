@@ -246,6 +246,7 @@ function ProgressionController.OpenChallenges()
 end
 
 function ProgressionController.Invite()
+	Controllers.AnalyticsController.Track("invite")
 	local ok, can = pcall(SocialService.CanSendGameInviteAsync, SocialService, player)
 	if ok and can then
 		pcall(SocialService.PromptGameInvite, SocialService, player)
