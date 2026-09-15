@@ -15,8 +15,7 @@ local ServerStorage = game:GetService("ServerStorage")
 local Builders = script.Parent.Parent.Builders
 local PlaceholderRoomBuilder = require(Builders.PlaceholderRoomBuilder)
 local ClutterBuilder = require(Builders.ClutterBuilder)
-
-local _ = ReplicatedStorage
+local DepositConfig = require(ReplicatedStorage.Shared.Config.DepositConfig)
 
 local RoomService = {}
 
@@ -189,6 +188,62 @@ end
 
 function RoomService.Init() end
 
+-- One upright part of a bin, scaled about the bin's base point (X = Z scale, so its turn about
+-- the vertical doesn't matter; the size axis that points up takes the height scale).
+local function scaleBinPart(part: BasePart, base: Vector3, scale: Vector3)
+	local rotation = part.CFrame - part.Position
+	part.CFrame = CFrame.new(base + (part.Position - base) * scale) * rotation
+	local function along(dir: Vector3): number
+		return math.abs(dir.Y) > 0.99 and scale.Y or scale.X
+	end
+	local axes = Vector3.new(along(part.CFrame.RightVector), along(part.CFrame.UpVector), along(part.CFrame.LookVector))
+	part.Size *= axes
+	local mesh = part:FindFirstChildOfClass("SpecialMesh")
+	if mesh and mesh.MeshType == Enum.MeshType.FileMesh then
+		mesh.Scale *= axes
+	end
+end
+
+-- Bins are built bigger than authored (DepositConfig.BinScale) so they stand out in the mess:
+-- the mouth, the collision walls around it (Structure Bin* parts) and the prop model on it.
+local function scaleBins(model: Model)
+	local scale = DepositConfig.BinScale
+	if not scale or scale == Vector3.one then
+		return
+	end
+	local structure = model:FindFirstChild("Structure")
+	local props = model:FindFirstChild("Props")
+	for _, mouth in ipairs(model:GetDescendants()) do
+		if mouth:IsA("BasePart") and CollectionService:HasTag(mouth, "DepositBin") then
+			local def = DepositConfig.Types[mouth:GetAttribute("BinType") or ""]
+			local reach = math.max(mouth.Size.X, mouth.Size.Z) / 2 + 1.5
+			local parts = { mouth }
+			for _, part in ipairs(structure and structure:GetDescendants() or {}) do
+				if part:IsA("BasePart") and string.sub(part.Name, 1, 3) == "Bin" and ((part.Position - mouth.Position) * Vector3.new(1, 0, 1)).Magnitude < reach then
+					table.insert(parts, part)
+				end
+			end
+			for _, prop in ipairs(props and props:GetChildren() or {}) do
+				if def and prop.Name == def.PropKey and ((prop:GetPivot().Position - mouth.Position) * Vector3.new(1, 0, 1)).Magnitude < 3 then
+					for _, p in ipairs(prop:GetDescendants()) do
+						if p:IsA("BasePart") then
+							table.insert(parts, p)
+						end
+					end
+				end
+			end
+			local floorY = math.huge
+			for _, p in ipairs(parts) do
+				floorY = math.min(floorY, p.Position.Y - p.Size.Y / 2)
+			end
+			local base = Vector3.new(mouth.Position.X, floorY, mouth.Position.Z)
+			for _, p in ipairs(parts) do
+				scaleBinPart(p, base, scale)
+			end
+		end
+	end
+end
+
 function RoomService.Build(config, origin: CFrame): RoomRuntime
 	local roomsFolder = ServerStorage:FindFirstChild("Rooms")
 	local prebuilt = roomsFolder and roomsFolder:FindFirstChild("Room" .. config.DisplayNumber)
@@ -203,6 +258,7 @@ function RoomService.Build(config, origin: CFrame): RoomRuntime
 	end
 	model.Name = "Room" .. config.DisplayNumber
 	model:SetAttribute("RoomId", config.Id)
+	scaleBins(model)
 
 	-- The shell must be in Workspace first: clutter placement queries it to avoid clipping.
 	model.Parent = workspace

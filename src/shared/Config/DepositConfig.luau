@@ -38,6 +38,9 @@ local DepositConfig = {
 	StreakStep = 0.1, -- +10% per deposit in a streak
 	StreakMax = 1.5,
 	MaxDepositsPerSecond = 8, -- per player
+	-- Every room's bins are built this much bigger (width, height, depth; about their base) so
+	-- they stand out in the mess. Keep X = Z. 1.15 wide keeps the closest bins in Room #001 apart.
+	BinScale = Vector3.new(1.15, 1.5, 1.15),
 }
 
 -- The bin type an object belongs in (nil = none; any bin still pays the base value).
