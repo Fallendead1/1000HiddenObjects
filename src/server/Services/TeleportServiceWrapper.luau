@@ -20,6 +20,7 @@ function TeleportServiceWrapper.Init(role: string)
 	serverRole = role
 	TeleportService.TeleportInitFailed:Connect(function(player, result, message)
 		warn("[Teleport] Init failed for", player.Name, result, message)
+		Services.DataService.Reclaim(player)
 		player:SetAttribute("Teleporting", false)
 		player:SetAttribute("QueueId", "")
 		Services.NotificationService.Send(player, "Error", "Teleport failed. Please try again.")
@@ -33,6 +34,31 @@ export type PartyLaunch = {
 	QueueId: string?,
 	Hard: boolean?,
 }
+
+-- Hands the players' data over cleanly: a final save that lets go of each profile, so the
+-- server they land on loads the newest data straight away (DataService session locks).
+local function handOver(players: { Player })
+	local pending = #players
+	for _, p in ipairs(players) do
+		task.spawn(function()
+			Services.DataService.Release(p)
+			pending -= 1
+		end)
+	end
+	local deadline = os.clock() + 6
+	while pending > 0 and os.clock() < deadline do
+		task.wait(0.05)
+	end
+end
+
+-- The teleport didn't happen: whoever is still here takes their data back.
+local function takeBack(players: { Player })
+	for _, p in ipairs(players) do
+		if p.Parent then
+			Services.DataService.Reclaim(p)
+		end
+	end
+end
 
 -- Returns true when the party is on its way (or a local match started).
 function TeleportServiceWrapper.TeleportParty(launch: PartyLaunch): boolean
@@ -80,11 +106,13 @@ function TeleportServiceWrapper.TeleportParty(launch: PartyLaunch): boolean
 		end)(),
 	})
 
+	handOver(launch.Players)
 	local okTeleport, err = pcall(function()
 		TeleportService:TeleportAsync(GameConfig.MatchPlaceId, launch.Players, options)
 	end)
 	if not okTeleport then
 		warn("[Teleport] TeleportAsync failed:", err)
+		takeBack(launch.Players)
 		Services.NotificationService.SendMany(launch.Players, "Error", "Teleport failed. Please try again.")
 		return false
 	end
@@ -99,9 +127,14 @@ function TeleportServiceWrapper.ReturnToLobby(player: Player)
 	if GameConfig.LobbyPlaceId == 0 then
 		return
 	end
-	pcall(function()
+	handOver({ player })
+	local ok, err = pcall(function()
 		TeleportService:TeleportAsync(GameConfig.LobbyPlaceId, { player })
 	end)
+	if not ok then
+		warn("[Teleport] Return to lobby failed:", err)
+		takeBack({ player })
+	end
 end
 
 return TeleportServiceWrapper

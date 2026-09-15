@@ -4,16 +4,17 @@
 ]]
 
 return {
-	-- When true, missing Place IDs fall back to a single-place "Combined" server
-	-- that runs the lobby and local matches together so the game is fully testable.
+	-- When true, Studio runs a single-place "Combined" server (the lobby and local matches
+	-- together) so the game is fully testable there. Live servers use the Place IDs below.
 	DevelopmentMode = true,
 
 	-- Extra UserIds that may use developer tools outside Studio (leave empty for production).
 	DeveloperUserIds = {},
 
-	-- Place IDs. Leave at 0 until the places exist on Creator Hub.
-	LobbyPlaceId = 0,
-	MatchPlaceId = 0,
+	-- Place IDs: the lobby is the start place; every party gets its own private Match server.
+	-- Both places must be published with the same build. 0 = single-place Combined servers.
+	LobbyPlaceId = 117675182630398,
+	MatchPlaceId = 122762042441174,
 
 	-- Queue / matchmaking
 	MaxPartySize = 4,

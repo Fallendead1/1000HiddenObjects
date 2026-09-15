@@ -2,9 +2,14 @@
 	Persistent player profiles. Loads on join, caches for the session, saves on important
 	events, on leave and on server close. Falls back to memory when DataStores are unavailable
 	(e.g. Studio without API access) so the game stays testable.
+
+	Session-locked: the server using a profile marks it and lets go on its final save (on leave,
+	on close, or just before a teleport). The next server waits for that, so moving between the
+	lobby and a match server never loads stale data or writes over newer data.
 ]]
 
 local DataStoreService = game:GetService("DataStoreService")
+local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -64,13 +69,36 @@ local Template = {
 
 DataService.Template = Template
 
-local profiles: { [Player]: { Data: any, Dirty: boolean, Loaded: boolean, UsingFallback: boolean } } = {}
+local profiles: { [Player]: { Data: any, Dirty: boolean, Loaded: boolean, UsingFallback: boolean, Released: boolean } } = {}
 local store: DataStore? = nil
 local storeAvailable = false
 local loadedEvent = Instance.new("BindableEvent")
 
+-- The claim a server puts on the profiles it is using (Session = { Id, Time } in the saved data).
+local SESSION_ID = game.JobId ~= "" and game.JobId or HttpService:GenerateGUID(false)
+local LOCK_STALE = 300 -- seconds without a refresh (autosave refreshes it): that server has died
+local LOCK_WAIT = 20 -- how long to wait for a live claim to be let go before taking over anyway
+
 local function keyFor(player: Player): string
 	return "u_" .. player.UserId
+end
+
+local function heldByOther(old: any): boolean
+	local session = type(old) == "table" and old.Session
+	return type(session) == "table" and session.Id ~= SESSION_ID and os.time() - (tonumber(session.Time) or 0) < LOCK_STALE
+end
+
+-- Lets go of this server's claim without touching the data (a player who left mid-load).
+local function releaseLock(player: Player)
+	pcall(function()
+		(store :: DataStore):UpdateAsync(keyFor(player), function(old)
+			if type(old) == "table" and type(old.Session) == "table" and old.Session.Id == SESSION_ID then
+				old.Session = nil
+				return old
+			end
+			return nil
+		end)
+	end)
 end
 
 local function migrate(data)
@@ -100,37 +128,63 @@ local function loadProfile(player: Player)
 	local data
 	local usingFallback = not storeAvailable
 	if storeAvailable and store then
-		local attempts = 0
-		local ok, result
-		repeat
-			attempts += 1
-			ok, result = pcall(function()
-				return store:GetAsync(keyFor(player))
+		-- Claim the profile. If another server still holds it (its player is on the way here),
+		-- wait for it to let go; after LOCK_WAIT take it over anyway.
+		local deadline = os.clock() + LOCK_WAIT
+		local failures = 0
+		while true do
+			local force = os.clock() >= deadline
+			local locked = false
+			local ok, result = pcall(function()
+				return (store :: DataStore):UpdateAsync(keyFor(player), function(old)
+					if heldByOther(old) and not force then
+						locked = true
+						return nil
+					end
+					local profile = type(old) == "table" and old or TableUtil.DeepCopy(Template)
+					profile.Session = { Id = SESSION_ID, Time = os.time() }
+					return profile
+				end)
 			end)
-			if not ok then
+			if ok and not locked then
+				data = result
+				if force then
+					warn("[DataService] Took over the profile of", player.Name, "from a server that never let go")
+				end
+				break
+			elseif not ok then
 				if type(result) == "string" and result:find("Studio access to APIs is not allowed") then
 					storeAvailable = false
+					usingFallback = true
 					break
 				end
-				task.wait(1)
+				failures += 1
+				if failures >= 3 then
+					warn("[DataService] Failed to load profile for", player.Name, result)
+					usingFallback = true
+					break
+				end
 			end
-		until ok or attempts >= 3
-		if ok then
-			data = result
-		else
-			warn("[DataService] Failed to load profile for", player.Name, result)
-			usingFallback = true
+			if not player.Parent then
+				return
+			end
+			task.wait(1)
 		end
 	end
 	if type(data) ~= "table" then
 		data = TableUtil.DeepCopy(Template)
 	end
+	data.Session = nil
 	migrate(data)
 
 	if not player.Parent then
+		-- Left while loading: let go of the claim straight away.
+		if not usingFallback and storeAvailable and store then
+			releaseLock(player)
+		end
 		return
 	end
-	profiles[player] = { Data = data, Dirty = false, Loaded = true, UsingFallback = usingFallback }
+	profiles[player] = { Data = data, Dirty = false, Loaded = true, UsingFallback = usingFallback, Released = false }
 	DataService.UpdateReplicatedSummary(player)
 	loadedEvent:Fire(player)
 end
@@ -144,19 +198,34 @@ local function saveProfile(player: Player, isFinal: boolean?)
 		profile.Dirty = false
 		return true
 	end
+	if profile.Released and not isFinal then
+		-- Handed over for a teleport: only the final save may still go out.
+		return false
+	end
 	local snapshot = TableUtil.DeepCopy(profile.Data)
+	local lost = false
 	local ok, err = pcall(function()
-		store:UpdateAsync(keyFor(player), function(old)
+		(store :: DataStore):UpdateAsync(keyFor(player), function(old)
+			-- Another server has this profile now (it loaded it after we let go): never write over it.
+			if heldByOther(old) then
+				lost = true
+				return nil
+			end
 			-- Protect against an older server overwriting newer forward progress.
 			if type(old) == "table" and (old.HighestRoomCompleted or 0) > snapshot.HighestRoomCompleted then
 				snapshot.HighestRoomCompleted = old.HighestRoomCompleted
 				snapshot.ObjectsFound = math.max(snapshot.ObjectsFound, old.ObjectsFound or 0)
 			end
+			snapshot.Session = if isFinal then nil else { Id = SESSION_ID, Time = os.time() }
 			return snapshot
 		end)
 	end)
 	if not ok then
 		warn("[DataService] Save failed for", player.Name, err)
+		return false
+	end
+	if lost then
+		warn("[DataService] Not saving", player.Name, "- another server has their profile now")
 		return false
 	end
 	profile.Dirty = false
@@ -201,10 +270,9 @@ function DataService.Start()
 	task.spawn(function()
 		while true do
 			task.wait(GameConfig.AutosaveInterval)
-			for player, profile in pairs(profiles) do
-				if profile.Dirty then
-					saveProfile(player)
-				end
+			-- Everyone is saved each round, which also keeps this server's claim on them fresh.
+			for player in pairs(profiles) do
+				task.spawn(saveProfile, player)
 			end
 		end
 	end)
@@ -256,6 +324,26 @@ end
 
 function DataService.Save(player: Player): boolean
 	return saveProfile(player)
+end
+
+-- A teleport is about to take this player to another server: save now and let go of the
+-- profile, so that server can load the newest data straight away.
+function DataService.Release(player: Player): boolean
+	local profile = profiles[player]
+	if not profile then
+		return false
+	end
+	profile.Released = true
+	return saveProfile(player, true)
+end
+
+-- The teleport failed and the player stays: take the profile back.
+function DataService.Reclaim(player: Player)
+	local profile = profiles[player]
+	if profile and profile.Released then
+		profile.Released = false
+		saveProfile(player)
+	end
 end
 
 -- Persistent values the client is allowed to read live as player attributes.
