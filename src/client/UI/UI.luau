@@ -41,8 +41,16 @@ gui.Parent = playerGui
 UI.Gui = gui
 
 -- Phones play in landscape only (the HUD is laid out for it); the sensor picks which way round.
-pcall(function()
-	playerGui.ScreenOrientation = Enum.ScreenOrientation.LandscapeSensor
+-- StarterGui already starts every player in it (default.project.json); this holds it there if
+-- anything flips it back.
+local function holdLandscape()
+	if playerGui.ScreenOrientation ~= Enum.ScreenOrientation.LandscapeSensor then
+		playerGui.ScreenOrientation = Enum.ScreenOrientation.LandscapeSensor
+	end
+end
+pcall(holdLandscape)
+playerGui:GetPropertyChangedSignal("ScreenOrientation"):Connect(function()
+	pcall(holdLandscape)
 end)
 
 -- The HUD scale: layouts are in design units, drawn at this scale (see updateScale).

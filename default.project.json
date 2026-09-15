@@ -3,6 +3,13 @@
   "tree": {
     "$className": "DataModel",
 
+    "ReplicatedFirst": {
+      "$ignoreUnknownInstances": true,
+      "Landscape": {
+        "$path": "src/first/Landscape.client.luau"
+      }
+    },
+
     "ReplicatedStorage": {
       "Shared": {
         "$path": "src/shared"
@@ -47,6 +54,13 @@
       "$properties": {
         "CharacterAutoLoads": true,
         "RespawnTime": 2
+      }
+    },
+
+    "StarterGui": {
+      "$ignoreUnknownInstances": true,
+      "$properties": {
+        "ScreenOrientation": "LandscapeSensor"
       }
     },
 
