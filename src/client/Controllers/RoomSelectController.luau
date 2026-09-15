@@ -140,7 +140,6 @@ local function close()
 	root.Visible = false
 	activeZone = nil
 	sent = false
-	Controllers.HUDController.SetCounterVisible(true)
 	UI.Tween(dim, { BackgroundTransparency = 1 }, 0.15).Completed:Once(function()
 		if not root.Visible then
 			dim.Visible = false
@@ -172,7 +171,6 @@ local function open(zone: BasePart)
 	UI.PopIn(root, 0.85, 0.22)
 	dim.Visible = true
 	UI.Tween(dim, { BackgroundTransparency = 0.5 }, 0.2)
-	Controllers.HUDController.SetCounterVisible(false)
 end
 
 local function evaluate()

@@ -312,29 +312,38 @@ function ProgressionController.Init()
 	refreshChallenges()
 end
 
--- Your own overhead tag (made by the server for everyone to see) would sit right over your view
--- from the third-person camera: hide it on your own screen only.
-local function hideOwnTag(character: Model)
+-- Your own overhead tag (made by the server for everyone to see): you see it in the lobby, where its
+-- stats pill is there to flex; in rooms it's hidden on your screen, since the first-person camera
+-- sits inside your head.
+local ownHead: Instance? = nil
+
+local function syncOwnTag()
+	local tag = ownHead and ownHead:FindFirstChild("PlayerTag")
+	if tag and tag:IsA("BillboardGui") then
+		tag.Enabled = player:GetAttribute("InMatch") ~= true
+	end
+end
+
+local function watchOwnTag(character: Model)
 	local head = character:WaitForChild("Head", 10)
-	if not head then
+	if not head or character ~= player.Character then
 		return
 	end
-	local function check(child: Instance)
-		if child.Name == "PlayerTag" and child:IsA("BillboardGui") then
-			child.Enabled = false
+	ownHead = head
+	head.ChildAdded:Connect(function(child)
+		if child.Name == "PlayerTag" then
+			syncOwnTag()
 		end
-	end
-	for _, c in ipairs(head:GetChildren()) do
-		check(c)
-	end
-	head.ChildAdded:Connect(check)
+	end)
+	syncOwnTag()
 end
 
 function ProgressionController.Start()
 	if player.Character then
-		task.spawn(hideOwnTag, player.Character)
+		task.spawn(watchOwnTag, player.Character)
 	end
-	player.CharacterAdded:Connect(hideOwnTag)
+	player.CharacterAdded:Connect(watchOwnTag)
+	player:GetAttributeChangedSignal("InMatch"):Connect(syncOwnTag)
 	local acc = 0
 	RunService.Heartbeat:Connect(function(dt)
 		acc += dt

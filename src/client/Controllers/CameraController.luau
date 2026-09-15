@@ -59,8 +59,11 @@ local function apply()
 			end)
 		end
 	end
-	-- A visible Modal button is Roblox's way of freeing the mouse in first person.
-	local cursorFree = fp and (altHeld or UI.GetOpenMenu() ~= nil or next(freeReasons) ~= nil)
+	-- A visible Modal button is Roblox's way of freeing the mouse in first person. Touch has no
+	-- mouse to free and that full-screen button would swallow the thumbstick, jump and camera
+	-- drags, so on-screen prompts (freeReasons) never raise it there: their buttons are tappable.
+	local prompt = next(freeReasons) ~= nil and not UI.IsTouch()
+	local cursorFree = fp and (altHeld or UI.GetOpenMenu() ~= nil or prompt)
 	modal.Visible = cursorFree
 	crosshair.Visible = fp and not cursorFree
 	hint.Visible = fp and not cursorFree and not UI.IsTouch()
@@ -75,7 +78,7 @@ function CameraController.IsCursorFree(): boolean
 end
 
 -- Frees the mouse in first person while something on screen needs a click (e.g. the exit door's
--- button), without the player holding ALT.
+-- buttons), without the player holding ALT. Touch has nothing to free (see apply).
 function CameraController.SetCursorFree(reason: string, on: boolean)
 	freeReasons[reason] = on or nil
 	if modal then

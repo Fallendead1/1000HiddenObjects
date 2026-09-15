@@ -774,18 +774,33 @@ function UI.Button(props: { [string]: any }?, parent: Instance?): TextButton
 		Size = UDim2.fromOffset(160, UIConfig.MinButtonSize),
 		TextWrapped = true,
 	}
+	-- FitText = n: one line that shrinks to fit the button, never above n (long words on phones).
+	local fitText = props and props.FitText
 	if props then
 		for k, v in pairs(props) do
-			if k ~= "Color" and k ~= "Corner" and k ~= "Shine" then
+			if k ~= "Color" and k ~= "Corner" and k ~= "Shine" and k ~= "FitText" then
 				base[k] = v
 			end
 		end
+	end
+	if fitText then
+		base.TextScaled = true
+		base.TextWrapped = false
 	end
 	base.BackgroundTransparency = 1
 	local button = UI.New("TextButton", base, parent) :: TextButton
 	buildSurface(button, radius, UI.VariantFor(color))
 
 	local label = UI.New("TextLabel", { Name = "Label", BackgroundTransparency = 1, Size = UDim2.new(1, -10, 0.9, 0), Position = UDim2.fromOffset(5, 0), ZIndex = button.ZIndex }, button) :: TextLabel
+	if fitText then
+		-- The cap is in screen pixels, so it follows the HUD scale to stay n design units.
+		local cap = UI.New("UITextSizeConstraint", {}, label) :: UITextSizeConstraint
+		local function rescale()
+			cap.MaxTextSize = math.clamp(math.round(fitText * scale.Scale), 1, 100)
+		end
+		rescale()
+		scale:GetPropertyChangedSignal("Scale"):Connect(rescale)
+	end
 	local outline = UI.Stroke(label, BLACK, 2, 0)
 	local function sync()
 		label.Text = button.Text

@@ -1,6 +1,7 @@
 --[[
 	Lobby HUD and Match HUD. Reads replicated player attributes and MatchState attributes.
-	Lobby: the collection counter (top), square studded menu tiles (right), the resume card.
+	Lobby: square studded menu tiles (right) and the resume card (objects found and Finder Wins
+	are on each player's overhead tag instead: ProgressionService.RefreshTag).
 	Match: Cash + max weight + deposit streak (top left), room / target / ROOM CLEANED % (top
 	centre), UPGRADES / SHOP / HINT / SETTINGS tiles (right), boosts, team, hot/cold, and on
 	touch a big GRAB / THROW button plus a DROP button driven by GrabController.
@@ -12,7 +13,6 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
 local Shared = ReplicatedStorage.Shared
-local GameConfig = require(Shared.Config.GameConfig)
 local FormatUtil = require(Shared.Utility.FormatUtil)
 local Remotes = require(Shared.Utility.Remotes)
 
@@ -43,16 +43,11 @@ local shownCash = 0
 local weightLabel: TextLabel
 local progressBar
 local progressLabel: TextLabel
-local objectsLabel: TextLabel
-local finderLabel: TextLabel
-local counterGroup: Frame
 local resumeFrame: Frame
 local resumeLabel: TextLabel
 local roomTitleLabel: TextLabel
 local roomTargetLabel: TextLabel
 local hotColdPulseThread: thread? = nil
-local counterTop: Frame
-local finderPill: Frame
 local matchTop: Frame
 local topY = 10 -- where the top panels sit (HUD-layer units); see placeTop
 
@@ -97,23 +92,8 @@ end
 local function buildLobbyHUD()
 	lobbyFrame = UI.Frame({ Name = "LobbyHUD", BackgroundTransparency = 1, Visible = false }, UI.Layers.HUD)
 
-	-- The collection counter: the one number that matters, in gold. Grouped so a panel that
-	-- covers the top of the screen (party setup) can tuck it away.
-	counterGroup = UI.Frame({ Name = "Counter", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1) }, lobbyFrame)
-	local top = UI.Panel({ Size = UDim2.fromOffset(300, 78), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 10), BackgroundTransparency = 0.08 }, counterGroup)
-	counterTop = top
-	UI.Stroke(top, UI.Colors.Gold, 2.5)
-	UI.Glow(top, UI.Colors.Gold, 16, 0.8)
-	UI.Label({ Text = "OBJECTS FOUND", TextSize = 13, Font = UI.FontBody, TextColor3 = UI.Colors.TextDim, Size = UDim2.new(1, 0, 0, 18), Position = UDim2.fromOffset(0, 7) }, top)
-	objectsLabel = UI.Label({ Text = "0 / 1000", TextSize = 38, TextWrapped = false, Size = UDim2.new(1, 0, 0, 44), Position = UDim2.fromOffset(0, 26) }, top)
-	UI.TextGradient(objectsLabel, UI.Colors.Gold)
-	finderPill = UI.Surface3D({ Size = UDim2.fromOffset(196, 30), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 94) }, counterGroup, UI.Colors.Gold, 15, 0.14)
-	-- The trophy is the Collection icon (an emoji inside outlined text renders as a smudge).
-	local trophy = UI.Icon(finderPill, "Icon_Collection", "★", { TextSize = 16 })
-	trophy.Size = UDim2.fromOffset(22, 22)
-	trophy.AnchorPoint = Vector2.new(0, 0.5)
-	trophy.Position = UDim2.new(0, 10, 0.43, 0)
-	finderLabel = UI.Label({ Text = "Finder Wins: 0", TextSize = 15, TextWrapped = false, Size = UDim2.new(1, -44, 0.86, 0), Position = UDim2.fromOffset(34, 0) }, finderPill)
+	-- Objects found and Finder Wins ride on every player's overhead tag in the lobby
+	-- (ProgressionService.RefreshTag), where everyone can see them.
 
 	-- Phones: hung from the top so the bottom row clears the jump button.
 	local buttons = tileGrid(lobbyFrame, 3, touch and { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -10, 0, 8) } or { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -10, 0.46, 0) })
@@ -244,19 +224,18 @@ local function buildMatchHUD()
 	hotColdFrame = UI.Panel({ Size = UDim2.fromOffset(230, 50), AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -122), Visible = false, BackgroundTransparency = 0.1 }, matchFrame)
 	hotColdLabel = UI.Label({ Text = "", TextSize = 28, TextWrapped = false }, hotColdFrame)
 
-	-- Touch: one big button above the jump button, clear of the thumbstick.
-	mobileActionButton = UI.Button({ Text = "GRAB", Color = UI.Colors.Green, Size = UDim2.fromOffset(112, 112), AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -20, 1, -140), TextSize = 28, Corner = 56 }, matchFrame)
+	-- Touch: one big button above the jump button, clear of the thumbstick. Its word (GRAB / HEAVY /
+	-- THROW) always fits on one line, a size smaller than the button so it reads at a glance.
+	mobileActionButton = UI.Button({ Text = "GRAB", Color = UI.Colors.Green, Size = UDim2.fromOffset(112, 112), AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -20, 1, -140), FitText = 22, Corner = 56 }, matchFrame)
 	UI.Glow(mobileActionButton, Color3.new(1, 1, 1), 14, 0.6)
 	UI.Pulse(mobileActionButton, 0.04, 4)
 	mobileActionButton.Visible = false
 	-- Touch: smaller DROP button beside it while holding something.
-	mobileDropButton = UI.Button({ Text = "DROP", Color = UI.Colors.Locked, Size = UDim2.fromOffset(74, 74), AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -146, 1, -150), TextSize = 18, Corner = 37 }, matchFrame)
+	mobileDropButton = UI.Button({ Text = "DROP", Color = UI.Colors.Locked, Size = UDim2.fromOffset(74, 74), AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -146, 1, -150), FitText = 15, Corner = 37 }, matchFrame)
 	mobileDropButton.Visible = false
 end
 
 local function refreshLobby()
-	objectsLabel.Text = string.format("%d / %d", attr("ObjectsFound", 0), GameConfig.TotalObjects)
-	finderLabel.Text = string.format("Finder Wins: %d", attr("FinderWins", 0))
 	local cpRoom, cpPercent = attr("CheckpointRoomId", 0), attr("CheckpointPercent", 0)
 	resumeFrame.Visible = cpRoom > 0 and cpPercent > 0
 	if resumeFrame.Visible then
@@ -421,9 +400,8 @@ local function refreshHotCold()
 	end
 end
 
--- The room panel (rooms) and the collection counter (lobby) move up into the middle of the Roblox
--- top bar when it's free there (Roblox keeps its own buttons on the left), so they cover less of
--- the view; otherwise they sit just under it.
+-- The room panel moves up into the middle of the Roblox top bar when it's free there (Roblox keeps
+-- its own buttons on the left), so it covers less of the view; otherwise it sits just under it.
 local TOP_MARGIN = 6
 local function placeTop()
 	local camera = workspace.CurrentCamera
@@ -437,8 +415,6 @@ local function placeTop()
 	end
 	topY = fits and (TOP_MARGIN - UI.SafeTop) or 10
 	matchTop.Position = UDim2.new(0.5, 0, 0, topY)
-	counterTop.Position = UDim2.new(0.5, 0, 0, topY)
-	finderPill.Position = UDim2.new(0.5, 0, 0, topY + 84)
 end
 
 function HUDController.Init()
@@ -456,7 +432,7 @@ function HUDController.Init()
 		workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(replace)
 	end
 	player:GetAttributeChangedSignal("InMatch"):Connect(refreshVisibility)
-	for _, name in ipairs({ "ObjectsFound", "FinderWins", "CheckpointRoomId", "CheckpointPercent" }) do
+	for _, name in ipairs({ "CheckpointRoomId", "CheckpointPercent" }) do
 		player:GetAttributeChangedSignal(name):Connect(function()
 			if lobbyFrame.Visible then
 				refreshLobby()
@@ -568,20 +544,14 @@ function HUDController.GetLobbyFrame(): Frame
 	return lobbyFrame
 end
 
--- Party setup covers the top of the screen; the lobby counter steps aside meanwhile.
-function HUDController.SetCounterVisible(visible: boolean)
-	if counterGroup then
-		counterGroup.Visible = visible
-	end
-end
-
 -- Where the free space under the top panel starts (HUD-layer units): the clue banner and the
--- tutorial line stack from here.
+-- tutorial line stack from here. The lobby has no top panel; starting under the level badge
+-- (12 + 50, ProgressionController) keeps the line clear of it on narrow phones.
 function HUDController.TopClear(): number
 	if matchFrame and matchFrame.Visible then
 		return topY + 104
 	end
-	return topY + 84 + 30 -- the counter and its Finder Wins pill
+	return 12 + 50
 end
 
 return HUDController

@@ -4,6 +4,8 @@
 	  CleanerLevel, CleanerXP (into the level), CleanerXPNext, CleanerTitle,
 	  DailyChallenges (JSON list), DailyResetAt (server time), Stars_<roomId> (bitmask).
 	FX events to the player: XP, LevelUp, ChallengeDone.
+	Also the overhead PlayerTag: the level line for everyone, plus a stats pill (objects found,
+	Finder Wins) while the player is in the lobby.
 ]]
 
 local HttpService = game:GetService("HttpService")
@@ -11,6 +13,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage.Shared
+local GameConfig = require(Shared.Config.GameConfig)
 local ProgressionConfig = require(Shared.Config.ProgressionConfig)
 local Remotes = require(Shared.Utility.Remotes)
 local RateLimiter = require(Shared.Utility.RateLimiter)
@@ -62,9 +65,119 @@ local function loginStatus(data): (number, boolean, number)
 	return (streak - 1) % count + 1, true, streak
 end
 
+-- ===== Overhead tag =====
+-- Everyone sees "LV 12 · SOCK HUNTER" (gold with a VIP prefix for VIP pass owners) and, in the lobby
+-- only, a small pill to flex with: the key + objects found and the trophy + Finder Wins. The tag
+-- grows upward from its bottom edge, so the pill sits just over the head with the level line on top.
+local TAG_WIDTH = 200
+local LEVEL_HEIGHT = 26
+local STATS_HEIGHT = 22
+local STATS_TEXT = 15
+
+local function uiImage(key: string): string?
+	local assets = ReplicatedStorage:FindFirstChild("GameAssets")
+	local images = assets and assets:FindFirstChild("UIImages")
+	local id = images and images:GetAttribute(key)
+	return if type(id) == "string" and id ~= "" then id else nil
+end
+
+-- One stat in the pill: its icon (when the art exists) and its number.
+local function addStat(parent: Frame, name: string, iconKey: string, color: Color3, order: number)
+	local id = uiImage(iconKey)
+	if id then
+		local icon = Instance.new("ImageLabel")
+		icon.Name = name .. "Icon"
+		icon.BackgroundTransparency = 1
+		icon.Size = UDim2.fromOffset(16, 16)
+		icon.Image = id
+		icon.LayoutOrder = order
+		icon.Parent = parent
+	end
+	local label = Instance.new("TextLabel")
+	label.Name = name
+	label.BackgroundTransparency = 1
+	label.AutomaticSize = Enum.AutomaticSize.X
+	label.Size = UDim2.fromOffset(0, STATS_HEIGHT)
+	label.Font = Enum.Font.GothamBlack
+	label.TextSize = STATS_TEXT
+	label.TextColor3 = color
+	label.LayoutOrder = order + 1
+	label:SetAttribute("Icon", id ~= nil)
+	-- Roblox's Text Size setting would push the numbers out of the pill.
+	local cap = Instance.new("UITextSizeConstraint")
+	cap.MaxTextSize = STATS_TEXT
+	cap.Parent = label
+	local outline = Instance.new("UIStroke")
+	outline.Color = Color3.new(0, 0, 0)
+	outline.Thickness = 1.5
+	outline.Parent = label
+	label.Parent = parent
+end
+
+local function buildTag(head: BasePart): BillboardGui
+	local tag = Instance.new("BillboardGui")
+	tag.Name = "PlayerTag"
+	tag.Size = UDim2.fromOffset(TAG_WIDTH, LEVEL_HEIGHT)
+	tag.StudsOffset = Vector3.new(0, 2.1, 0)
+	tag.SizeOffset = Vector2.new(0, 0.5) -- anchored by its bottom edge
+	tag.MaxDistance = 80
+	tag.LightInfluence = 0
+
+	local label = Instance.new("TextLabel")
+	label.Name = "Text"
+	label.BackgroundTransparency = 1
+	label.Size = UDim2.new(1, 0, 0, LEVEL_HEIGHT)
+	label.Font = Enum.Font.GothamBlack
+	label.TextScaled = true
+	label.TextColor3 = Color3.new(1, 1, 1)
+	local outline = Instance.new("UIStroke")
+	outline.Color = Color3.new(0, 0, 0)
+	outline.Thickness = 2
+	outline.Parent = label
+	local gradient = Instance.new("UIGradient")
+	gradient.Name = "Gradient"
+	gradient.Rotation = 90
+	gradient.Parent = label
+	label.Parent = tag
+
+	local stats = Instance.new("Frame")
+	stats.Name = "Stats"
+	stats.AnchorPoint = Vector2.new(0.5, 1)
+	stats.Position = UDim2.fromScale(0.5, 1)
+	stats.AutomaticSize = Enum.AutomaticSize.X
+	stats.Size = UDim2.fromOffset(0, STATS_HEIGHT)
+	stats.BackgroundColor3 = Color3.new(0, 0, 0)
+	stats.BackgroundTransparency = 0.4
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(1, 0)
+	corner.Parent = stats
+	local padding = Instance.new("UIPadding")
+	padding.PaddingLeft = UDim.new(0, 8)
+	padding.PaddingRight = UDim.new(0, 8)
+	padding.Parent = stats
+	local list = Instance.new("UIListLayout")
+	list.FillDirection = Enum.FillDirection.Horizontal
+	list.VerticalAlignment = Enum.VerticalAlignment.Center
+	list.SortOrder = Enum.SortOrder.LayoutOrder
+	list.Padding = UDim.new(0, 4)
+	list.Parent = stats
+	addStat(stats, "Found", "Icon_Key", Color3.fromRGB(255, 214, 70), 1)
+	local gap = Instance.new("Frame")
+	gap.Name = "Gap"
+	gap.BackgroundTransparency = 1
+	gap.Size = UDim2.fromOffset(6, 1)
+	gap.LayoutOrder = 3
+	gap.Parent = stats
+	addStat(stats, "Wins", "Icon_Collection", Color3.new(1, 1, 1), 4)
+	stats.Parent = tag
+
+	tag.Parent = head
+	return tag
+end
+
 function ProgressionService.RefreshTag(player: Player)
 	local head = player.Character and player.Character:FindFirstChild("Head")
-	if not head then
+	if not (head and head:IsA("BasePart")) then
 		return
 	end
 	local old = head:FindFirstChild("VIPTag")
@@ -72,34 +185,14 @@ function ProgressionService.RefreshTag(player: Player)
 		old:Destroy()
 	end
 	local tag = head:FindFirstChild("PlayerTag")
-	local label: TextLabel
-	if not tag then
-		tag = Instance.new("BillboardGui")
-		tag.Name = "PlayerTag"
-		tag.Size = UDim2.fromOffset(220, 30)
-		tag.StudsOffset = Vector3.new(0, 2.6, 0)
-		tag.MaxDistance = 80
-		tag.LightInfluence = 0
-		label = Instance.new("TextLabel")
-		label.Name = "Text"
-		label.BackgroundTransparency = 1
-		label.Size = UDim2.fromScale(1, 1)
-		label.Font = Enum.Font.GothamBlack
-		label.TextScaled = true
-		label.TextColor3 = Color3.new(1, 1, 1)
-		local outline = Instance.new("UIStroke")
-		outline.Color = Color3.new(0, 0, 0)
-		outline.Thickness = 2
-		outline.Parent = label
-		local gradient = Instance.new("UIGradient")
-		gradient.Name = "Gradient"
-		gradient.Rotation = 90
-		gradient.Parent = label
-		label.Parent = tag
-		tag.Parent = head
-	else
-		label = tag:FindFirstChild("Text") :: TextLabel
+	if tag and not tag:FindFirstChild("Stats") then
+		tag:Destroy() -- an older tag without the stats pill
+		tag = nil
 	end
+	if not tag then
+		tag = buildTag(head)
+	end
+	local label = tag:FindFirstChild("Text") :: TextLabel
 	local level = player:GetAttribute("CleanerLevel") or 1
 	local vip = Services.MonetizationService.OwnsPass(player, "VIP")
 	label.Text = string.format("%sLV %d · %s", vip and "VIP · " or "", level, string.upper(player:GetAttribute("CleanerTitle") or ProgressionConfig.TitleFor(level)))
@@ -109,6 +202,15 @@ function ProgressionService.RefreshTag(player: Player)
 		gradient.Color = vip and ColorSequence.new(Color3.fromRGB(255, 236, 110), Color3.fromRGB(255, 160, 0))
 			or ColorSequence.new(Color3.fromRGB(255, 255, 255), Color3.fromRGB(185, 225, 255))
 	end
+	-- The stats pill is for the lobby; in a room the tag is just the level line.
+	local lobby = player:GetAttribute("InMatch") ~= true
+	local stats = tag:FindFirstChild("Stats") :: Frame
+	stats.Visible = lobby
+	;(tag :: BillboardGui).Size = UDim2.fromOffset(TAG_WIDTH, if lobby then LEVEL_HEIGHT + 2 + STATS_HEIGHT else LEVEL_HEIGHT)
+	local found = stats:FindFirstChild("Found") :: TextLabel
+	local wins = stats:FindFirstChild("Wins") :: TextLabel
+	found.Text = string.format("%d/%d%s", player:GetAttribute("ObjectsFound") or 0, GameConfig.TotalObjects, if found:GetAttribute("Icon") then "" else " FOUND")
+	wins.Text = string.format("%d%s", player:GetAttribute("FinderWins") or 0, if wins:GetAttribute("Icon") then "" else " WINS")
 end
 
 function ProgressionService.Publish(player: Player)
@@ -311,6 +413,12 @@ function ProgressionService.Init()
 	end)
 
 	local function onPlayer(player: Player)
+		-- The overhead tag follows the collection, Finder Wins and moves between lobby and room.
+		for _, name in ipairs({ "ObjectsFound", "FinderWins", "InMatch" }) do
+			player:GetAttributeChangedSignal(name):Connect(function()
+				ProgressionService.RefreshTag(player)
+			end)
+		end
 		task.spawn(function()
 			if Services.DataService.WaitFor(player, 15) then
 				ProgressionService.Publish(player)
