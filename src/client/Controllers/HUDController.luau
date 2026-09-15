@@ -6,6 +6,7 @@
 	touch a big GRAB / THROW button plus a DROP button driven by GrabController.
 ]]
 
+local GuiService = game:GetService("GuiService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -50,6 +51,10 @@ local resumeLabel: TextLabel
 local roomTitleLabel: TextLabel
 local roomTargetLabel: TextLabel
 local hotColdPulseThread: thread? = nil
+local counterTop: Frame
+local finderPill: Frame
+local matchTop: Frame
+local topY = 10 -- where the top panels sit (HUD-layer units); see placeTop
 
 HUDController.Buttons = {}
 
@@ -96,12 +101,13 @@ local function buildLobbyHUD()
 	-- covers the top of the screen (party setup) can tuck it away.
 	counterGroup = UI.Frame({ Name = "Counter", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1) }, lobbyFrame)
 	local top = UI.Panel({ Size = UDim2.fromOffset(300, 78), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 10), BackgroundTransparency = 0.08 }, counterGroup)
+	counterTop = top
 	UI.Stroke(top, UI.Colors.Gold, 2.5)
 	UI.Glow(top, UI.Colors.Gold, 16, 0.8)
 	UI.Label({ Text = "OBJECTS FOUND", TextSize = 13, Font = UI.FontBody, TextColor3 = UI.Colors.TextDim, Size = UDim2.new(1, 0, 0, 18), Position = UDim2.fromOffset(0, 7) }, top)
 	objectsLabel = UI.Label({ Text = "0 / 1000", TextSize = 38, TextWrapped = false, Size = UDim2.new(1, 0, 0, 44), Position = UDim2.fromOffset(0, 26) }, top)
 	UI.TextGradient(objectsLabel, UI.Colors.Gold)
-	local finderPill = UI.Surface3D({ Size = UDim2.fromOffset(196, 30), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 94) }, counterGroup, UI.Colors.Gold, 15, 0.14)
+	finderPill = UI.Surface3D({ Size = UDim2.fromOffset(196, 30), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 94) }, counterGroup, UI.Colors.Gold, 15, 0.14)
 	-- The trophy is the Collection icon (an emoji inside outlined text renders as a smudge).
 	local trophy = UI.Icon(finderPill, "Icon_Collection", "★", { TextSize = 16 })
 	trophy.Size = UDim2.fromOffset(22, 22)
@@ -161,6 +167,7 @@ local function buildMatchHUD()
 
 	-- Room, what to find, how much is cleaned, time.
 	local top = UI.Panel({ Size = UDim2.fromOffset(440, 104), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 10), BackgroundTransparency = 0.08 }, matchFrame)
+	matchTop = top
 	UI.Stroke(top, UI.Colors.Gold, 2.5)
 	UI.Glow(top, UI.Colors.Gold, 18, 0.8)
 	roomTitleLabel = UI.Label({ Text = "ROOM #001", TextSize = 20, TextWrapped = false, Size = UDim2.new(1, 0, 0, 24), Position = UDim2.fromOffset(0, 6) }, top)
@@ -170,7 +177,8 @@ local function buildMatchHUD()
 	progressLabel = UI.Label({ Text = "ROOM CLEANED: 0%", TextSize = 14, TextWrapped = false, Size = UDim2.new(1, 0, 1, 0), ZIndex = 3 }, progressBar.Frame)
 	timerLabel = UI.Label({ Text = "00:00", TextSize = 14, Font = UI.FontBody, TextColor3 = UI.Colors.TextDim, Size = UDim2.new(1, 0, 0, 18), Position = UDim2.fromOffset(0, 83) }, top)
 
-	-- Cash (money is lime everywhere) and how heavy you can lift.
+	-- Cash (money is lime everywhere) and how heavy you can lift. ProgressionController's slim
+	-- level strip sits right under it (y 98-122), so the left column below starts at 128.
 	local left = UI.Panel({ Size = UDim2.fromOffset(236, 84), Position = UDim2.fromOffset(12, 10), BackgroundTransparency = 0.08 }, matchFrame)
 	cashGlow = UI.Glow(left, UI.Colors.Cash, 16, 0.9)
 	local cashBadge = UI.Surface3D({ Size = UDim2.fromOffset(40, 40), Position = UDim2.fromOffset(10, 8) }, left, UI.Colors.Green, 20, 0.12)
@@ -187,12 +195,12 @@ local function buildMatchHUD()
 	-- Touch: the right side belongs to the GRAB button, so the streak, boosts, challenge tracker
 	-- and team stack down the left under the cash panel (empty ones take no room).
 	if touch then
-		sideStack = UI.Frame({ Name = "SideStack", BackgroundTransparency = 1, Size = UDim2.new(0, 250, 1, -112), Position = UDim2.fromOffset(12, 100) }, matchFrame)
+		sideStack = UI.Frame({ Name = "SideStack", BackgroundTransparency = 1, Size = UDim2.new(0, 250, 1, -140), Position = UDim2.fromOffset(12, 128) }, matchFrame)
 		UI.ListLayout(sideStack :: Frame, Enum.FillDirection.Vertical, 6, Enum.HorizontalAlignment.Left)
 	end
 
 	-- Deposit streak: shows while deposits keep coming within the streak window.
-	streakFrame = UI.Panel({ Size = UDim2.fromOffset(236, 32), Position = UDim2.fromOffset(12, 100), BackgroundTransparency = 0.08, Visible = false, LayoutOrder = 1 }, sideStack or matchFrame)
+	streakFrame = UI.Panel({ Size = UDim2.fromOffset(236, 32), Position = UDim2.fromOffset(12, 128), BackgroundTransparency = 0.08, Visible = false, LayoutOrder = 1 }, sideStack or matchFrame)
 	UI.Stroke(streakFrame, UI.Colors.Orange, 2.5)
 	local streakIcon = UI.Frame({ Size = UDim2.fromOffset(22, 22), Position = UDim2.fromOffset(6, 5), BackgroundTransparency = 1 }, streakFrame)
 	UI.Icon(streakIcon, "Icon_Streak", "", {})
@@ -228,7 +236,7 @@ local function buildMatchHUD()
 	else
 		boostsFrame = UI.Frame({ BackgroundTransparency = 1, Size = UDim2.fromOffset(190, 84), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -12, 0, 18 + gridHeight) }, matchFrame)
 		UI.ListLayout(boostsFrame, Enum.FillDirection.Vertical, 5, Enum.HorizontalAlignment.Right)
-		teamFrame = UI.Frame({ BackgroundTransparency = 1, Size = UDim2.fromOffset(236, 120), Position = UDim2.fromOffset(12, 140) }, matchFrame)
+		teamFrame = UI.Frame({ BackgroundTransparency = 1, Size = UDim2.fromOffset(236, 120), Position = UDim2.fromOffset(12, 168) }, matchFrame)
 	end
 	UI.ListLayout(teamFrame, Enum.FillDirection.Vertical, 4, Enum.HorizontalAlignment.Left)
 
@@ -397,9 +405,40 @@ local function refreshHotCold()
 	end
 end
 
+-- The room panel (rooms) and the collection counter (lobby) move up into the middle of the Roblox
+-- top bar when it's free there (Roblox keeps its own buttons on the left), so they cover less of
+-- the view; otherwise they sit just under it.
+local TOP_MARGIN = 6
+local function placeTop()
+	local camera = workspace.CurrentCamera
+	local ok, inset = pcall(function()
+		return GuiService.TopbarInset
+	end)
+	local fits = false
+	if ok and camera and inset.Height > 0 then
+		local centre, half = camera.ViewportSize.X / 2, 440 * UI.Scale / 2 + 8
+		fits = centre - half >= inset.Min.X and centre + half <= inset.Max.X
+	end
+	topY = fits and (TOP_MARGIN - UI.SafeTop) or 10
+	matchTop.Position = UDim2.new(0.5, 0, 0, topY)
+	counterTop.Position = UDim2.new(0.5, 0, 0, topY)
+	finderPill.Position = UDim2.new(0.5, 0, 0, topY + 84)
+end
+
 function HUDController.Init()
 	buildLobbyHUD()
 	buildMatchHUD()
+	placeTop()
+	local function replace()
+		task.defer(placeTop)
+	end
+	UI.ScaleObject:GetPropertyChangedSignal("Scale"):Connect(replace)
+	pcall(function()
+		GuiService:GetPropertyChangedSignal("TopbarInset"):Connect(replace)
+	end)
+	if workspace.CurrentCamera then
+		workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(replace)
+	end
 	player:GetAttributeChangedSignal("InMatch"):Connect(refreshVisibility)
 	for _, name in ipairs({ "ObjectsFound", "FinderWins", "CheckpointRoomId", "CheckpointPercent" }) do
 		player:GetAttributeChangedSignal(name):Connect(function()
@@ -504,6 +543,15 @@ function HUDController.SetCounterVisible(visible: boolean)
 	if counterGroup then
 		counterGroup.Visible = visible
 	end
+end
+
+-- Where the free space under the top panel starts (HUD-layer units): the clue banner and the
+-- tutorial line stack from here.
+function HUDController.TopClear(): number
+	if matchFrame and matchFrame.Visible then
+		return topY + 104
+	end
+	return topY + 84 + 30 -- the counter and its Finder Wins pill
 end
 
 return HUDController

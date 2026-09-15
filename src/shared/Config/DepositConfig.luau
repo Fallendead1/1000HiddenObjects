@@ -10,6 +10,7 @@
 export type BinType = {
 	Type: string,
 	Name: string,
+	Short: string, -- the one word on the sign over the bin
 	PropKey: string,
 	Color: Color3,
 	Categories: { string },
@@ -20,11 +21,11 @@ export type BinType = {
 local C = Color3.fromRGB
 
 local Types: { [string]: BinType } = {
-	Laundry = { Type = "Laundry", Name = "LAUNDRY BASKET", PropKey = "Bin_Laundry", Color = C(90, 160, 255), Categories = { "Clothes", "Shoes", "Bedding", "Bag" }, IconKey = "Bin_Laundry" },
-	Toys = { Type = "Toys", Name = "TOY BIN", PropKey = "Bin_Toys", Color = C(255, 120, 200), Categories = { "Toy" }, IconKey = "Bin_Toys" },
-	Books = { Type = "Books", Name = "BOOK CART", PropKey = "Bin_Books", Color = C(255, 180, 60), Categories = { "Book", "Paper", "School" }, IconKey = "Bin_Books" },
-	Trash = { Type = "Trash", Name = "TRASH CAN", PropKey = "Bin_Trash", Color = C(110, 210, 120), Categories = { "Junk", "Electronics" }, IconKey = "Bin_Trash" },
-	Donation = { Type = "Donation", Name = "DONATION BOX", PropKey = "Bin_Donation", Color = C(200, 150, 100), Categories = { "Box", "Container" }, HeavyWeight = 4, IconKey = "Bin_Donation" },
+	Laundry = { Type = "Laundry", Name = "LAUNDRY BASKET", Short = "LAUNDRY", PropKey = "Bin_Laundry", Color = C(90, 160, 255), Categories = { "Clothes", "Shoes", "Bedding", "Bag" }, IconKey = "Bin_Laundry" },
+	Toys = { Type = "Toys", Name = "TOY BIN", Short = "TOYS", PropKey = "Bin_Toys", Color = C(255, 120, 200), Categories = { "Toy" }, IconKey = "Bin_Toys" },
+	Books = { Type = "Books", Name = "BOOK CART", Short = "BOOKS", PropKey = "Bin_Books", Color = C(255, 180, 60), Categories = { "Book", "Paper", "School" }, IconKey = "Bin_Books" },
+	Trash = { Type = "Trash", Name = "TRASH CAN", Short = "TRASH", PropKey = "Bin_Trash", Color = C(110, 210, 120), Categories = { "Junk", "Electronics" }, IconKey = "Bin_Trash" },
+	Donation = { Type = "Donation", Name = "DONATION BOX", Short = "DONATE", PropKey = "Bin_Donation", Color = C(200, 150, 100), Categories = { "Box", "Container" }, HeavyWeight = 4, IconKey = "Bin_Donation" },
 }
 
 local DepositConfig = {

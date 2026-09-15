@@ -79,6 +79,29 @@ local function makeBadge(parent: Instance, anchor: Vector2, position: UDim2)
 	return badge
 end
 
+-- In rooms the level is a slim strip tucked under the Cash panel (HUDController leaves room for
+-- it): just the level and the XP bar, out of the middle of the screen.
+local function makeStrip(parent: Instance, position: UDim2)
+	local frame = UI.Panel({ Size = UDim2.fromOffset(236, 24), Position = position, BackgroundTransparency = 0.12 }, parent)
+	UI.Stroke(frame, UI.Colors.Cyan, 2)
+	local level = UI.Label({ Text = "LV 1", TextSize = 14, TextWrapped = false, Size = UDim2.new(0, 56, 1, 0), Position = UDim2.fromOffset(8, 0), TextXAlignment = Enum.TextXAlignment.Left }, frame)
+	UI.TextGradient(level, UI.Colors.Cyan)
+	local bar = UI.ProgressBar(frame, UDim2.new(1, -74, 0, 10), UDim2.new(0, 66, 0.5, -5), UI.Colors.Cyan)
+	local hit = UI.New("TextButton", { Text = "", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 6 }, frame) :: TextButton
+	hit.Activated:Connect(function()
+		ProgressionController.OpenChallenges()
+	end)
+
+	local badge = { Frame = frame }
+	function badge.Update()
+		local into, need = player:GetAttribute("CleanerXP") or 0, player:GetAttribute("CleanerXPNext") or 0
+		level.Text = "LV " .. tostring(player:GetAttribute("CleanerLevel") or 1)
+		bar.Set(need > 0 and into / need or 1, true)
+	end
+	table.insert(badges, badge)
+	return badge
+end
+
 local function updateBadges()
 	for _, b in ipairs(badges) do
 		b.Update()
@@ -199,7 +222,7 @@ end
 
 function ProgressionController.Init()
 	makeBadge(Controllers.HUDController.GetLobbyFrame(), Vector2.new(0, 0), UDim2.fromOffset(12, 12))
-	makeBadge(Controllers.HUDController.GetMatchFrame(), Vector2.new(0.5, 0), UDim2.new(0.5, 0, 0, 122))
+	makeStrip(Controllers.HUDController.GetMatchFrame(), UDim2.fromOffset(12, 98))
 
 	menu = UI.Menu("Challenges", "DAILY CHALLENGES", UDim2.fromOffset(560, 440), UI.Colors.Cyan)
 	menuHeader = UI.Label({ Text = "", TextSize = 17, TextColor3 = UI.Colors.Cyan, Size = UDim2.new(1, 0, 0, 24) }, menu.Content)

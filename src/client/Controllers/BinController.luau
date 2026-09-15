@@ -1,7 +1,9 @@
 --[[
 	Room props on the client:
-	  - a floating label over every deposit bin (icon, name, what it pays double for); the bin
-	    that matches what you're holding glows gold with "x2"
+	  - a big sign on a post over every deposit bin: its colour, icon and one word (TOYS,
+	    BOOKS...), plus a white outline around the bin so it stands out from the junk. While you
+	    hold something, the bin it belongs in lights up gold and grows (a gold "x2" arrow floats
+	    over it, seen from anywhere) and the other signs dim
 	  - treasures sparkle once they're uncovered (nothing lying on top of them)
 ]]
 
@@ -18,53 +20,125 @@ local player = Players.LocalPlayer
 
 local BinController = {}
 
-type Label = { Gui: BillboardGui, Stroke: UIStroke, Bonus: TextLabel, Type: string, Scale: UIScale }
-local labels: { [Instance]: Label } = {}
+local BLACK = Color3.new(0, 0, 0)
+local WHITE = Color3.new(1, 1, 1)
+
+-- The sign is a board in the world, not a screen label: it stays over its bin and shrinks with
+-- distance like real signage instead of piling up on screen. It faces into the room, stands at
+-- the bin's back edge (clear of the opening) and sits high enough to show over the junk.
+local SIGN_SIZE = Vector2.new(7.2, 2.8) -- studs (the closest bins are 8.5 studs apart)
+local SIGN_CANVAS = Vector2.new(280, 110) -- pixels drawn onto it
+local SIGN_LIFT = 4.2 -- sign centre above the bin's rim
+local SIGN_BACK = 1.8 -- from the bin's centre toward the wall
+local SIGN_GROW = 1.15 -- the bin you need gets this much bigger
+
+type Face = { Dim: Frame, Stroke: UIStroke }
+type Bin = { Type: string, Sign: BasePart, Faces: { Face }, Outline: Highlight? }
+local bins: { [Instance]: Bin } = {}
 local heldMatch: string? = nil
 local sparkles: { [Instance]: Attachment } = {}
 
 local rayParams = RaycastParams.new()
 rayParams.FilterType = Enum.RaycastFilterType.Exclude
 
-local function categoryText(def): string
-	local names = {}
-	for _, c in ipairs(def.Categories) do
-		table.insert(names, string.upper(c))
+-- One side of the sign: colour panel, white icon disc, the bin's one word, and a dark tint
+-- that dims it while you hold something that belongs in another bin.
+local function signFace(board: BasePart, face: Enum.NormalId, def): Face
+	local gui = UI.New("SurfaceGui", {
+		Name = "BinSign" .. face.Name,
+		Face = face,
+		SizingMode = Enum.SurfaceGuiSizingMode.FixedSize,
+		CanvasSize = SIGN_CANVAS,
+		LightInfluence = 0,
+		MaxDistance = 250,
+		ResetOnSpawn = false,
+	}, board)
+	local panel = UI.Frame({ Size = UDim2.new(1, -10, 1, -10), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), BackgroundColor3 = WHITE }, gui)
+	UI.Corner(panel, 20)
+	UI.Gradient(panel, def.Color:Lerp(WHITE, 0.2), def.Color:Lerp(BLACK, 0.2))
+	local stroke = UI.Stroke(panel, BLACK, 5)
+	local disc = UI.Frame({ Size = UDim2.fromOffset(76, 76), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 12, 0.5, 0), BackgroundColor3 = WHITE }, panel)
+	UI.Corner(disc, 38)
+	UI.Stroke(disc, BLACK, 3)
+	local icon = UI.Icon(disc, def.IconKey, string.sub(def.Short, 1, 1), { TextSize = 38, TextColor3 = def.Color })
+	icon.Size = UDim2.fromScale(0.72, 0.72)
+	icon.AnchorPoint = Vector2.new(0.5, 0.5)
+	icon.Position = UDim2.fromScale(0.5, 0.5)
+	local word = UI.Label({ Text = def.Short, TextScaled = true, TextWrapped = false, Size = UDim2.new(1, -110, 0.6, 0), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 98, 0.5, 0), TextXAlignment = Enum.TextXAlignment.Left }, panel)
+	local edge = word:FindFirstChildOfClass("UIStroke")
+	if edge then
+		edge.Thickness = 4
 	end
-	if def.HeavyWeight then
-		table.insert(names, "HEAVY STUFF")
-	end
-	return table.concat(names, " / ") .. "  x2"
+	local dim = UI.Frame({ Size = panel.Size, AnchorPoint = panel.AnchorPoint, Position = panel.Position, BackgroundColor3 = BLACK, BackgroundTransparency = 1, ZIndex = 5 }, gui)
+	UI.Corner(dim, 20)
+	return { Dim = dim, Stroke = stroke }
 end
 
-local function addLabel(mouth: Instance)
-	if labels[mouth] or not mouth:IsA("BasePart") then
-		return
+local function makeSign(mouth: BasePart, def): BasePart
+	local room = mouth:FindFirstAncestorOfClass("Model")
+	local centre = room and room:GetPivot().Position or mouth.Position
+	local toCentre = Vector3.new(centre.X - mouth.Position.X, 0, centre.Z - mouth.Position.Z)
+	-- Square to the nearest wall so the signs line up with the room.
+	local facing = if math.abs(toCentre.X) > math.abs(toCentre.Z) then Vector3.new(math.sign(toCentre.X), 0, 0) else Vector3.new(0, 0, math.sign(toCentre.Z))
+	if facing.Magnitude < 0.5 then
+		facing = Vector3.new(0, 0, -1)
 	end
-	local def = DepositConfig.Types[mouth:GetAttribute("BinType") or ""]
-	if not def then
-		return
-	end
-	local gui = UI.Billboard(mouth, UDim2.fromOffset(214, 66), Vector3.new(0, mouth.Size.Y / 2 + 1.8, 0), 90)
-	gui.Name = "BinLabel"
-	local panel = UI.Panel({ Size = UDim2.fromScale(1, 1), BackgroundTransparency = 0.12 }, gui)
-	local stroke = UI.Stroke(panel, def.Color, 2.5)
-	local scale = UI.New("UIScale", {}, panel) :: UIScale
-	local badge = UI.Surface3D({ Size = UDim2.fromOffset(50, 50), Position = UDim2.fromOffset(7, 7) }, panel, def.Color, 25, 0.12)
-	local icon = UI.Icon(badge, def.IconKey, string.sub(def.Name, 1, 1), { TextSize = 24 })
-	icon.Size = UDim2.fromScale(0.74, 0.66)
-	icon.AnchorPoint = Vector2.new(0.5, 0.5)
-	icon.Position = UDim2.fromScale(0.5, 0.45)
-	local title = UI.Label({ Text = def.Name, TextSize = 16, Size = UDim2.new(1, -70, 0, 24), Position = UDim2.fromOffset(64, 8), TextXAlignment = Enum.TextXAlignment.Left, TextWrapped = false }, panel)
-	UI.TextGradient(title, def.Color)
-	local bonus = UI.Label({ Text = categoryText(def), TextSize = 11, Font = UI.FontBody, TextColor3 = UI.Colors.TextDim, Size = UDim2.new(1, -70, 0, 26), Position = UDim2.fromOffset(64, 33), TextXAlignment = Enum.TextXAlignment.Left }, panel)
-	labels[mouth] = { Gui = gui, Stroke = stroke, Bonus = bonus, Type = def.Type, Scale = scale }
-	mouth.AncestryChanged:Connect(function()
-		if not mouth:IsDescendantOf(workspace) and labels[mouth] then
-			labels[mouth].Gui:Destroy()
-			labels[mouth] = nil
+	local rim = mouth.Position.Y + mouth.Size.Y / 2
+	local base = mouth.Position - facing * SIGN_BACK
+	local at = Vector3.new(base.X, rim + SIGN_LIFT, base.Z)
+	local board = Instance.new("Part")
+	board.Name = "BinSign"
+	board.Anchored = true
+	board.CanCollide = false
+	board.CanQuery = false
+	board.CanTouch = false
+	board.CastShadow = false
+	board.Transparency = 1
+	board.Size = Vector3.new(SIGN_SIZE.X, SIGN_SIZE.Y, 0.1)
+	board.CFrame = CFrame.lookAt(at, at + facing)
+	-- The post from the bin's back edge up to the sign, so it reads as that bin's sign.
+	local postHeight = SIGN_LIFT - SIGN_SIZE.Y / 2
+	local post = Instance.new("Part")
+	post.Name = "BinSignPost"
+	post.Anchored = true
+	post.CanCollide = false
+	post.CanQuery = false
+	post.CanTouch = false
+	post.CastShadow = false
+	post.Material = Enum.Material.SmoothPlastic
+	post.Color = def.Color:Lerp(BLACK, 0.35)
+	post.Size = Vector3.new(0.35, postHeight, 0.35)
+	post.CFrame = CFrame.new(base.X, rim + postHeight / 2, base.Z)
+	post.Parent = board
+	board.Parent = mouth -- client-only, and it goes away with the room
+	return board
+end
+
+-- The bin's own model (Room.Props.<PropKey> standing on its mouth), outlined in white.
+local function outlineFor(mouth: BasePart, board: BasePart, def): Highlight?
+	local room = mouth:FindFirstAncestorOfClass("Model")
+	local props = room and room:FindFirstChild("Props")
+	local best, bestDistance = nil, 6
+	for _, prop in ipairs(props and props:GetChildren() or {}) do
+		if prop.Name == def.PropKey and prop:IsA("Model") then
+			local d = ((prop:GetPivot().Position - mouth.Position) * Vector3.new(1, 0, 1)).Magnitude
+			if d < bestDistance then
+				best, bestDistance = prop, d
+			end
 		end
-	end)
+	end
+	if not best then
+		return nil
+	end
+	return UI.New("Highlight", {
+		Name = "BinOutline",
+		Adornee = best,
+		FillColor = UI.Colors.Gold,
+		FillTransparency = 1,
+		OutlineColor = WHITE,
+		OutlineTransparency = 0,
+		DepthMode = Enum.HighlightDepthMode.Occluded,
+	}, board) :: Highlight
 end
 
 local guide: BillboardGui? = nil
@@ -94,8 +168,8 @@ end
 local function refreshGuide()
 	local target: BasePart? = nil
 	if heldMatch then
-		for mouth, label in pairs(labels) do
-			if label.Type == heldMatch and mouth.Parent then
+		for mouth, bin in pairs(bins) do
+			if bin.Type == heldMatch and mouth.Parent then
 				target = mouth :: BasePart
 				break
 			end
@@ -110,19 +184,62 @@ local function refreshGuide()
 	local g = guide or makeGuide()
 	guide = g
 	g.Adornee = target
-	guideHeight = target.Size.Y / 2 + 5.4
+	-- Just above the (grown) sign.
+	guideHeight = target.Size.Y / 2 + SIGN_LIFT + SIGN_SIZE.Y * SIGN_GROW / 2 + 1.7
 	g.Enabled = true
 end
 
 local function refreshHighlight()
-	for _, label in pairs(labels) do
-		local lit = heldMatch == label.Type
-		label.Stroke.Color = lit and UI.Colors.Gold or (DepositConfig.Types[label.Type] and DepositConfig.Types[label.Type].Color or UI.Colors.Stroke)
-		label.Stroke.Thickness = lit and 4 or 2
-		label.Bonus.TextColor3 = lit and UI.Colors.Gold or UI.Colors.TextDim
-		UI.Tween(label.Scale, { Scale = lit and 1.15 or 1 }, 0.15)
+	for _, bin in pairs(bins) do
+		local lit = heldMatch == bin.Type
+		local faded = heldMatch ~= nil and not lit
+		for _, f in ipairs(bin.Faces) do
+			f.Stroke.Color = lit and UI.Colors.Gold or BLACK
+			f.Stroke.Thickness = lit and 9 or 5
+			UI.Tween(f.Dim, { BackgroundTransparency = faded and 0.45 or 1 }, 0.2)
+		end
+		local grow = lit and SIGN_GROW or 1
+		UI.Tween(bin.Sign, { Size = Vector3.new(SIGN_SIZE.X * grow, SIGN_SIZE.Y * grow, 0.1) }, 0.18, Enum.EasingStyle.Back)
+		if bin.Outline then
+			bin.Outline.OutlineColor = lit and UI.Colors.Gold or WHITE
+			bin.Outline.FillTransparency = lit and 0.7 or 1
+			bin.Outline.OutlineTransparency = faded and 0.8 or 0
+		end
 	end
 	refreshGuide()
+end
+
+local function addBin(mouth: Instance)
+	if bins[mouth] or not mouth:IsA("BasePart") then
+		return
+	end
+	local def = DepositConfig.Types[mouth:GetAttribute("BinType") or ""]
+	if not def then
+		return
+	end
+	local board = makeSign(mouth, def)
+	local bin: Bin = { Type = def.Type, Sign = board, Faces = {}, Outline = nil }
+	-- Readable from behind too (the entrance side of a front-wall bin).
+	bin.Faces = { signFace(board, Enum.NormalId.Front, def), signFace(board, Enum.NormalId.Back, def) }
+	bin.Outline = outlineFor(mouth, board, def)
+	bins[mouth] = bin
+	if not bin.Outline then
+		-- The props can arrive a moment after the mouth.
+		task.delay(1, function()
+			if bins[mouth] == bin and not bin.Outline and board.Parent then
+				bin.Outline = outlineFor(mouth, board, def)
+			end
+		end)
+	end
+	mouth.AncestryChanged:Connect(function()
+		if not mouth:IsDescendantOf(workspace) and bins[mouth] then
+			bins[mouth].Sign:Destroy()
+			bins[mouth] = nil
+		end
+	end)
+	if heldMatch then
+		refreshHighlight()
+	end
 end
 
 -- GrabController tells us what is being held so its bin lights up (nil = nothing).
@@ -137,7 +254,7 @@ end
 -- Every bin mouth in the current room (for the throw-arc "IN!" check and bin magnetism).
 function BinController.GetMouths(): { BasePart }
 	local list = {}
-	for mouth in pairs(labels) do
+	for mouth in pairs(bins) do
 		if mouth.Parent then
 			table.insert(list, mouth :: BasePart)
 		end
@@ -202,10 +319,10 @@ end
 
 function BinController.Init()
 	for _, mouth in ipairs(CollectionService:GetTagged("DepositBin")) do
-		addLabel(mouth)
+		addBin(mouth)
 	end
 	CollectionService:GetInstanceAddedSignal("DepositBin"):Connect(function(mouth)
-		task.defer(addLabel, mouth)
+		task.defer(addBin, mouth)
 	end)
 	-- The guide bobs gently so the eye catches it.
 	task.spawn(function()

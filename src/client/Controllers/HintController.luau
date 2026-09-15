@@ -26,8 +26,10 @@ function HintController.ShowClue(text: string, duration: number?)
 	local token = bannerToken
 	bannerLabel.Text = text
 	banner.Visible = true
-	banner.Position = UDim2.new(0.5, 0, 0, 150)
-	UI.Tween(banner, { Position = UDim2.new(0.5, 0, 0, 180) }, 0.3, Enum.EasingStyle.Back)
+	-- Just under the room panel.
+	local y = Controllers.HUDController.TopClear() + 10
+	banner.Position = UDim2.new(0.5, 0, 0, y - 30)
+	UI.Tween(banner, { Position = UDim2.new(0.5, 0, 0, y) }, 0.3, Enum.EasingStyle.Back)
 	UI.PopIn(banner, 0.85, 0.35)
 	local prop = bannerGlow:IsA("UIStroke") and "Transparency" or "ImageTransparency"
 	;(bannerGlow :: any)[prop] = 0.05
@@ -35,7 +37,7 @@ function HintController.ShowClue(text: string, duration: number?)
 	Controllers.AudioController.Play("Hint")
 	task.delay(duration or 7, function()
 		if bannerToken == token then
-			UI.Tween(banner, { Position = UDim2.new(0.5, 0, 0, 150) }, 0.25).Completed:Once(function()
+			UI.Tween(banner, { Position = UDim2.new(0.5, 0, 0, y - 30) }, 0.25).Completed:Once(function()
 				if bannerToken == token then
 					banner.Visible = false
 				end

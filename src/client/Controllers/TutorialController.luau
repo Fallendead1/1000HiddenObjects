@@ -26,8 +26,7 @@ local TutorialController = {}
 local BLACK = Color3.new(0, 0, 0)
 local WHITE = Color3.new(1, 1, 1)
 local STAGE_COLOR = Color3.fromRGB(34, 38, 56)
-local LINE_Y = 178 -- just under the level bar
-local LINE_Y_CLUE = 250 -- under the clue banner while a clue is showing
+local CLUE_BANNER_HEIGHT = 60 -- HintController's banner
 
 local function platformText(pc: string, touch: string, pad: string): string
 	if UI.IsTouch() then
@@ -660,16 +659,18 @@ local function lobbyView(): View?
 	return { Text = "Walk into a glowing circle to start a room!", Part = circle, Lift = 1.8, Beam = Vector3.new(circle.Position.X, root.Position.Y - 2.6, circle.Position.Z) }
 end
 
--- Where the line sits (top-layer units): under the level bar; up by the top edge while a menu or
--- the party panel is open (it draws over them); lower while a clue banner is showing.
+-- Where the line sits (top-layer units): just under the top panel; up by the top edge while a
+-- menu or the party panel is open (it draws over them); under the clue banner while one shows.
 local function lineY(): number
 	local safeTop = UI.FromAbsolute(UI.Layers.HUD.AbsolutePosition).Y.Offset
 	if UI.GetOpenMenu() or Controllers.RoomSelectController.GetCreateButton() then
 		return safeTop + 6
-	elseif Controllers.HintController.IsClueShowing() then
-		return safeTop + LINE_Y_CLUE
 	end
-	return safeTop + LINE_Y
+	local below = safeTop + Controllers.HUDController.TopClear() + 10
+	if Controllers.HintController.IsClueShowing() then
+		return below + CLUE_BANNER_HEIGHT + 8
+	end
+	return below
 end
 
 local function update()
@@ -808,7 +809,7 @@ end
 function TutorialController.Init()
 	-- The instruction line (types itself in) with a small SKIP at its end. On the top layer so
 	-- it stays readable over the party panel and the Upgrades menu.
-	line = UI.Frame({ Name = "TutorialLine", AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.fromOffset(0, 36), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, LINE_Y), BackgroundColor3 = BLACK, BackgroundTransparency = 0.35, Visible = false }, UI.Layers.Top)
+	line = UI.Frame({ Name = "TutorialLine", AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.fromOffset(0, 36), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 0), BackgroundColor3 = BLACK, BackgroundTransparency = 0.35, Visible = false }, UI.Layers.Top)
 	UI.New("UICorner", { CornerRadius = UDim.new(1, 0) }, line)
 	UI.New("UIPadding", { PaddingLeft = UDim.new(0, 16), PaddingRight = UDim.new(0, 5) }, line)
 	UI.ListLayout(line, Enum.FillDirection.Horizontal, 12, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center)
