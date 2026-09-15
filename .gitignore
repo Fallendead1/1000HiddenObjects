@@ -9,3 +9,7 @@ sourcemap.json
 
 # Store thumbnails (large; only read locally by tools/create-monetization.ps1)
 /output/creator-hub/
+
+# Codex concept images and build screenshots (large, local only)
+/output/codex-concepts/
+/output/codex-room/
