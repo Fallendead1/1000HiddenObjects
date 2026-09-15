@@ -40,6 +40,42 @@ gui.DisplayOrder = 10
 gui.Parent = playerGui
 UI.Gui = gui
 
+-- Phones play in landscape only (the HUD is laid out for it); the sensor picks which way round.
+pcall(function()
+	playerGui.ScreenOrientation = Enum.ScreenOrientation.LandscapeSensor
+end)
+
+-- Roblox's Text Size accessibility setting (GuiService.PreferredTextSize) enlarges every
+-- fixed-size text past the box it was laid out for, so a larger setting on a phone broke every
+-- panel. Each text is capped at its design size (TextScaled text is exempt anyway, and a text
+-- with its own UITextSizeConstraint keeps it); later TextSize changes (pulses, restyles) follow.
+local function capText(obj: Instance)
+	if not (obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox")) then
+		return
+	end
+	task.defer(function()
+		local text = obj :: TextLabel
+		if not text.Parent or text.TextScaled or text:FindFirstChildOfClass("UITextSizeConstraint") then
+			return
+		end
+		local cap = Instance.new("UITextSizeConstraint")
+		cap.Name = "DesignTextSize"
+		cap.MinTextSize = 1
+		cap.MaxTextSize = math.clamp(math.round(text.TextSize), 1, 100)
+		cap.Parent = text
+		text:GetPropertyChangedSignal("TextSize"):Connect(function()
+			cap.MaxTextSize = math.clamp(math.round(text.TextSize), 1, 100)
+		end)
+		text:GetPropertyChangedSignal("TextScaled"):Connect(function()
+			cap.Parent = if text.TextScaled then nil else text
+		end)
+	end)
+end
+playerGui.DescendantAdded:Connect(capText)
+for _, d in ipairs(playerGui:GetDescendants()) do
+	capText(d)
+end
+
 local scale = Instance.new("UIScale")
 scale.Parent = gui
 UI.ScaleObject = scale

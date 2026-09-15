@@ -115,7 +115,8 @@ local function buildLobbyHUD()
 	trophy.Position = UDim2.new(0, 10, 0.43, 0)
 	finderLabel = UI.Label({ Text = "Finder Wins: 0", TextSize = 15, TextWrapped = false, Size = UDim2.new(1, -44, 0.86, 0), Position = UDim2.fromOffset(34, 0) }, finderPill)
 
-	local buttons = tileGrid(lobbyFrame, 3, { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -10, 0.46, 0) })
+	-- Phones: hung from the top so the bottom row clears the jump button.
+	local buttons = tileGrid(lobbyFrame, 3, touch and { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -10, 0, 8) } or { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -10, 0.46, 0) })
 	HUDController.Buttons.Collection = menuTile(buttons, "COLLECTION", UI.Colors.Gold, 1, "1K", "Icon_Collection")
 	HUDController.Buttons.Challenges = menuTile(buttons, "CHALLENGES", UI.Colors.Cyan, 2, "!", "Icon_Challenges")
 	HUDController.Buttons.LobbyShop = menuTile(buttons, "SHOP", UI.Colors.Purple, 3, "$", "Icon_Shop")
