@@ -284,21 +284,46 @@ function MonetizationService.GetShopInfo()
 	return list
 end
 
-function MonetizationService.GetLivePrice(id: number, infoType: Enum.InfoType): number?
-	if id == 0 then
-		return nil
-	end
-	local cacheKey = infoType.Name .. id
-	local cached = priceCache[cacheKey]
-	if cached and os.clock() - cached.FetchedAt < 300 then
-		return cached.Price
-	end
+local refreshingPrice: { [string]: boolean } = {}
+
+local function fetchPrice(id: number, infoType: Enum.InfoType, cacheKey: string): number?
 	local ok, info = pcall(function()
 		return MarketplaceService:GetProductInfo(id, infoType)
 	end)
 	local price = ok and info and info.PriceInRobux or nil
 	priceCache[cacheKey] = { Price = price, Name = ok and info and info.Name or nil, FetchedAt = os.clock() }
 	return price
+end
+
+-- Answers from the cache whenever it can (a stale price is refreshed in the background), so
+-- opening the shop never waits on Roblox. Only a price never seen before is fetched inline.
+function MonetizationService.GetLivePrice(id: number, infoType: Enum.InfoType): number?
+	if id == 0 then
+		return nil
+	end
+	local cacheKey = infoType.Name .. id
+	local cached = priceCache[cacheKey]
+	if cached then
+		if os.clock() - cached.FetchedAt >= 300 and not refreshingPrice[cacheKey] then
+			refreshingPrice[cacheKey] = true
+			task.spawn(function()
+				fetchPrice(id, infoType, cacheKey)
+				refreshingPrice[cacheKey] = nil
+			end)
+		end
+		return cached.Price
+	end
+	return fetchPrice(id, infoType, cacheKey)
+end
+
+-- Looks every configured price up at once when the server starts, so even the first shop open
+-- is instant.
+function MonetizationService.WarmPrices()
+	for _, pair in ipairs({ { MonetizationConfig.GamepassDefs, Enum.InfoType.GamePass }, { MonetizationConfig.ProductDefs, Enum.InfoType.Product } }) do
+		for _, def in ipairs(pair[1]) do
+			task.spawn(MonetizationService.GetLivePrice, def.Id, pair[2])
+		end
+	end
 end
 
 -- Badges already confirmed (or being awarded) this session, so Roblox isn't asked twice.
@@ -431,6 +456,7 @@ function MonetizationService.Init()
 		end
 		return MonetizationService.GetShopInfo()
 	end
+	task.spawn(MonetizationService.WarmPrices)
 
 	local function onPlayer(player: Player)
 		passCache[player] = {}

@@ -2,6 +2,8 @@
 	Shop: three tabs (Permanent game passes, timed Boosts, instant Help). Every card shows what
 	kind of purchase it is (FOREVER / 10 MIN BOOST / INSTANT), the price on its buy button and
 	OWNED for passes already bought. Purchases go through the server (RequestPurchase).
+	It opens instantly: the cards come straight from MonetizationConfig, and the server's live
+	prices (fetched in the background at start) replace the config prices when they arrive.
 ]]
 
 local Players = game:GetService("Players")
@@ -9,6 +11,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage.Shared
 local Remotes = require(Shared.Utility.Remotes)
+local MonetizationConfig = require(Shared.Config.MonetizationConfig)
 
 local UI = require(script.Parent.Parent.UI.UI)
 local Controllers = require(script.Parent)
@@ -60,7 +63,8 @@ local function buildCard(info, order: number)
 	if info.Price then
 		priceText = string.format("%s %d", ROBUX, info.Price)
 	elseif info.Configured then
-		priceText = ROBUX .. " --"
+		-- The store price is set to the config price; the live one replaces it when it arrives.
+		priceText = string.format("%s %d", ROBUX, info.SuggestedPrice)
 	else
 		priceText = string.format("~%s %d", ROBUX, info.SuggestedPrice)
 	end
@@ -83,8 +87,21 @@ local function buildCard(info, order: number)
 	end
 end
 
+-- The shop list straight from the config, in the same shape the server sends (no live prices).
+local function configProducts()
+	local list = {}
+	for _, pair in ipairs({ { MonetizationConfig.GamepassDefs, "Gamepass" }, { MonetizationConfig.ProductDefs, "Product" } }) do
+		for _, def in ipairs(pair[1]) do
+			table.insert(list, {
+				Key = def.Key, Kind = pair[2], Name = def.Name, Description = def.Description, Icon = def.Icon,
+				Tab = def.Tab, Price = nil, SuggestedPrice = def.SuggestedPrice, Configured = def.Id ~= 0, MatchOnly = def.MatchOnly == true,
+			})
+		end
+	end
+	return list
+end
+
 local function render()
-	-- Everything but the list layout (cards and the "Loading..." line alike).
 	for _, c in ipairs(listFrame:GetChildren()) do
 		if c:IsA("GuiObject") then
 			c:Destroy()
@@ -94,12 +111,8 @@ local function render()
 		b.BackgroundColor3 = name == currentTab and TabColors[name] or UI.Colors.PanelLight
 	end
 	tabHint.Text = TabInfo[currentTab].Hint
-	if not products then
-		UI.Label({ Text = "Loading...", TextSize = 20, Size = UDim2.new(1, 0, 0, 60) }, listFrame)
-		return
-	end
 	local order = 0
-	for _, info in ipairs(products) do
+	for _, info in ipairs(products or configProducts()) do
 		if info.Tab == currentTab then
 			order += 1
 			buildCard(info, order)
@@ -162,6 +175,11 @@ function ShopController.Init()
 			render()
 		end
 	end)
+end
+
+function ShopController.Start()
+	-- Have the live prices ready before the shop is first opened.
+	task.delay(2, fetch)
 end
 
 function ShopController.Open(tab: string?)
