@@ -24,6 +24,9 @@ local firstPerson = false
 local altHeld = false
 local modal: TextButton
 local crosshair: Frame
+local crossRing: UIStroke
+local crossDot: Frame
+local CROSS_IDLE, CROSS_ACTIVE = 28, 34 -- design units (the HUD scale applies)
 local hint: TextLabel
 local freeReasons: { [string]: boolean } = {} -- on-screen things that need a click in first person
 
@@ -92,14 +95,11 @@ function CameraController.SetCrosshair(kind: string)
 		return
 	end
 	local color = CrosshairColors[kind] or CrosshairColors.idle
-	if crosshair.BackgroundColor3 ~= color then
-		crosshair.BackgroundColor3 = color
-		local image = crosshair:FindFirstChild("CrosshairImage") :: ImageLabel?
-		local size = image and ((kind == "idle") and 22 or 30) or ((kind == "idle") and 8 or 12)
+	if crossRing.Color ~= color then
+		crossRing.Color = color
+		crossDot.BackgroundColor3 = color
+		local size = if kind == "idle" then CROSS_IDLE else CROSS_ACTIVE
 		crosshair.Size = UDim2.fromOffset(size, size)
-		if image then
-			image.ImageColor3 = color
-		end
 	end
 end
 
@@ -124,18 +124,24 @@ function CameraController.Init()
 		Visible = false,
 	}, UI.Layers.World) :: TextButton
 
-	-- Full-screen layer: aiming uses the exact viewport centre, and so must the crosshair.
-	crosshair = UI.Frame({ Name = "Crosshair", Size = UDim2.fromOffset(8, 8), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), BackgroundColor3 = CrosshairColors.idle, Visible = false }, UI.Layers.World)
-	UI.Corner(crosshair, 99)
-	local crossStroke = UI.Stroke(crosshair, Color3.new(0, 0, 0), 1.5, 0.3)
-	-- Crosshair art (white, tinted per state) when it exists.
-	local crossArt = UI.Asset("Crosshair")
-	if crossArt then
-		crosshair.BackgroundTransparency = 1
-		crossStroke.Enabled = false
-		crosshair.Size = UDim2.fromOffset(22, 22)
-		UI.Image({ Name = "CrosshairImage", Image = crossArt, Size = UDim2.fromScale(1, 1), ImageColor3 = CrosshairColors.idle }, crosshair)
+	-- Full-screen layer: aiming uses the exact viewport centre, and so must the crosshair. A white
+	-- ring and dot on a dark outline read over any colour (bright walls, dark junk, the sky); they
+	-- take the state colour and grow a little while you aim at or hold something.
+	crosshair = UI.Frame({ Name = "Crosshair", Size = UDim2.fromOffset(CROSS_IDLE, CROSS_IDLE), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), BackgroundTransparency = 1, Visible = false }, UI.Layers.World)
+	local function round(frame: Frame)
+		UI.New("UICorner", { CornerRadius = UDim.new(1, 0) }, frame)
 	end
+	-- The dark ring sits a little inside the white one, so it edges it on both sides.
+	local outline = UI.Frame({ Name = "Outline", BackgroundTransparency = 1, Size = UDim2.new(1, -3, 1, -3), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5) }, crosshair)
+	round(outline)
+	UI.New("UIStroke", { Color = Color3.new(0, 0, 0), Thickness = 5.5, Transparency = 0.25 }, outline)
+	local ring = UI.Frame({ Name = "Ring", BackgroundTransparency = 1 }, crosshair)
+	round(ring)
+	crossRing = UI.New("UIStroke", { Color = CrosshairColors.idle, Thickness = 2.5 }, ring) :: UIStroke
+	local dotOutline = UI.Frame({ Name = "DotOutline", Size = UDim2.fromOffset(8, 8), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 0.25 }, crosshair)
+	round(dotOutline)
+	crossDot = UI.Frame({ Name = "Dot", Size = UDim2.fromOffset(4, 4), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), BackgroundColor3 = CrosshairColors.idle }, crosshair)
+	round(crossDot)
 
 	hint = UI.Label({
 		Text = "[ALT] mouse   [Q] drop   [U] upgrades   [B] shop   [H] hints",

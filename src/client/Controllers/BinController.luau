@@ -1,7 +1,8 @@
 --[[
 	Room props on the client:
 	  - a big sign on a post over every deposit bin: its colour, icon and one word (TOYS,
-	    BOOKS...), plus a white outline around the bin so it stands out from the junk. While you
+	    BOOKS...), plus a white outline and a faint fill in its colour around the bin, seen through
+	    anything in front of it (the bed, the closet, junk), so every bin can be found. While you
 	    hold something, the bin it belongs in lights up gold and grows with a gold "x2" arrow over
 	    it, and every other bin gets a green "x1" (any bin takes it, the right one pays double);
 	    both are seen from anywhere
@@ -115,7 +116,10 @@ local function makeSign(mouth: BasePart, def): BasePart
 	return board
 end
 
--- The bin's own model (Room.Props.<PropKey> standing on its mouth), outlined in white.
+-- The bin's own model (Room.Props.<PropKey> standing on its mouth): a white outline and a faint
+-- fill in the bin's colour, drawn through everything, so a bin can be spotted behind the bed, the
+-- closet or a heap of junk. The fill is its own colour, so a bin in plain view looks the same.
+local SEE_THROUGH = 0.65 -- fill transparency
 local function outlineFor(mouth: BasePart, board: BasePart, def): Highlight?
 	local room = mouth:FindFirstAncestorOfClass("Model")
 	local props = room and room:FindFirstChild("Props")
@@ -134,11 +138,11 @@ local function outlineFor(mouth: BasePart, board: BasePart, def): Highlight?
 	return UI.New("Highlight", {
 		Name = "BinOutline",
 		Adornee = best,
-		FillColor = UI.Colors.Gold,
-		FillTransparency = 1,
+		FillColor = def.Color,
+		FillTransparency = SEE_THROUGH,
 		OutlineColor = WHITE,
 		OutlineTransparency = 0,
-		DepthMode = Enum.HighlightDepthMode.Occluded,
+		DepthMode = Enum.HighlightDepthMode.AlwaysOnTop,
 	}, board) :: Highlight
 end
 
@@ -219,9 +223,12 @@ local function refreshHighlight()
 		local grow = lit and SIGN_GROW or 1
 		UI.Tween(bin.Sign, { Size = Vector3.new(SIGN_SIZE.X * grow, SIGN_SIZE.Y * grow, 0.1) }, 0.18, Enum.EasingStyle.Back)
 		if bin.Outline then
+			-- The bin you need glows gold through everything; the others stay findable (x1).
+			local def = DepositConfig.Types[bin.Type]
 			bin.Outline.OutlineColor = lit and UI.Colors.Gold or WHITE
-			bin.Outline.FillTransparency = lit and 0.7 or 1
-			bin.Outline.OutlineTransparency = faded and 0.8 or 0
+			bin.Outline.FillColor = if lit then UI.Colors.Gold else (def and def.Color or WHITE)
+			bin.Outline.FillTransparency = if lit then 0.55 elseif faded then 0.85 else SEE_THROUGH
+			bin.Outline.OutlineTransparency = faded and 0.6 or 0
 		end
 	end
 	refreshGuides()
