@@ -2,6 +2,8 @@
 	Free clue milestones (ROOM CLEANED %: objects deposited in bins), paid hints and hot/cold assistance.
 	Clues only ever point at areas; the key is revealed solely by moving its physical blockers.
 	Stages: 1 side, 2 area, 3 region highlight, 4 hot/cold, 5 outline the objects covering it.
+	No clue of any kind (free, paid or saved) before GameConfig.HintsUnlockAt of the room is
+	cleaned; hints bought, won or saved before then are delivered the moment it unlocks.
 ]]
 
 local Players = game:GetService("Players")
@@ -30,6 +32,19 @@ end
 
 local function stateConfig(): Configuration
 	return Services.MatchService.GetStateConfig()
+end
+
+local function unlockAt(match): number
+	return math.max(GameConfig.HintsUnlockAt or 0, match.Config.HintMilestones[1] or 0)
+end
+
+local function lockedText(): string
+	return string.format("Hints unlock once the room is %d%% cleaned.", math.floor((GameConfig.HintsUnlockAt or 0) * 100 + 0.5))
+end
+
+-- True once the room is clean enough for any clue.
+function HintService.HintsUnlocked(match): boolean
+	return match ~= nil and (match.Progress or 0) >= unlockAt(match)
 end
 
 local function getTargetSide(match): string
@@ -105,6 +120,10 @@ function HintService.Init()
 			Services.NotificationService.Send(player, "Warning", "Hints are only available while searching.")
 			return
 		end
+		if not HintService.HintsUnlocked(match) then
+			Services.NotificationService.Send(player, "Warning", lockedText())
+			return
+		end
 		if kind == "Quick" then
 			Services.MonetizationService.PromptPurchase(player, "QuickHint")
 		elseif kind == "Super" or kind == "Free" then
@@ -155,18 +174,26 @@ end
 -- Silently bring the hint stage up to the current progress (checkpoint resume).
 function HintService.ApplyStagesForProgress(match, progress: number)
 	for stage, threshold in ipairs(match.Config.HintMilestones) do
-		if progress >= threshold and match.HintStage < stage then
+		if progress >= math.max(threshold, GameConfig.HintsUnlockAt or 0) and match.HintStage < stage then
 			setStage(match, stage)
 		end
 	end
+	match.HintsOpen = HintService.HintsUnlocked(match)
 	HintService.RefreshOutline(match)
 end
 
 function HintService.OnProgress(match, progress: number)
 	for stage, threshold in ipairs(match.Config.HintMilestones) do
-		if progress >= threshold and match.HintStage < stage then
+		if progress >= math.max(threshold, GameConfig.HintsUnlockAt or 0) and match.HintStage < stage then
 			setStage(match, stage)
 			deliverStage(match, stage, match.Players)
+		end
+	end
+	-- Hints just unlocked: the ones players bought, won or saved earlier arrive now.
+	if not match.HintsOpen and HintService.HintsUnlocked(match) then
+		match.HintsOpen = true
+		for _, player in ipairs(match.Players) do
+			task.spawn(Services.MonetizationService.ApplyBankedHints, player)
 		end
 	end
 end
@@ -174,7 +201,7 @@ end
 -- Quick Hint: deliver the next milestone clue now (advances the team's stage).
 function HintService.GrantQuickHint(player: Player): boolean
 	local match = Services.MatchService.GetMatchForPlayer(player)
-	if not match or match.State ~= "Searching" then
+	if not match or match.State ~= "Searching" or not HintService.HintsUnlocked(match) then
 		return false
 	end
 	local nextStage = match.HintStage + 1
@@ -192,7 +219,7 @@ end
 -- Super Hint: highlight the correct region for the buyer.
 function HintService.GrantSuperHint(player: Player): boolean
 	local match = Services.MatchService.GetMatchForPlayer(player)
-	if not match or match.State ~= "Searching" then
+	if not match or match.State ~= "Searching" or not HintService.HintsUnlocked(match) then
 		return false
 	end
 	fire({ player }, "RegionHighlight", { RegionId = match.TargetSocket.RegionId, Duration = MonetizationConfig.Effects.SuperHintDuration, Super = true })

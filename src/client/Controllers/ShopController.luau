@@ -35,7 +35,7 @@ local TabColors = { Permanent = UI.Colors.Gold, Boosts = UI.Colors.Green, Help =
 local TabInfo = {
 	Permanent = { Ribbon = "FOREVER", Hint = "Permanent perks: buy once, keep them forever." },
 	Boosts = { Ribbon = "10 MIN BOOST", Hint = "Timed boosts: they stack and carry between rooms." },
-	Help = { Ribbon = "INSTANT", Hint = "Stuck? Get a clue right now." },
+	Help = { Ribbon = "INSTANT", Hint = "Clues unlock at 25% ROOM CLEANED." },
 }
 
 local function isDev(): boolean

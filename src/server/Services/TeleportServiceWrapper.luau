@@ -21,6 +21,7 @@ function TeleportServiceWrapper.Init(role: string)
 	TeleportService.TeleportInitFailed:Connect(function(player, result, message)
 		warn("[Teleport] Init failed for", player.Name, result, message)
 		Services.DataService.Reclaim(player)
+		player:SetAttribute("Leaving", nil)
 		player:SetAttribute("Teleporting", false)
 		player:SetAttribute("QueueId", "")
 		Services.NotificationService.Send(player, "Error", "Teleport failed. Please try again.")
@@ -134,6 +135,8 @@ function TeleportServiceWrapper.ReturnToLobby(player: Player)
 	if not ok then
 		warn("[Teleport] Return to lobby failed:", err)
 		takeBack({ player })
+		player:SetAttribute("Leaving", nil)
+		Services.NotificationService.Send(player, "Error", "Couldn't get back to the lobby. Please try again.")
 	end
 end
 

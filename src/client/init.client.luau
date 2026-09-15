@@ -40,6 +40,7 @@ local order = {
 	"HintController",
 	"FXController",
 	"BinController",
+	"ExitDoorController",
 	"LoadingController",
 	"ResultsController",
 	"ProgressionController",

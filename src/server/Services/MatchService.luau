@@ -192,7 +192,8 @@ local function preClean(fraction: number, clearTarget: boolean?)
 	if clearTarget then
 		list = MatchService.GetCoveringObjects()
 	else
-		local want = math.floor(runtime.TotalObjects * math.clamp(fraction, 0, 0.95)) - runtime.DepositedCount
+		-- Rounded up, so "25%" really reaches 25% (hints unlock there).
+		local want = math.ceil(runtime.TotalObjects * math.clamp(fraction, 0, 0.95)) - runtime.DepositedCount
 		if want <= 0 then
 			return
 		end
@@ -282,6 +283,25 @@ function MatchService.Init(role: string)
 		if match and (match.State == "Results" or match.State == "Returning") then
 			MatchService.ReturnPlayer(player)
 		end
+	end)
+	-- The room's exit door (ExitDoorController): back to a lobby server at any time.
+	Remotes.Event("LeaveRoom").OnServerEvent:Connect(function(player)
+		if not match or not table.find(match.Players, player) or match.State == "Ended" or player:GetAttribute("Leaving") then
+			return
+		end
+		local door = match.Runtime and match.Runtime.ExitDoor
+		local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+		if not door or not root or (root.Position - door.Position).Magnitude > 14 then
+			return
+		end
+		player:SetAttribute("Leaving", true)
+		task.delay(10, function()
+			if player.Parent then
+				player:SetAttribute("Leaving", nil)
+			end
+		end)
+		Services.AnalyticsService.Log("room_exit_door", player, { RoomId = match.RoomId, Progress = match.Progress })
+		MatchService.ReturnPlayer(player)
 	end)
 	Remotes.Event("TutorialComplete").OnServerEvent:Connect(function(player)
 		Services.DataService.Update(player, function(data)

@@ -71,7 +71,7 @@ local Steps = {
 		Title = "FIND THE KEY",
 		Scene = "Key",
 		Text = function()
-			return "The Golden Key is hidden under the junk. Dig through the piles - stuck? Tap HINT!"
+			return "The Golden Key is hidden under the junk. Dig through the piles - clean 25% of the room to unlock HINTS!"
 		end,
 	},
 }
@@ -631,7 +631,7 @@ local function roomView(): View?
 	elseif roomStep == 2 then
 		return { Text = platformText("Aim at the bin with the gold x2 and RELEASE to throw!", "Aim at the bin with the gold x2 and tap THROW!", "Aim at the bin with the gold x2 and RELEASE R2!"), Tag = "2/4", Gui = action }
 	elseif roomStep == 4 then
-		return { Text = string.format("Now find the %s under the junk! Stuck? Use HINT.", matchState:GetAttribute("TargetName") or "Golden Key"), Tag = "4/4", Gui = hud.Buttons.Hint, Side = "Left" }
+		return { Text = string.format("Now find the %s under the junk! HINTS unlock at 25%% cleaned.", matchState:GetAttribute("TargetName") or "Golden Key"), Tag = "4/4", Gui = hud.Buttons.Hint, Side = "Left" }
 	elseif roomStep == 5 then
 		return { Text = string.format("That's it - have fun! (%d)", countdown), Instant = countdown < 3 }
 	end

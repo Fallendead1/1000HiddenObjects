@@ -70,6 +70,8 @@ return {
 	Checkpoints = { 0.05, 0.10, 0.15, 0.20 },
 
 	-- Hot / cold distances (studs to target cluster center)
+	-- No clue at all (not even which side the key is on) before this share of the room is cleaned.
+	HintsUnlockAt = 0.25,
 	HotCold = {
 		Warm = 30,
 		Hot = 18,

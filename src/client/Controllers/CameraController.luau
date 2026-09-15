@@ -25,6 +25,7 @@ local altHeld = false
 local modal: TextButton
 local crosshair: Frame
 local hint: TextLabel
+local freeReasons: { [string]: boolean } = {} -- on-screen things that need a click in first person
 
 local CrosshairColors = {
 	idle = Color3.fromRGB(255, 255, 255),
@@ -59,7 +60,7 @@ local function apply()
 		end
 	end
 	-- A visible Modal button is Roblox's way of freeing the mouse in first person.
-	local cursorFree = fp and (altHeld or UI.GetOpenMenu() ~= nil)
+	local cursorFree = fp and (altHeld or UI.GetOpenMenu() ~= nil or next(freeReasons) ~= nil)
 	modal.Visible = cursorFree
 	crosshair.Visible = fp and not cursorFree
 	hint.Visible = fp and not cursorFree and not UI.IsTouch()
@@ -71,6 +72,15 @@ end
 
 function CameraController.IsCursorFree(): boolean
 	return modal ~= nil and modal.Visible
+end
+
+-- Frees the mouse in first person while something on screen needs a click (e.g. the exit door's
+-- button), without the player holding ALT.
+function CameraController.SetCursorFree(reason: string, on: boolean)
+	freeReasons[reason] = on or nil
+	if modal then
+		apply()
+	end
 end
 
 function CameraController.SetCrosshair(kind: string)

@@ -48,6 +48,7 @@ export type RoomRuntime = {
 	BoundsSize: Vector3,
 	DepositedCount: number, -- objects cleaned into bins
 	TotalObjects: number, -- every real object, including the ones still packed in junk chunks
+	ExitDoor: BasePart?, -- walk into it to go back to the lobby (config ExitDoor, tagged "ExitDoor")
 }
 
 local function taggedIn(model: Instance, tag: string): { Instance }
@@ -482,6 +483,15 @@ function RoomService.Build(config, origin: CFrame): RoomRuntime
 		return a.Id < b.Id
 	end)
 	RoomService.ComputeBlockers(runtime)
+
+	-- The way out: the client puts a RETURN TO LOBBY sign and button on it (ExitDoorController).
+	local structure = runtime.Model:FindFirstChild("Structure")
+	local doorName = runtime.Config.ExitDoor
+	local door = doorName and structure and structure:FindFirstChild(doorName, true)
+	if door and door:IsA("BasePart") then
+		CollectionService:AddTag(door, "ExitDoor")
+		runtime.ExitDoor = door
+	end
 
 	return runtime
 end

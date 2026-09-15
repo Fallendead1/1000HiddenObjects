@@ -30,7 +30,11 @@ local Room = {
 
 	-- Unique-object progress milestones: side / area / region / hot-cold / blocker outline.
 	-- Fractions of the room CLEANED (deposited in bins). ~4,500 objects: 2% is ~90 deposits.
-	HintMilestones = { 0.02, 0.045, 0.08, 0.12, 0.17 },
+	-- Clues start once the room is 25% cleaned (GameConfig.HintsUnlockAt): side, area, region,
+	-- hot/cold, outline.
+	HintMilestones = { 0.25, 0.275, 0.31, 0.35, 0.4 },
+	-- The Structure part players walk into to go back to the lobby.
+	ExitDoor = "Door",
 
 	LayoutVariants = { 1 },
 
