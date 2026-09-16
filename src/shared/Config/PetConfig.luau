@@ -16,7 +16,8 @@
 	directly (a game pass each), which is not random.
 
 	Final art: ReplicatedStorage.GameAssets.Pets.<Kind> and GameAssets.Eggs.<Egg> (see
-	docs/CODEX_PROMPT_7_BUILD.md). Without it, simple placeholder shapes are used.
+	docs/CODEX_PROMPT_7_BUILD.md and client UI/PetModels). Without it, simple placeholder shapes
+	are used.
 ]]
 
 local C = Color3.fromRGB

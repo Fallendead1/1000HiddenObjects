@@ -6,7 +6,8 @@
 	               lowest point of the model sits Root.Size.Y / 2 below it), welded or rigged
 	               MeshParts, an AnimationController with an Animator, and a folder "Animations"
 	               holding Animation objects named Idle, Walk, Carry, Hatch and Celebrate.
-	  Eggs.<Egg>   a Model with PrimaryPart "Root"; optional Animations.Shake.
+	  Eggs.<Egg>   a Model with PrimaryPart "Root" (Dusty, Shiny, Royal, Attic), plus Eggs.GiftBox for
+	               pets that come as a gift (welcome pet, Starter Pack, pet passes).
 	Until then each pet is a small placeholder built from shapes in its PetConfig colours.
 ]]
 
@@ -200,7 +201,7 @@ end
 -- An egg (or, for gifts that aren't eggs, a gift box).
 function PetModels.BuildEgg(eggKey: string): Model
 	local folder = assetFolder("Eggs")
-	local source = folder and folder:FindFirstChild(eggKey)
+	local source = folder and folder:FindFirstChild(PetConfig.Eggs[eggKey] and eggKey or "GiftBox")
 	if source and source:IsA("Model") and source.PrimaryPart then
 		local model = source:Clone()
 		prepare(model)

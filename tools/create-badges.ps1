@@ -43,7 +43,12 @@ $badges = @(
     @{ Key = "TenObjects";         Name = "10 Objects Found";          Description = "Collect 10 hidden objects." },
     @{ Key = "HundredObjects";     Name = "100 Objects Found";         Description = "Collect 100 hidden objects." },
     @{ Key = "FiveHundredObjects"; Name = "500 Objects Found";         Description = "Collect 500 hidden objects." },
-    @{ Key = "ThousandObjects";    Name = "All 1000 Found!";           Description = "Complete the whole collection of 1000 hidden objects." }
+    @{ Key = "ThousandObjects";    Name = "All 1000 Found!";           Description = "Complete the whole collection of 1000 hidden objects." },
+    @{ Key = "Room002Speed";       Name = "Speedy Cleaner: Room #002"; Description = "Find Grandma's Diamond Ring in Room #002 in under 5 minutes." },
+    @{ Key = "Room003Speed";       Name = "Speedy Cleaner: Room #003"; Description = "Find the Golden TV Remote in Room #003 in under 6 minutes." },
+    @{ Key = "Room004Speed";       Name = "Speedy Cleaner: Room #004"; Description = "Find the Golden Wrench in Room #004 in under 7 minutes." },
+    @{ Key = "Room005Clear";       Name = "Attic Explorer";            Description = "Clear the Giant Attic, the first Mega Room." },
+    @{ Key = "Room005Speed";       Name = "Speedy Cleaner: Room #005"; Description = "Find the Treasure Map in the Giant Attic in under 15 minutes." }
 )
 
 # Existing badges (public list) so a re-run never duplicates.

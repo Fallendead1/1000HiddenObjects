@@ -45,14 +45,27 @@ $passes = @(
     @{ Key = "StrongerHands"; Name = "Stronger Hands"; Price = 149; Icon = "Pass_StrongerHands.png"; Description = "Lift one weight class heavier than your Strength. Forever." },
     @{ Key = "FastHands";     Name = "Fast Hands";     Price = 99;  Icon = "Pass_FastHands.png";     Description = "Heavy objects feel lighter and snappier to handle. Forever." },
     @{ Key = "ThrowBoost";    Name = "Throw Boost";    Price = 99;  Icon = "Pass_ThrowBoost.png";    Description = "+15% throw power. Forever." },
-    @{ Key = "VIP";           Name = "VIP Searcher";   Price = 299; Icon = "Pass_VIP.png";           Description = "Gold VIP tag, +10% speed in rooms and a free Super Hint every room." }
+    @{ Key = "VIP";           Name = "VIP Searcher";   Price = 299; Icon = "Pass_VIP.png";           Description = "Gold VIP tag, +10% speed in rooms and a free Super Hint every room." },
+    @{ Key = "DoubleXP";        Name = "2x XP";               Price = 99;  Icon = "Pass_DoubleXP.png";        Description = "Double Cleaner XP forever. Level up and unlock titles faster." },
+    @{ Key = "RainbowTrail";    Name = "Rainbow Trail";       Price = 19;  Icon = "Pass_RainbowTrail.png";    Description = "A rainbow trail follows you around the lobby. Show it off!" },
+    @{ Key = "PetVacuumCat";    Name = "Vacuum Cat";          Price = 149; Icon = "Pass_PetVacuumCat.png";    Description = "A Rare helper pet that grabs a second small object on every trip. Yours forever." },
+    @{ Key = "PetGoldenDragon"; Name = "Golden Broom Dragon"; Price = 399; Icon = "Pass_PetGoldenDragon.png"; Description = "The Legendary helper: fastest trips, and it bursts packed junk open for you." },
+    @{ Key = "PetSlot";         Name = "+1 Pet Slot";         Price = 149; Icon = "Pass_PetSlot.png";         Description = "Equip one more helper pet at a time. Forever." },
+    @{ Key = "FasterPets";      Name = "Faster Pets";         Price = 99;  Icon = "Pass_FasterPets.png";      Description = "All your pets work 25% faster. Forever." }
 )
 $products = @(
     @{ Key = "QuickHint";       Name = "Quick Hint";           Price = 19;  Icon = "Product_QuickHint.png";       Description = "Instantly receive the next clue." },
     @{ Key = "SuperHint";       Name = "Super Hint";           Price = 39;  Icon = "Product_SuperHint.png";       Description = "Highlight the correct search region for 15 seconds." },
     @{ Key = "Cash10Min";       Name = "2x Cash (10 min)";     Price = 29;  Icon = "Product_Cash10Min.png";       Description = "Double Cash from bin deposits for 10 minutes. Carries over between rooms." },
     @{ Key = "Strength10Min";   Name = "2x Strength (10 min)"; Price = 49;  Icon = "Product_Strength10Min.png";   Description = "Lift twice the weight for 10 minutes." },
-    @{ Key = "TeamMuscleBoost"; Name = "Team Muscle Boost";    Price = 129; Icon = "Product_TeamMuscleBoost.png"; Description = "Everyone in your room gets +50% Strength and +25% throw power for 10 minutes." }
+    @{ Key = "TeamMuscleBoost"; Name = "Team Muscle Boost";    Price = 129; Icon = "Product_TeamMuscleBoost.png"; Description = "Everyone in your room gets +50% Strength and +25% throw power for 10 minutes." },
+    @{ Key = "SpeedBoost10Min"; Name = "2x Speed (10 min)";    Price = 3;   Icon = "Product_SpeedBoost10Min.png"; Description = "Run up to twice as fast for 10 minutes. Carries over between rooms." },
+    @{ Key = "DoubleXP15Min";   Name = "2x XP (15 min)";       Price = 9;   Icon = "Product_DoubleXP15Min.png";   Description = "Double Cleaner XP for 15 minutes. Level up and unlock titles faster." },
+    @{ Key = "LiftItNow";       Name = "Lift It Now";          Price = 5;   Icon = "Product_LiftItNow.png";       Description = "Lift that too-heavy object, and anything as heavy, for 60 seconds." },
+    @{ Key = "JunkBlaster";     Name = "Junk Blaster";         Price = 5;   Icon = "Product_JunkBlaster.png";     Description = "Bursts open the packed junk around you. Never the junk hiding the object." },
+    @{ Key = "TreasureRadar";   Name = "Treasure Radar";       Price = 9;   Icon = "Product_TreasureRadar.png";   Description = "Every treasure in this room sparkles through the junk." },
+    @{ Key = "StarterPack";     Name = "Starter Pack";         Price = 49;  Icon = "Product_StarterPack.png";     Description = "30 min 2X Cash and 2 Quick Hints for your next rooms, plus a Mop Pup helper pet. Once per player." },
+    @{ Key = "PetSnack";        Name = "Pet Snack";            Price = 5;   Icon = "Product_PetSnack.png";        Description = "Your pets work twice as fast for 5 minutes." }
 )
 
 function Get-All([string]$url, [string]$listField) {
