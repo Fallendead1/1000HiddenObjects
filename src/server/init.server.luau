@@ -56,6 +56,7 @@ local startOrder = {
 	"ProgressionService",
 	"WalletService",
 	"RetentionService",
+	"PetService",
 	"EconomyService",
 	"UpgradeService",
 	"HintService",

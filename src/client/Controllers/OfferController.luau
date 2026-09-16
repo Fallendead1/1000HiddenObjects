@@ -414,6 +414,15 @@ function OfferController.Init()
 			if inSearching() and weight <= GameConfig.MaxWeightCap and attr("LiftExpires", 0) <= now() and cooledDown("LiftItNow") and available("LiftItNow") then
 				showChip("LiftItNow", string.format("TOO HEAVY? LIFT IT NOW (%d)", weight), UI.Colors.Orange)
 			end
+		elseif name == "Deposit" and payload.Mine and payload.Pet then
+			if inSearching() and attr("PetSnackExpires", 0) <= now() and cooledDown("PetSnack") and available("PetSnack") then
+				task.delay(1.2, function()
+					if inSearching() then
+						showChip("PetSnack", "YOUR PET IS HELPING! 2X PET SPEED", UI.Colors.Pink)
+					end
+				end)
+				lastShown.PetSnack = os.clock()
+			end
 		elseif name == "Deposit" and payload.Mine and payload.Treasure then
 			if oncePerRoom("TreasureRadar") and attr("TreasureRadar", "") ~= attr("MatchId", "") and available("TreasureRadar") then
 				markRoom("TreasureRadar")

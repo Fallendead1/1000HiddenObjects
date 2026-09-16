@@ -15,6 +15,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage.Shared
 local EconomyConfig = require(Shared.Config.EconomyConfig)
 local GameConfig = require(Shared.Config.GameConfig)
+local PetConfig = require(Shared.Config.PetConfig)
 local ProgressionConfig = require(Shared.Config.ProgressionConfig)
 local Remotes = require(Shared.Utility.Remotes)
 local RateLimiter = require(Shared.Utility.RateLimiter)
@@ -202,7 +203,10 @@ function ProgressionService.RefreshTag(player: Player)
 	local label = tag:FindFirstChild("Text") :: TextLabel
 	local level = player:GetAttribute("CleanerLevel") or 1
 	local vip = Services.MonetizationService.OwnsPass(player, "VIP")
-	label.Text = string.format("%sLV %d · %s", vip and "VIP · " or "", level, string.upper(player:GetAttribute("CleanerTitle") or ProgressionConfig.TitleFor(level)))
+	-- Completing the Pet Index adds its title.
+	local data = Services.DataService.Get(player)
+	local petTitle = data and data.Pets and data.Pets.IndexRewarded and (" · " .. string.upper(PetConfig.IndexTitle)) or ""
+	label.Text = string.format("%sLV %d · %s%s", vip and "VIP · " or "", level, string.upper(player:GetAttribute("CleanerTitle") or ProgressionConfig.TitleFor(level)), petTitle)
 	-- Gold gradient for VIP pass owners, a cool white for everyone else.
 	local gradient = label:FindFirstChild("Gradient")
 	if gradient and gradient:IsA("UIGradient") then
@@ -373,7 +377,6 @@ function ProgressionService.OnChunkBurst(player: Player)
 	track(player, data, "ChunkBurst", 1)
 	addXP(player, data, ProgressionConfig.XP.ChunkBurst, "Chunk")
 	ProgressionService.Publish(player)
-	Services.RetentionService.Touch(player)
 	Services.RetentionService.First(player, "Chunk")
 end
 

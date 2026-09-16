@@ -13,6 +13,7 @@ local RunService = game:GetService("RunService")
 local Shared = ReplicatedStorage.Shared
 local GameConfig = require(Shared.Config.GameConfig)
 local MonetizationConfig = require(Shared.Config.MonetizationConfig)
+local PetConfig = require(Shared.Config.PetConfig)
 local Remotes = require(Shared.Utility.Remotes)
 local RateLimiter = require(Shared.Utility.RateLimiter)
 
@@ -123,15 +124,16 @@ function MonetizationService.GrantProduct(player: Player, key: string): boolean
 		else
 			MonetizationService.Bank(player, key)
 		end
+	elseif key == "PetSnack" then
+		Services.PlayerSessionService.ExtendBoost(player, "PetSnackExpires", PetConfig.SnackSeconds)
+		Services.NotificationService.Send(player, "Premium", "PET SNACK: your pets work twice as fast!")
 	elseif key == "StarterPack" then
 		Services.DataService.Update(player, function(data)
 			data.StarterPack = true
 			data.Banked.CashBoost = (data.Banked.CashBoost or 0) + effects.StarterPackCashBoostSeconds
 			data.Banked.QuickHint = (data.Banked.QuickHint or 0) + effects.StarterPackQuickHints
 		end)
-		if script.Parent:FindFirstChild("PetService") then
-			Services.PetService.GivePet(player, "MopPup", "StarterPack")
-		end
+		Services.PetService.GivePet(player, "MopPup", "StarterPack")
 		if match and match.State == "Searching" then
 			MonetizationService.ApplyBanked(player)
 		end

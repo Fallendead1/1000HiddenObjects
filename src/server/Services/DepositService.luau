@@ -140,6 +140,55 @@ function DepositService.Deposit(root: BasePart, bin: Bin)
 	Services.MatchService.OnObjectDeposited(player, category == "Treasure")
 end
 
+-- A helper pet cleaned this (PetService already checked the rules): it pays its owner like a
+-- plain deposit (no swish or streak) with the pet's Cash bonus, and counts toward ROOM CLEANED.
+function DepositService.PetDeposit(player: Player, root: BasePart, bin: Bin, pet): boolean
+	local match = Services.MatchService.GetMatch()
+	if not match or match.State ~= "Searching" or not root.Parent or not player.Parent then
+		return false
+	end
+	if root:GetAttribute("Deposited") or root:GetAttribute("IsChunk") or Services.ObjectService.IsBusy(root) then
+		return false
+	end
+	local category = root:GetAttribute("Category")
+	local isMatch = DepositConfig.MatchingType(category, root:GetAttribute("Weight")) == bin.Type
+	local base = (root:GetAttribute("CashValue") or 1)
+		* (isMatch and DepositConfig.MatchMultiplier or 1)
+		* (1 + (pet.CashBonus or 0))
+		* Services.RetentionService.CashMultiplier(player)
+	local amount = math.max(1, math.floor(base * Services.PlayerSessionService.GetCashMultiplier(player) + 0.5))
+	Services.EconomyService.AddCash(player, amount)
+	Services.WalletService.OnDeposit(player, base, "Pet_" .. pet.Key)
+	player:SetAttribute("PetCleaned", (player:GetAttribute("PetCleaned") or 0) + 1)
+	Services.AnalyticsService.Economy(player, "Source", "Cash", amount, player:GetAttribute("RoomCash") or 0, "Gameplay", "Pet_" .. pet.Key, isMatch and "right bin (x2)" or "other bin (x1)")
+
+	root:SetAttribute("Deposited", true)
+	Services.ObjectService.Forget(root)
+	local base2 = {
+		Position = root.Position,
+		BinPosition = bin.Part.Position,
+		BinType = bin.Type,
+		Color = root.Color,
+		Size = root.Size,
+		Name = root:GetAttribute("DisplayName"),
+		Treasure = category == "Treasure",
+		Pet = pet.Key,
+		Owner = player.UserId,
+	}
+	for _, p in ipairs(match.Players) do
+		local payload = table.clone(base2)
+		if p == player then
+			payload.Amount = amount
+			payload.Match = isMatch
+			payload.Mine = true
+		end
+		Remotes.Event("FXEvent"):FireClient(p, "Deposit", payload)
+	end
+	root:Destroy()
+	Services.MatchService.OnObjectDeposited(player, category == "Treasure")
+	return true
+end
+
 function DepositService.GetBins(): { Bin }
 	return bins
 end

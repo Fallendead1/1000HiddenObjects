@@ -128,6 +128,19 @@ function DevPanelController.Init()
 		send("ResetRetention")
 	end)
 
+	header("PETS")
+	for _, egg in ipairs({ "Dusty", "Shiny", "Royal" }) do
+		button("Hatch " .. egg .. " egg (free)", UI.Colors.Pink, function()
+			send("GiveEgg", egg)
+		end)
+	end
+	button("Give Golden Broom Dragon", UI.Colors.Gold, function()
+		send("GivePet", "GoldenBroomDragon")
+	end)
+	button("Reset pets", UI.Colors.Red, function()
+		send("ResetPets")
+	end)
+
 	header("DATA")
 	button("Reset Save Data", UI.Colors.Red, function()
 		send("ResetData")

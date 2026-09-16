@@ -30,6 +30,9 @@ local Remotes = {
 		"PlayNext", -- C->S () results screen: go straight on to the next room
 		"NotifyAnswered", -- C->S (answer) the "notify me" card was answered (asked only once)
 		"UseBlaster", -- C->S () use a Junk Blaster bought outside a room
+		"BuyEgg", -- C->S (eggKey) buy and hatch an egg with wallet Cash
+		"EquipPet", -- C->S (kind, on)
+		"PetWelcome", -- C->S () open the welcome gift (the starter pet)
 		"DevCommand", -- C->S (command, ...)
 		"MatchUpdate", -- S->C (eventName, payload)
 		"Notification", -- S->C (kind, text, duration?)

@@ -57,6 +57,12 @@ return {
 			{ "Prompted", "Started a purchase" },
 			{ "Bought", "Bought it" },
 		}),
+		Pets = steps({
+			{ "Opened", "Opened the Pet Shop" },
+			{ "Bought", "Bought an egg" },
+			{ "Hatched", "Hatched a pet" },
+			{ "Equipped", "Equipped a pet" },
+		}),
 		DailyReward = steps({
 			{ "Waiting", "Daily reward waiting" },
 			{ "Opened", "Opened DAILY" },
@@ -68,7 +74,7 @@ return {
 	RoomCounts = { "grabs", "throws", "deposits", "swishes", "chunks", "treasures", "upgrades", "hints" },
 
 	-- What the client may report over the Track remote; anything else is ignored.
-	ShopTabs = { Permanent = true, Boosts = true, Help = true },
+	ShopTabs = { Permanent = true, Boosts = true, Help = true, Pets = true },
 	Platforms = { touch = true, desktop = true, gamepad = true, vr = true },
 	-- Contextual offer chips (OfferController): shown, then tapped (which opens the prompt).
 	Offers = { LiftItNow = true, JunkBlaster = true, SpeedBoost10Min = true, TreasureRadar = true, DoubleXP15Min = true, StarterPack = true, PetSnack = true },

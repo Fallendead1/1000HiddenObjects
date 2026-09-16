@@ -82,6 +82,24 @@ commands.ResetRetention = function(player)
 	Services.NotificationService.Send(player, "Info", "[DEV] Wallet, gifts, spin, firsts and offers reset.")
 end
 
+-- A free egg hatch (the same roll as buying one).
+commands.GiveEgg = function(player, eggKey)
+	Services.PetService.GrantEgg(player, tostring(eggKey or "Dusty"), "Dev")
+end
+
+commands.GivePet = function(player, kind)
+	Services.PetService.GivePet(player, tostring(kind or "DustBunny"), "Dev")
+end
+
+-- Pets start over (the welcome pet is offered again).
+commands.ResetPets = function(player)
+	Services.DataService.Update(player, function(data)
+		data.Pets = { Owned = {}, Equipped = {}, Welcomed = false, IndexRewarded = false }
+	end)
+	Services.PetService.Publish(player)
+	Services.ProgressionService.RefreshTag(player)
+end
+
 -- Pretends the last daily claim was two days ago, so the streak freeze can be tested.
 commands.MissADay = function(player)
 	Services.DataService.Update(player, function(data)

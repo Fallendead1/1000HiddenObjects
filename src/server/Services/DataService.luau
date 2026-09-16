@@ -53,6 +53,7 @@ local Template = {
 		CashBoostExpires = 0,
 		SpeedBoostExpires = 0,
 		XPBoostExpires = 0,
+		PetSnackExpires = 0,
 	},
 	-- Hints (paid or rewarded) and reward boosts (seconds) waiting for the next room.
 	Banked = {
@@ -79,6 +80,8 @@ local Template = {
 	Spin = { Day = 0 },
 	StarterPack = false,
 	NotifyAsked = false,
+	-- Helper pets (PetService): owned per kind, the equipped list, the welcome pet, the index reward.
+	Pets = { Owned = {}, Equipped = {}, Welcomed = false, IndexRewarded = false },
 	-- Lasting progression (not a currency): Cleaner XP, room mastery stars, daily challenges.
 	CleanerXP = 0,
 	Stars = {}, -- [tostring(roomId)] = bitmask: 1 object found, 2 cleaned 25%, 4 every treasure
@@ -353,6 +356,22 @@ end
 
 function DataService.Save(player: Player): boolean
 	return saveProfile(player)
+end
+
+-- Saves soon, once, however many times it's asked in the meantime (DataStores throttle
+-- writes to one key to one every few seconds).
+local saveSoon: { [Player]: boolean } = {}
+function DataService.SaveSoon(player: Player)
+	if saveSoon[player] then
+		return
+	end
+	saveSoon[player] = true
+	task.delay(6, function()
+		saveSoon[player] = nil
+		if player.Parent then
+			saveProfile(player)
+		end
+	end)
 end
 
 -- A teleport is about to take this player to another server: save now and let go of the

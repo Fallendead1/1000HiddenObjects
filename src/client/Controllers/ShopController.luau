@@ -1,5 +1,5 @@
 --[[
-	Shop: three tabs (Permanent game passes, timed Boosts, instant Help). Every card shows what
+	Shop: four tabs (Permanent game passes, timed Boosts, instant Help, Pets). Every card shows what
 	kind of purchase it is (FOREVER / 10 MIN BOOST / INSTANT), the price on its buy button and
 	OWNED for passes already bought. Purchases go through the server (RequestPurchase).
 	It opens instantly: the cards come straight from MonetizationConfig, and the server's live
@@ -31,11 +31,12 @@ local fetching = false
 
 local ROBUX = utf8.char(0xE002) -- the Robux icon glyph
 
-local TabColors = { Permanent = UI.Colors.Gold, Boosts = UI.Colors.Green, Help = UI.Colors.Cyan }
+local TabColors = { Permanent = UI.Colors.Gold, Boosts = UI.Colors.Green, Help = UI.Colors.Cyan, Pets = UI.Colors.Pink }
 local TabInfo = {
 	Permanent = { Ribbon = "FOREVER", Hint = "Permanent perks: buy once, keep them forever." },
 	Boosts = { Ribbon = "10 MIN BOOST", Hint = "Timed boosts: they stack and carry between rooms." },
 	Help = { Ribbon = "INSTANT", Hint = "Clues unlock at 25% ROOM CLEANED." },
+	Pets = { Ribbon = "FOREVER", Hint = "Helper pets and perks. Eggs are in the PETS menu." },
 }
 
 local function isDev(): boolean
@@ -144,8 +145,8 @@ function ShopController.Init()
 
 	local tabs = UI.Frame({ BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 46) }, menu.Content)
 	UI.ListLayout(tabs, Enum.FillDirection.Horizontal, 10, Enum.HorizontalAlignment.Center)
-	for i, name in ipairs({ "Permanent", "Boosts", "Help" }) do
-		local b = UI.Button({ Text = string.upper(name), Color = UI.Colors.PanelLight, Size = UDim2.fromOffset(160, 44), TextSize = 18, LayoutOrder = i }, tabs)
+	for i, name in ipairs({ "Permanent", "Boosts", "Help", "Pets" }) do
+		local b = UI.Button({ Text = string.upper(name), Color = UI.Colors.PanelLight, Size = UDim2.fromOffset(140, 44), TextSize = 18, LayoutOrder = i }, tabs)
 		tabButtons[name] = b
 		b.Activated:Connect(function()
 			currentTab = name

@@ -296,10 +296,20 @@ local function stepBills()
 end
 
 local function onDeposit(payload)
-	ghostIntoBin(payload)
 	if not payload.BinPosition then
 		return
 	end
+	-- A helper pet's deposit: the pet carries it in (PetController); a quiet pop for the owner.
+	if payload.Pet then
+		Controllers.AudioController.PlayAt("Deposit", payload.BinPosition)
+		if payload.Mine then
+			task.delay(1, function()
+				worldCashPopup(payload.BinPosition + Vector3.new(0, 2, 0), payload.Amount or 0, payload.Match and "PET  MATCH x2" or "PET")
+			end)
+		end
+		return
+	end
+	ghostIntoBin(payload)
 	if not payload.Mine then
 		Controllers.AudioController.PlayAt("Deposit", payload.BinPosition)
 		return

@@ -361,6 +361,7 @@ function ObjectService.Grab(player: Player, root: any): (boolean, string?)
 	if not hasLineOfSight(hrp.Position + Vector3.new(0, 1.5, 0), root) then
 		return false, "Blocked"
 	end
+	Services.RetentionService.Touch(player)
 	-- Whatever rested on it falls instead of hanging in the air.
 	if root.Anchored then
 		wakeAbove(root)
@@ -406,7 +407,6 @@ function ObjectService.Grab(player: Player, root: any): (boolean, string?)
 	setState(root, "Held")
 	player:SetAttribute("HeldObjectId", root:GetAttribute("ObjectId"))
 	Services.AnalyticsService.Grabbed(player)
-	Services.RetentionService.Touch(player)
 	-- Lifting the last thing off the key reveals it right away.
 	Services.MatchService.OnObjectGrabbed(root)
 	return true, nil

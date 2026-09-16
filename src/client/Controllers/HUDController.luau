@@ -139,6 +139,13 @@ local function buildLobbyHUD()
 	HUDController.Buttons.Daily = menuTile(buttons, "DAILY", UI.Colors.Orange, 6, "7", "Icon_Streak")
 	HUDController.Buttons.Spin = menuTile(buttons, "SPIN", UI.Colors.Pink, 7, "@", "Icon_Spin")
 	HUDController.Buttons.LobbyGifts = menuTile(buttons, "GIFTS", UI.Colors.Gold, 8, "G", "Icon_Gift")
+	HUDController.Buttons.Pets = menuTile(buttons, "PETS", UI.Colors.Pink, 9, "P", "Icon_Pets")
+	tileDot(HUDController.Buttons.Pets, { "PetWelcomed" }, function()
+		return player:GetAttribute("PetWelcomed") == false
+	end)
+	HUDController.Buttons.Pets.Activated:Connect(function()
+		Controllers.PetShopController.Open()
+	end)
 	-- Red dots: today's login reward, today's free spin, and a playtime gift ready to open.
 	tileDot(HUDController.Buttons.Daily, { "LoginClaimable" }, function()
 		return player:GetAttribute("LoginClaimable") == true

@@ -103,7 +103,7 @@ function RetentionService.Grant(player: Player, reward, source: string, sku: str
 			Services.MonetizationService.ApplyBanked(player)
 		end
 	end
-	if reward.Egg and script.Parent:FindFirstChild("PetService") then
+	if reward.Egg then
 		Services.PetService.GrantEgg(player, reward.Egg, sku)
 	end
 end
@@ -156,6 +156,12 @@ local function rollDay(player: Player, data)
 	RetentionService.Publish(player)
 end
 
+-- Did the player move or do anything in the last `window` seconds?
+function RetentionService.IsActive(player: Player, window: number): boolean
+	local st = states[player]
+	return st ~= nil and os.clock() - st.LastActive <= window
+end
+
 -- Anything the player does keeps them active for the playtime gifts.
 function RetentionService.Touch(player: Player)
 	local st = states[player]
@@ -182,7 +188,7 @@ local function claimGift(player: Player)
 	Remotes.Event("FXEvent"):FireClient(player, "GiftOpened", { Index = index, Text = gift.Text, Color = gift.Color })
 	Services.AnalyticsService.Event(player, "gift_opened", index, string.format("%d min", gift.Minutes), player:GetAttribute("InMatch") and "room" or "lobby")
 	RetentionService.Publish(player)
-	task.spawn(Services.DataService.Save, player)
+	Services.DataService.SaveSoon(player)
 end
 
 -- ===== Gift bar and firsts =====
@@ -281,7 +287,7 @@ local function spin(player: Player)
 	Remotes.Event("FXEvent"):FireClient(player, "SpinResult", { Index = index, Text = segment.Text })
 	Services.AnalyticsService.Event(player, "daily_spin", index, segment.Text)
 	RetentionService.Publish(player)
-	task.spawn(Services.DataService.Save, player)
+	Services.DataService.SaveSoon(player)
 end
 
 -- ===== Streak freeze (ProgressionService) =====

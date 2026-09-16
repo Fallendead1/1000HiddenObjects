@@ -49,6 +49,8 @@ local order = {
 	"TutorialController",
 	"DailyRewardController",
 	"GiftController",
+	"PetController",
+	"PetShopController",
 	"SpinController",
 	"OfferController",
 	"LobbyController",

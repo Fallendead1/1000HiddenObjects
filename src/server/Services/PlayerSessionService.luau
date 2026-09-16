@@ -42,6 +42,8 @@ local SessionDefaults = {
 	CashBoostExpires = 0,
 	SpeedBoostExpires = 0,
 	XPBoostExpires = 0,
+	PetSnackExpires = 0,
+	PetCleaned = 0, -- objects this player's pets cleaned this room
 	LiftWeight = 0,
 	LiftExpires = 0,
 	TreasureRadar = "",
@@ -96,10 +98,14 @@ function PlayerSessionService.Init()
 			Services.MatchService.OnCharacterAdded(player, character)
 			character:WaitForChild("Head", 5)
 			updateVipTag(player)
+			PlayerSessionService.RefreshTrail(player)
 		end)
 		if player.Character then
 			applyCollisionGroup(player.Character)
 		end
+		player:GetAttributeChangedSignal("InMatch"):Connect(function()
+			PlayerSessionService.RefreshTrail(player)
+		end)
 		task.spawn(function()
 			if Services.DataService.WaitFor(player, 15) then
 				restoreBoosts(player)
@@ -134,7 +140,7 @@ function restoreBoosts(player: Player)
 		return
 	end
 	local now = workspace:GetServerTimeNow()
-	for _, attr in ipairs({ "StrengthBoostExpires", "CashBoostExpires", "SpeedBoostExpires", "XPBoostExpires" }) do
+	for _, attr in ipairs({ "StrengthBoostExpires", "CashBoostExpires", "SpeedBoostExpires", "XPBoostExpires", "PetSnackExpires" }) do
 		local expires = data.Boosts[attr] or 0
 		if expires > now then
 			player:SetAttribute(attr, expires)
@@ -244,7 +250,56 @@ function PlayerSessionService.GetCashMultiplier(player: Player): number
 end
 
 function PlayerSessionService.GetXPMultiplier(player: Player): number
-	return (player:GetAttribute("XPBoostExpires") or 0) > now() and Effects.XPBoostMultiplier or 1
+	local mult = 1
+	if owns(player, "DoubleXP") then
+		mult *= Effects.DoubleXPPassMultiplier
+	end
+	if (player:GetAttribute("XPBoostExpires") or 0) > now() then
+		mult *= Effects.XPBoostMultiplier
+	end
+	return math.min(mult, Effects.MaxXPMultiplier)
+end
+
+-- Rainbow Trail pass: a rainbow trail behind the player while in the lobby.
+local RAINBOW = ColorSequence.new({
+	ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 70, 70)),
+	ColorSequenceKeypoint.new(0.2, Color3.fromRGB(255, 170, 40)),
+	ColorSequenceKeypoint.new(0.4, Color3.fromRGB(255, 240, 60)),
+	ColorSequenceKeypoint.new(0.6, Color3.fromRGB(70, 230, 90)),
+	ColorSequenceKeypoint.new(0.8, Color3.fromRGB(60, 160, 255)),
+	ColorSequenceKeypoint.new(1, Color3.fromRGB(190, 90, 255)),
+})
+function PlayerSessionService.RefreshTrail(player: Player)
+	local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+	if not root then
+		return
+	end
+	local trail = root:FindFirstChild("RainbowTrail")
+	local want = owns(player, "RainbowTrail")
+	if want and not trail then
+		local a0 = Instance.new("Attachment")
+		a0.Name = "RainbowTrailTop"
+		a0.Position = Vector3.new(0, 0.6, 0)
+		a0.Parent = root
+		local a1 = Instance.new("Attachment")
+		a1.Name = "RainbowTrailBottom"
+		a1.Position = Vector3.new(0, -2.2, 0)
+		a1.Parent = root
+		local t = Instance.new("Trail")
+		t.Name = "RainbowTrail"
+		t.Attachment0 = a0
+		t.Attachment1 = a1
+		t.Color = RAINBOW
+		t.Lifetime = 0.7
+		t.LightEmission = 0.6
+		t.MinLength = 0.2
+		t.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.2), NumberSequenceKeypoint.new(1, 1) })
+		t.Parent = root
+		trail = t
+	end
+	if trail then
+		(trail :: Trail).Enabled = want and player:GetAttribute("InMatch") ~= true
+	end
 end
 
 function PlayerSessionService.RecomputeDerived(player: Player)
@@ -269,6 +324,7 @@ function PlayerSessionService.RecomputeDerived(player: Player)
 	end
 	PlayerSessionService.ApplyWalkSpeed(player)
 	updateVipTag(player)
+	PlayerSessionService.RefreshTrail(player)
 end
 
 function PlayerSessionService.ApplyWalkSpeed(player: Player)

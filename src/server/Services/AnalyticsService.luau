@@ -532,6 +532,8 @@ function AnalyticsService.Init(role: string)
 			AnalyticsService.Event(player, "menu_open", 1, value, where(player))
 			if value == "Shop" then
 				AnalyticsService.ShopOpened(player)
+			elseif value == "Pets" then
+				AnalyticsService.Funnel(player, "Pets", "pets " .. tostring(player.UserId), "Opened", where(player))
 			elseif value == "Daily" and player:GetAttribute("LoginClaimable") == true then
 				AnalyticsService.DailyStep(player, "Opened")
 			end
@@ -546,7 +548,8 @@ function AnalyticsService.Init(role: string)
 		elseif kind == "offer" and type(value) == "string" and AnalyticsConfig.Offers[value] and type(extra) == "string" and AnalyticsConfig.OfferSteps[extra] then
 			AnalyticsService.Event(player, "offer_" .. extra, 1, value, where(player))
 		end
-		if kind == "menu" or kind == "shop_tab" or kind == "offer" then
+		-- Things the player did (an offer merely appearing isn't).
+		if kind == "menu" or kind == "shop_tab" or (kind == "offer" and extra ~= "shown") then
 			Services.RetentionService.Touch(player)
 		end
 	end)
