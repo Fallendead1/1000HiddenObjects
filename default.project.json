@@ -1,6 +1,6 @@
 {
   "name": "1000 Hidden Objects",
-  "servePort": 34873,
+  "servePort": 34874,
   "servePlaceIds": [117675182630398],
   "tree": {
     "$className": "DataModel",
