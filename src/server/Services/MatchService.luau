@@ -17,6 +17,7 @@ local RunService = game:GetService("RunService")
 
 local Shared = ReplicatedStorage.Shared
 local GameConfig = require(Shared.Config.GameConfig)
+local RetentionConfig = require(Shared.Config.RetentionConfig)
 local RoomRegistry = require(Shared.Config.RoomConfigs)
 local UpgradeConfig = require(Shared.Config.UpgradeConfig)
 local Remotes = require(Shared.Utility.Remotes)
@@ -147,8 +148,11 @@ end
 
 -- Random hiding spot, weighted toward DEEP ones (more junk on top, packed chunks count triple):
 -- finding the key should take real digging, while shallow lucky finds stay possible but rare.
+-- A brand-new player's first run (match.Easy) gets one of the shallowest spots instead, under
+-- junk they can lift without upgrades.
 local function selectTarget()
 	local maxWeight = UpgradeConfig.GetValue("Strength", UpgradeConfig.GetMaxLevel("Strength"))
+	local starterWeight = UpgradeConfig.GetValue("Strength", 1)
 	local eligible, total = {}, 0
 	for _, socket in ipairs(match.Runtime.SocketList) do
 		local ok = #socket.Blockers > 0
@@ -160,17 +164,39 @@ local function selectTarget()
 			depth += b:GetAttribute("IsChunk") and 3 or 1
 		end
 		if ok then
-			table.insert(eligible, { Socket = socket, Weight = depth })
+			local light = true
+			for _, b in ipairs(socket.Blockers) do
+				if (b:GetAttribute("Weight") or 1) > starterWeight then
+					light = false
+				end
+			end
+			table.insert(eligible, { Socket = socket, Weight = depth, Light = light })
 			total += depth
 		end
 	end
 	assert(#eligible > 0, "Room has no exposable target sockets")
-	local roll = match.Rng:NextNumber() * total
-	for _, e in ipairs(eligible) do
-		roll -= e.Weight
-		if roll <= 0 then
-			match.TargetSocket = e.Socket
-			break
+	if match.Easy then
+		local pool = {}
+		for _, e in ipairs(eligible) do
+			if e.Light then
+				table.insert(pool, e)
+			end
+		end
+		if #pool == 0 then
+			pool = eligible
+		end
+		table.sort(pool, function(a, b)
+			return a.Weight < b.Weight
+		end)
+		match.TargetSocket = pool[match.Rng:NextInteger(1, math.max(1, math.ceil(#pool * 0.25)))].Socket
+	else
+		local roll = match.Rng:NextNumber() * total
+		for _, e in ipairs(eligible) do
+			roll -= e.Weight
+			if roll <= 0 then
+				match.TargetSocket = e.Socket
+				break
+			end
 		end
 	end
 	match.TargetSocket = match.TargetSocket or eligible[#eligible].Socket
@@ -283,6 +309,9 @@ function MatchService.Init(role: string)
 		if match and (match.State == "Results" or match.State == "Returning") then
 			MatchService.ReturnPlayer(player)
 		end
+	end)
+	Remotes.Event("PlayNext").OnServerEvent:Connect(function(player)
+		MatchService.RequestNext(player)
 	end)
 	-- The room's exit door (ExitDoorController): back to a lobby server at any time.
 	Remotes.Event("LeaveRoom").OnServerEvent:Connect(function(player)
@@ -441,6 +470,7 @@ export type LaunchParams = {
 	Seed: number,
 	MatchId: string,
 	Hard: boolean?,
+	Easy: boolean?, -- a brand-new player's first run: the object sits in a shallow spot
 	PartySessions: { [string]: string }?, -- analytics party ids by UserId (from the teleport)
 }
 
@@ -487,6 +517,7 @@ function MatchService.StartFromTeleport()
 		Seed = tonumber(data.Seed) or Random.new():NextInteger(1, 2 ^ 30),
 		MatchId = tostring(data.MatchId or "local"),
 		Hard = data.Hard == true,
+		Easy = data.Easy == true,
 		PartySessions = type(data.PartySessions) == "table" and data.PartySessions or nil,
 	}, CFrame.new(GameConfig.CombinedRoomOffset))
 end
@@ -549,6 +580,7 @@ function MatchService.BeginMatch(params: LaunchParams, origin: CFrame): boolean
 		ResumePercent = params.ResumePercent or 0,
 		ClaimLock = false,
 		Hard = params.Hard == true,
+		Easy = params.Easy == true and not params.Hard,
 		PartySessions = params.PartySessions,
 	}
 
@@ -596,11 +628,13 @@ function MatchService.BeginMatch(params: LaunchParams, origin: CFrame): boolean
 		player:SetAttribute("InMatch", true)
 		player:SetAttribute("MatchId", match.Id)
 		Services.PlayerSessionService.RecomputeDerived(player)
+		Services.WalletService.ResetRoom(player)
 		local spawnCF = getSpawnCFrame()
 		if spawnCF and player.Character then
 			moveCharacterTo(player, spawnCF)
 		end
 	end
+	Services.RetentionService.SetupFriendBonus(players)
 
 	fireMatch("Intro", {
 		RoomNumber = config.DisplayNumber,
@@ -853,6 +887,7 @@ function MatchService.CompleteMatch(finder: Player)
 	-- Save FIRST, then celebrate.
 	local starsByUser = {}
 	local newBestByUser = {} -- runs that set a best time (the results screen says NEW BEST only for these)
+	local canNextByUser = {} -- who has the next room unlocked (their results screen counts down to it)
 	for _, player in ipairs(match.Players) do
 		local firstClear = false
 		Services.DataService.Update(player, function(data)
@@ -874,6 +909,8 @@ function MatchService.CompleteMatch(finder: Player)
 		end)
 		Services.CheckpointService.ClearForRoom(player, roomId)
 		starsByUser[tostring(player.UserId)] = Services.ProgressionService.OnRoomComplete(player, match, player == finder, firstClear)
+		canNextByUser[tostring(player.UserId)] = Services.QueueService.CanPlayRoom(player, roomId + 1)
+		task.defer(Services.RetentionService.First, player, "Room")
 		Services.DataService.Save(player)
 		local data = Services.DataService.Get(player)
 		if data then
@@ -926,9 +963,99 @@ function MatchService.CompleteMatch(finder: Player)
 			TreasuresTotal = match.TreasuresTotal,
 			TreasuresCleaned = match.TreasuresCleaned,
 			NextRoomAvailable = RoomRegistry.Exists(roomId + 1),
+			CanNext = canNextByUser,
+			AutoNextSeconds = RetentionConfig.AutoNextSeconds,
 			TotalObjects = GameConfig.TotalObjects,
 		})
 	end)
+end
+
+-- ===== Next room =====
+
+-- Everyone who chose NEXT ROOM goes on together to a fresh room (a new match server, or here in
+-- Studio); the rest stay on the results screen.
+local function launchNext(thisMatch)
+	if match ~= thisMatch or thisMatch.NextLaunched then
+		return
+	end
+	thisMatch.NextLaunched = true
+	local party = {}
+	for _, p in ipairs(thisMatch.Players) do
+		if p.Parent and thisMatch.NextVotes[p] then
+			table.insert(party, p)
+		end
+	end
+	if #party == 0 then
+		return
+	end
+	local nextId = thisMatch.RoomId + 1
+	local launch = {
+		Players = party,
+		RoomId = nextId,
+		ResumePercent = Services.CheckpointService.ResolveResumePercent(party, nextId),
+		QueueId = "NextRoom",
+		Hard = false,
+	}
+	if serverRole == "Match" then
+		for _, p in ipairs(party) do
+			p:SetAttribute("Teleporting", true)
+		end
+		if not Services.TeleportServiceWrapper.TeleportParty(launch) then
+			for _, p in ipairs(party) do
+				p:SetAttribute("Teleporting", false)
+			end
+			thisMatch.NextLaunched, thisMatch.NextVotes, thisMatch.NextTimer = false, {}, false
+		end
+		return
+	end
+	-- Studio (Combined): this room ends and the next one is built here.
+	MatchService.EndMatch()
+	for _, p in ipairs(party) do
+		p:SetAttribute("Teleporting", true)
+	end
+	task.wait(0.5)
+	Services.TeleportServiceWrapper.TeleportParty(launch)
+	for _, p in ipairs(party) do
+		if p.Parent then
+			p:SetAttribute("Teleporting", false)
+		end
+	end
+end
+
+function MatchService.RequestNext(player: Player)
+	if not match or match.State ~= "Results" or not table.find(match.Players, player) or match.NextLaunched then
+		return
+	end
+	local nextId = match.RoomId + 1
+	if not RoomRegistry.Exists(nextId) then
+		return
+	end
+	if not Services.QueueService.CanPlayRoom(player, nextId) then
+		Services.NotificationService.Send(player, "Warning", string.format("Room #%03d unlocks once you find the object in Room #%03d.", nextId, nextId - 1))
+		return
+	end
+	match.NextVotes = match.NextVotes or {}
+	if match.NextVotes[player] then
+		return
+	end
+	match.NextVotes[player] = true
+	Services.AnalyticsService.Event(player, "next_room", nextId, #match.Players <= 1 and "solo" or "party")
+	local waiting = 0
+	for _, p in ipairs(match.Players) do
+		if not match.NextVotes[p] then
+			waiting += 1
+		end
+	end
+	local thisMatch = match
+	if waiting == 0 then
+		task.spawn(launchNext, thisMatch)
+	else
+		Services.NotificationService.Send(player, "Info", string.format("Waiting for your party (%ds)...", RetentionConfig.NextRoomVoteSeconds))
+		if not match.NextTimer then
+			match.NextTimer = true
+			task.delay(RetentionConfig.NextRoomVoteSeconds, launchNext, thisMatch)
+		end
+	end
 end
 
 function MatchService.ReturnPlayer(player: Player)
@@ -1022,8 +1149,11 @@ function MatchService.GetTargetInfo()
 		return nil
 	end
 	local ids = {}
+	local depth, heaviest = 0, 0
 	for _, b in ipairs(match.TargetSocket.Blockers) do
 		table.insert(ids, b:GetAttribute("ObjectId"))
+		depth += b:GetAttribute("IsChunk") and 3 or 1
+		heaviest = math.max(heaviest, b:GetAttribute("Weight") or 1)
 	end
 	return {
 		SocketId = match.TargetSocket.Id,
@@ -1034,6 +1164,9 @@ function MatchService.GetTargetInfo()
 		BlockerIds = ids,
 		Covering = #MatchService.GetCoveringObjects(),
 		Revealed = match.TargetRevealed,
+		Depth = depth,
+		Heaviest = heaviest,
+		Easy = match.Easy == true,
 	}
 end
 

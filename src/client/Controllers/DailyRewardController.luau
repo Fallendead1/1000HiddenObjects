@@ -27,6 +27,7 @@ local cards: { { Card: Frame, State: TextLabel, Pulsing: boolean } } = {}
 local claimButton: TextButton
 local streakLabel: TextLabel
 local footerLabel: TextLabel
+local freezeLabel: TextLabel
 local busy = false
 local autoShown = false
 
@@ -46,6 +47,17 @@ local function refresh()
 		streakLabel.Text = streak > 0 and string.format("%d-DAY STREAK  ·  CLAIM DAY %d!", streak, today) or "YOUR DAILY REWARD IS READY!"
 	else
 		streakLabel.Text = string.format("LOGIN STREAK: %d DAY%s", streak, streak == 1 and "" or "S")
+	end
+	-- The weekly streak freeze: one missed day a week doesn't break the streak.
+	if claimable and player:GetAttribute("LoginFrozen") == true then
+		freezeLabel.Text = "You missed a day - your weekly STREAK FREEZE keeps your streak!"
+		freezeLabel.TextColor3 = UI.Colors.Cyan
+	elseif player:GetAttribute("LoginFreezeReady") == true then
+		freezeLabel.Text = "STREAK FREEZE READY: miss one day this week and keep your streak."
+		freezeLabel.TextColor3 = UI.Colors.TextDim
+	else
+		freezeLabel.Text = "Streak freeze used this week - a new one comes on Monday."
+		freezeLabel.TextColor3 = UI.Colors.TextDim
 	end
 	for day, c in ipairs(cards) do
 		local done = day < today or (day == today and not claimable)
@@ -92,7 +104,7 @@ function DailyRewardController.Init()
 	menu = UI.Menu("Daily", "DAILY REWARDS", UDim2.fromOffset(720, 420), UI.Colors.Gold)
 	streakLabel = UI.Label({ Text = "", TextSize = 22, TextWrapped = false, Size = UDim2.new(1, 0, 0, 28) }, menu.Content)
 	UI.TextGradient(streakLabel, UI.Colors.Gold)
-	UI.Label({ Text = "Come back every day for a bigger reward. Miss a day and it starts over.", TextSize = 14, Font = UI.FontBody, TextColor3 = UI.Colors.TextDim, Size = UDim2.new(1, 0, 0, 18), Position = UDim2.fromOffset(0, 30) }, menu.Content)
+	freezeLabel = UI.Label({ Text = "", TextSize = 14, Font = UI.FontBody, TextColor3 = UI.Colors.TextDim, Size = UDim2.new(1, 0, 0, 18), Position = UDim2.fromOffset(0, 30) }, menu.Content)
 
 	local row = UI.Frame({ BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 170), Position = UDim2.fromOffset(0, 58) }, menu.Content)
 	UI.ListLayout(row, Enum.FillDirection.Horizontal, 8, Enum.HorizontalAlignment.Center)
@@ -112,7 +124,7 @@ function DailyRewardController.Init()
 	menu.Primary = claimButton -- controllers: A claims straight away
 	menu.OnOpen(refresh)
 
-	for _, name in ipairs({ "LoginDay", "LoginClaimable", "LoginStreak" }) do
+	for _, name in ipairs({ "LoginDay", "LoginClaimable", "LoginStreak", "LoginFrozen", "LoginFreezeReady" }) do
 		player:GetAttributeChangedSignal(name):Connect(refresh)
 	end
 	Remotes.Event("FXEvent").OnClientEvent:Connect(function(name, payload)

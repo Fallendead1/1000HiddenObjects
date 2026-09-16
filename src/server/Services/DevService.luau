@@ -29,7 +29,7 @@ end
 
 local commands: { [string]: (Player, ...any) -> () } = {}
 
-commands.StartRoom = function(player, partySize, roomId)
+commands.StartRoom = function(player, partySize, roomId, easy)
 	partySize = math.clamp(tonumber(partySize) or 1, 1, GameConfig.MaxPartySize)
 	roomId = tonumber(roomId) or 1
 	if not RoomRegistry.Exists(roomId) then
@@ -46,7 +46,50 @@ commands.StartRoom = function(player, partySize, roomId)
 		ResumePercent = Services.CheckpointService.ResolveResumePercent({ player }, roomId),
 		Seed = Random.new():NextInteger(1, 2 ^ 30),
 		MatchId = HttpService:GenerateGUID(false),
+		Easy = easy == true,
 	})
+end
+
+commands.AddWallet = function(player, amount)
+	Services.WalletService.Add(player, tonumber(amount) or 1000, "Gameplay", "Dev")
+end
+
+-- Adds active playtime today (minutes), so the gift ladder can be tested quickly.
+commands.AddPlaytime = function(player, minutes)
+	Services.DataService.Update(player, function(data)
+		data.Playtime.Seconds += math.floor((tonumber(minutes) or 1) * 60)
+	end)
+	Services.RetentionService.Publish(player)
+end
+
+-- The wallet, gifts, spin, firsts, gift bar, Starter Pack and the notify question start over.
+commands.ResetRetention = function(player)
+	Services.DataService.Update(player, function(data)
+		data.Wallet = 0
+		data.Banked.LiftItNow = 0
+		data.Banked.JunkBlaster = 0
+		data.Banked.TreasureRadar = 0
+		data.Playtime = { Day = 0, Seconds = 0, Claimed = 0 }
+		data.GiftBar = { Count = 0, Level = 0 }
+		data.Firsts = {}
+		data.Spin = { Day = 0 }
+		data.StarterPack = false
+		data.NotifyAsked = false
+		data.Login.FreezeWeek = 0
+	end)
+	Services.RetentionService.Publish(player)
+	Services.ProgressionService.Publish(player)
+	Services.NotificationService.Send(player, "Info", "[DEV] Wallet, gifts, spin, firsts and offers reset.")
+end
+
+-- Pretends the last daily claim was two days ago, so the streak freeze can be tested.
+commands.MissADay = function(player)
+	Services.DataService.Update(player, function(data)
+		local day = math.floor(workspace:GetServerTimeNow() / 86400)
+		data.Login.Day = day - 2
+		data.Login.Streak = math.max(1, data.Login.Streak)
+	end)
+	Services.ProgressionService.Publish(player)
 end
 
 commands.AddCash = function(player, amount)
@@ -132,13 +175,66 @@ end
 commands.TargetInfo = function(player)
 	local info = Services.MatchService.GetTargetInfo()
 	if info then
-		local text = string.format("[DEV] Target: %s (%s) at %s | %d covering / %d blockers | revealed=%s | keyChunk=%s | blockers: %s", tostring(info.SocketId), tostring(info.RegionId), tostring(info.Position), info.Covering or 0, info.Blockers or 0, tostring(info.Revealed), tostring(info.KeyChunk), table.concat(info.BlockerIds or {}, ","))
+		local text = string.format("[DEV] Target: %s (%s) at %s | %d covering / %d blockers (depth %d, heaviest %d) | easy=%s | revealed=%s | keyChunk=%s | blockers: %s", tostring(info.SocketId), tostring(info.RegionId), tostring(info.Position), info.Covering or 0, info.Blockers or 0, info.Depth or 0, info.Heaviest or 0, tostring(info.Easy), tostring(info.Revealed), tostring(info.KeyChunk), table.concat(info.BlockerIds or {}, ","))
+		-- Where this spot ranks among every hiding spot by depth (1 = shallowest).
+		local match = Services.MatchService.GetMatch()
+		local depths = {}
+		for _, socket in ipairs(match.Runtime.SocketList or {}) do
+			local d = 0
+			for _, b in ipairs(socket.Blockers) do
+				d += b:GetAttribute("IsChunk") and 3 or 1
+			end
+			table.insert(depths, d)
+		end
+		table.sort(depths)
+		local rank = 0
+		for i, d in ipairs(depths) do
+			if d <= (info.Depth or 0) then
+				rank = i
+			end
+		end
+		text ..= string.format(" | depth rank %d of %d (depths %d..%d)", rank, #depths, depths[1] or 0, depths[#depths] or 0)
 		print(text)
 		Services.NotificationService.Send(player, "Info", text, 8)
 	end
 end
 
+function DevService.Run(player: Player, command: string, ...)
+	local fn = commands[command]
+	if fn then
+		local ok, err = pcall(fn, player, ...)
+		if not ok then
+			warn("[DevService]", command, err)
+		end
+	end
+end
+
 function DevService.Init()
+	-- Studio test hook: workspace attribute DevRun = "Command arg1 arg2" runs it for the first player.
+	if RunService:IsStudio() then
+		workspace:GetAttributeChangedSignal("DevRun"):Connect(function()
+			local line = workspace:GetAttribute("DevRun")
+			local player = game:GetService("Players"):GetPlayers()[1]
+			if type(line) ~= "string" or line == "" or not player then
+				return
+			end
+			local parts = string.split(line, " ")
+			local args = {}
+			for i = 2, #parts do
+				local v: any = parts[i]
+				if v == "true" or v == "false" then
+					v = v == "true"
+				elseif tonumber(v) then
+					v = tonumber(v)
+				end
+				args[i - 1] = v
+			end
+			print("[DEV] run", line)
+			DevService.Run(player, parts[1], table.unpack(args))
+			workspace:SetAttribute("DevRun", "")
+		end)
+	end
+
 	Remotes.Event("DevCommand").OnServerEvent:Connect(function(player, command, ...)
 		if not DevService.IsAuthorized(player) then
 			return

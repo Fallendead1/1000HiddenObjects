@@ -70,6 +70,9 @@ return {
 	-- What the client may report over the Track remote; anything else is ignored.
 	ShopTabs = { Permanent = true, Boosts = true, Help = true },
 	Platforms = { touch = true, desktop = true, gamepad = true, vr = true },
+	-- Contextual offer chips (OfferController): shown, then tapped (which opens the prompt).
+	Offers = { LiftItNow = true, JunkBlaster = true, SpeedBoost10Min = true, TreasureRadar = true, DoubleXP15Min = true, StarterPack = true, PetSnack = true },
+	OfferSteps = { shown = true, tapped = true, closed = true },
 
 	EconomyFlushSeconds = 60, -- Cash / XP transactions are summed and sent this often
 	FpsReportSeconds = 120, -- the client reports its average frame rate this often

@@ -3,7 +3,7 @@
 	screen, a bouncing arrow with a white frame on the exact button to press, an arrow over the
 	thing to go to in the world, and a guide beam in the lobby. Each step moves on when the player
 	does it, and it all runs only until the first room's tutorial is finished (or skipped).
-	  Lobby:      welcome  ->  walk into a glowing circle  ->  pick a room and press CREATE
+	  Lobby:      welcome  ->  tap PLAY NOW (or walk into a glowing circle, pick a room, CREATE)
 	  First room: 1 grab   2 throw it into the x2 bin   3 upgrades   4 find the key (HINT)   done
 	Settings > HOW TO PLAY replays the lessons as a short animated video, from anywhere.
 ]]
@@ -655,6 +655,11 @@ local function lobbyView(): View?
 			return { Text = platformText("Pick a room, then press CREATE!", "Pick a room, then tap CREATE!", "Pick a room, then press A to CREATE!"), Gui = create, Side = "Left" }
 		end
 		return { Text = "Get ready - your room is about to start!" }
+	end
+	-- PLAY NOW starts the first room in one tap.
+	local play = Controllers.HUDController.GetPlayButton()
+	if play and onScreen(play) then
+		return { Text = platformText("Press PLAY NOW to start your first room!", "Tap PLAY NOW to start your first room!", "Press X to PLAY NOW!"), Gui = play }
 	end
 	local circle = openCircle(root)
 	if not circle then

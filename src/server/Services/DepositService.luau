@@ -3,7 +3,10 @@
 	any object that ends up inside - thrown, dropped or carried in - is cleaned: it leaves the
 	room and pays the player who last held it:
 
-	  CashValue x (matching bin 2x) x (swish 1.5x) x streak (up to 1.5x) x cash boosts
+	  CashValue x (matching bin 2x) x (swish 1.5x) x streak (up to 1.5x) x friend bonus x cash boosts
+
+	The pay before the paid cash boosts is the base pay: a share of it is saved to the player's
+	lasting wallet (WalletService).
 
 	A swish is a throw from SwishMinDistance+ studs that drops in before its first impact.
 	Objects whose flight failed the anti-cheat check (or nobody ever held) are cleaned for free.
@@ -97,14 +100,17 @@ function DepositService.Deposit(root: BasePart, bin: Bin)
 		streak = ((player:GetAttribute("StreakExpires") or 0) > now) and (player:GetAttribute("Streak") or 0) + 1 or 1
 		player:SetAttribute("Streak", streak)
 		player:SetAttribute("StreakExpires", now + DepositConfig.StreakWindow)
-		local mult = (isMatch and DepositConfig.MatchMultiplier or 1)
+		local base = (root:GetAttribute("CashValue") or 1)
+			* (isMatch and DepositConfig.MatchMultiplier or 1)
 			* (swish and DepositConfig.SwishMultiplier or 1)
 			* DepositConfig.StreakMultiplier(streak)
-			* Services.PlayerSessionService.GetCashMultiplier(player)
-		amount = math.max(1, math.floor((root:GetAttribute("CashValue") or 1) * mult + 0.5))
+			* Services.RetentionService.CashMultiplier(player)
+		amount = math.max(1, math.floor(base * Services.PlayerSessionService.GetCashMultiplier(player) + 0.5))
 		Services.EconomyService.AddCash(player, amount)
+		Services.WalletService.OnDeposit(player, base, category == "Treasure" and "Treasure" or ("Bin_" .. bin.Type))
 		player:SetAttribute("ObjectsCleaned", (player:GetAttribute("ObjectsCleaned") or 0) + 1)
 		Services.ProgressionService.OnDeposit(player, { Match = isMatch, BinType = bin.Type, Swish = swish, Streak = streak, Treasure = category == "Treasure" })
+		Services.RetentionService.OnDeposit(player, { Swish = swish, Streak = streak, Treasure = category == "Treasure" })
 		Services.AnalyticsService.Deposited(player, { Amount = amount, BinType = bin.Type, Match = isMatch, Swish = swish, Streak = streak, Treasure = category == "Treasure", Balance = player:GetAttribute("RoomCash") or 0 })
 	end
 

@@ -14,6 +14,8 @@ export type ProductDef = {
 	Tab: string, -- "Permanent" | "Boosts" | "Help"
 	MatchOnly: boolean?,
 	Icon: string,
+	Ribbon: string?, -- the card's ribbon (default: the tab's)
+	OneTime: boolean?, -- a developer product that can only be bought once (StarterPack)
 }
 
 local MonetizationConfig = {
@@ -31,6 +33,13 @@ local MonetizationConfig = {
 		Strength10Min = 3712853730, -- suggested 49 R$
 		Cash10Min = 3712853728, -- suggested 29 R$
 		TeamMuscleBoost = 3712853734, -- suggested 129 R$
+		-- Cheap contextual offers (0 until created; found by StoreName at runtime).
+		SpeedBoost10Min = 0, -- suggested 3 R$
+		LiftItNow = 0, -- suggested 5 R$
+		JunkBlaster = 0, -- suggested 5 R$
+		TreasureRadar = 0, -- suggested 9 R$
+		DoubleXP15Min = 0, -- suggested 9 R$
+		StarterPack = 0, -- suggested 49 R$, once per player
 	},
 
 	Badges = {
@@ -61,6 +70,13 @@ local MonetizationConfig = {
 		TeamMuscleStrengthMultiplier = 1.5,
 		TeamMuscleThrowMultiplier = 1.25,
 
+		SpeedBoostMultiplier = 2, -- walk speed while active (capped at MaxBoostedWalkSpeed)
+		MaxBoostedWalkSpeed = 32, -- keeps grabbing and throwing on the run under control
+		XPBoostMultiplier = 2,
+		XPBoostSeconds = 900,
+		StarterPackCashBoostSeconds = 1800,
+		StarterPackQuickHints = 2,
+
 		SuperHintDuration = 15,
 		RegionHighlightDuration = 8,
 	},
@@ -81,8 +97,14 @@ local ProductDefs: { ProductDef } = {
 	{ Key = "Strength10Min", Id = 0, StoreName = "2x Strength (10 min)", Name = "2X STRENGTH", Description = "Lift twice the weight for 10 minutes.", SuggestedPrice = 49, Tab = "Boosts", MatchOnly = true, Icon = "2X" },
 	{ Key = "Cash10Min", Id = 0, StoreName = "2x Cash (10 min)", Name = "2X CASH BOOST", Description = "Double Cash from bin deposits for 10 minutes. Carries over between rooms.", SuggestedPrice = 29, Tab = "Boosts", MatchOnly = true, Icon = "$2" },
 	{ Key = "TeamMuscleBoost", Id = 0, StoreName = "Team Muscle Boost", Name = "TEAM MUSCLE BOOST", Description = "Everyone in your room gets +50% Strength and +25% throw power for 10 minutes.", SuggestedPrice = 129, Tab = "Boosts", MatchOnly = true, Icon = "TM" },
+	{ Key = "SpeedBoost10Min", Id = 0, StoreName = "2x Speed (10 min)", Name = "2X SPEED", Description = "Run up to twice as fast for 10 minutes. Carries over between rooms.", SuggestedPrice = 3, Tab = "Boosts", MatchOnly = true, Icon = ">>" },
+	{ Key = "DoubleXP15Min", Id = 0, StoreName = "2x XP (15 min)", Name = "2X XP BOOST", Description = "Double Cleaner XP for 15 minutes. Level up and unlock titles faster.", SuggestedPrice = 9, Tab = "Boosts", MatchOnly = true, Icon = "XP", Ribbon = "15 MIN BOOST" },
 	{ Key = "QuickHint", Id = 0, StoreName = "Quick Hint", Name = "QUICK HINT", Description = "Instantly receive the next clue.", SuggestedPrice = 19, Tab = "Help", MatchOnly = true, Icon = "?" },
 	{ Key = "SuperHint", Id = 0, StoreName = "Super Hint", Name = "SUPER HINT", Description = "Highlight the correct search region for 15 seconds.", SuggestedPrice = 39, Tab = "Help", MatchOnly = true, Icon = "??" },
+	{ Key = "LiftItNow", Id = 0, StoreName = "Lift It Now", Name = "LIFT IT NOW", Description = "Lift that too-heavy object, and anything as heavy, for 60 seconds.", SuggestedPrice = 5, Tab = "Help", MatchOnly = true, Icon = "UP", Ribbon = "60 SECONDS" },
+	{ Key = "JunkBlaster", Id = 0, StoreName = "Junk Blaster", Name = "JUNK BLASTER", Description = "Bursts open the packed junk around you. Never the junk hiding the object.", SuggestedPrice = 5, Tab = "Help", MatchOnly = true, Icon = "!!" },
+	{ Key = "TreasureRadar", Id = 0, StoreName = "Treasure Radar", Name = "TREASURE RADAR", Description = "Every treasure in this room sparkles through the junk.", SuggestedPrice = 9, Tab = "Help", MatchOnly = true, Icon = "TR", Ribbon = "THIS ROOM" },
+	{ Key = "StarterPack", Id = 0, StoreName = "Starter Pack", Name = "STARTER PACK", Description = "30 min 2X Cash and 2 Quick Hints for your next rooms, plus a Mop Pup helper pet. Once per player.", SuggestedPrice = 49, Tab = "Permanent", Icon = "SP", Ribbon = "ONE TIME", OneTime = true },
 }
 
 -- Resolve IDs from the tables above so there is exactly one place to edit.

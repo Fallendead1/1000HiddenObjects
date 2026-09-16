@@ -24,6 +24,12 @@ local Remotes = {
 		"TutorialComplete", -- C->S
 		"DiscardCheckpoint", -- C->S
 		"ClaimDailyReward", -- C->S () claim today's login reward
+		"ClaimGift", -- C->S () open the next playtime gift that is ready
+		"SpinWheel", -- C->S () today's free spin
+		"QuickPlay", -- C->S () PLAY NOW: a solo run of your next room, no circle needed
+		"PlayNext", -- C->S () results screen: go straight on to the next room
+		"NotifyAnswered", -- C->S (answer) the "notify me" card was answered (asked only once)
+		"UseBlaster", -- C->S () use a Junk Blaster bought outside a room
 		"DevCommand", -- C->S (command, ...)
 		"MatchUpdate", -- S->C (eventName, payload)
 		"Notification", -- S->C (kind, text, duration?)

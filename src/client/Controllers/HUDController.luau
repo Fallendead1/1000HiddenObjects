@@ -1,7 +1,8 @@
 --[[
 	Lobby HUD and Match HUD. Reads replicated player attributes and MatchState attributes.
-	Lobby: square studded menu tiles (right) and the resume card (objects found and Finder Wins
-	are on each player's overhead tag instead: ProgressionService.RefreshTag).
+	Lobby: square studded menu tiles (right), the saved Cash wallet (left, under the level badge),
+	and PLAY NOW with the checkpoint line (bottom centre). Objects found and Finder Wins are on
+	each player's overhead tag instead (ProgressionService.RefreshTag).
 	Match: Cash + max weight + deposit streak (top left), room / target / ROOM CLEANED % (top
 	centre), UPGRADES / SHOP / HINT / SETTINGS tiles (right), boosts, team, hot/cold, and on
 	touch a big GRAB / THROW button plus a DROP button driven by GrabController.
@@ -15,6 +16,7 @@ local UserInputService = game:GetService("UserInputService")
 
 local Shared = ReplicatedStorage.Shared
 local FormatUtil = require(Shared.Utility.FormatUtil)
+local RoomRegistry = require(Shared.Config.RoomConfigs)
 local Remotes = require(Shared.Utility.Remotes)
 
 local UI = require(script.Parent.Parent.UI.UI)
@@ -38,6 +40,7 @@ local timerLabel: TextLabel
 local boostsFrame: Frame
 local teamFrame: Frame
 local sideStack: Frame? = nil
+local rightStack: Frame? = nil -- desktop: boosts, then the challenge tracker, under the tiles
 local cashLabel: TextLabel
 local cashGlow: Instance
 local shownCash = 0
@@ -51,8 +54,16 @@ local roomTargetLabel: TextLabel
 local hotColdPulseThread: thread? = nil
 local matchTop: Frame
 local topY = 10 -- where the top panels sit (HUD-layer units); see placeTop
+local walletLabel: TextLabel
+local walletPanel: Frame
+local shownWallet = 0
+local walletHoldUntil = 0
+local playFrame: Frame
+local playButton: TextButton
+local playBusyUntil = 0
 
 HUDController.Buttons = {}
+local tileLabels: { [TextButton]: TextLabel } = {}
 
 local touch = UI.IsTouch()
 local TILE = touch and 74 or 66
@@ -73,9 +84,25 @@ local function menuTile(parent: Instance, text: string, color: Color3, order: nu
 	icon.Size = UDim2.fromScale(0.7, 0.62)
 	icon.AnchorPoint = Vector2.new(0.5, 0.5)
 	icon.Position = UDim2.fromScale(0.5, 0.45)
-	UI.Label({ Text = text, FitText = 13, Size = UDim2.new(1, 2, 0, 15), AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, 0) }, cell)
+	tileLabels[b] = UI.Label({ Text = text, FitText = 13, Size = UDim2.new(1, 2, 0, 15), AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, 0) }, cell)
 	UI.Shine(b, 5 + order * 0.9)
 	return b
+end
+
+-- A pulsing red dot on a tile while `isOn` says so (re-checked when any of `attributes` change).
+local function tileDot(button: TextButton, attributes: { string }, isOn: () -> boolean)
+	local dot = UI.Frame({ Name = "Dot", Size = UDim2.fromOffset(18, 18), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(1, -4, 0, 4), BackgroundColor3 = UI.Colors.Red, Visible = false, ZIndex = 20 }, button)
+	UI.New("UICorner", { CornerRadius = UDim.new(1, 0) }, dot)
+	UI.New("UIStroke", { Color = Color3.new(1, 1, 1), Thickness = 2 }, dot)
+	UI.Pulse(dot, 0.15, 1.6)
+	local function refresh()
+		dot.Visible = isOn()
+	end
+	for _, name in ipairs(attributes) do
+		player:GetAttributeChangedSignal(name):Connect(refresh)
+	end
+	refresh()
+	return refresh
 end
 
 -- Controllers: a D-pad direction opens a tile's menu (the tile wears that button's badge).
@@ -85,8 +112,8 @@ local function padShortcut(button: TextButton, key: Enum.KeyCode, frame: Frame, 
 	table.insert(padShortcuts, { Key = key, Button = button, Frame = frame, Open = open })
 end
 
-local function tileGrid(parent: Instance, rows: number, props: { [string]: any }): Frame
-	local p = { BackgroundTransparency = 1, Size = UDim2.fromOffset(2 * (TILE + 10) + 6, rows * (TILE + 24) + (rows - 1) * 6) }
+local function tileGrid(parent: Instance, columns: number, rows: number, props: { [string]: any }): Frame
+	local p = { BackgroundTransparency = 1, Size = UDim2.fromOffset(columns * (TILE + 10) + (columns - 1) * 6, rows * (TILE + 24) + (rows - 1) * 6) }
 	for k, v in pairs(props) do
 		p[k] = v
 	end
@@ -103,23 +130,28 @@ local function buildLobbyHUD()
 	-- (ProgressionService.RefreshTag), where everyone can see them.
 
 	-- Phones: hung from the top so the bottom row clears the jump button.
-	local buttons = tileGrid(lobbyFrame, 3, touch and { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -10, 0, 8) } or { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -10, 0.46, 0) })
+	local buttons = tileGrid(lobbyFrame, 3, 3, touch and { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -10, 0, 8) } or { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -10, 0.46, 0) })
 	HUDController.Buttons.Collection = menuTile(buttons, "COLLECTION", UI.Colors.Gold, 1, "1K", "Icon_Collection")
 	HUDController.Buttons.Challenges = menuTile(buttons, "CHALLENGES", UI.Colors.Cyan, 2, "!", "Icon_Challenges")
 	HUDController.Buttons.LobbyShop = menuTile(buttons, "SHOP", UI.Colors.Purple, 3, "$", "Icon_Shop")
 	HUDController.Buttons.Invite = menuTile(buttons, "INVITE", UI.Colors.Green, 4, "+", "Icon_Invite")
 	HUDController.Buttons.LobbySettings = menuTile(buttons, "SETTINGS", UI.Colors.Locked, 5, "*", "Icon_Settings")
 	HUDController.Buttons.Daily = menuTile(buttons, "DAILY", UI.Colors.Orange, 6, "7", "Icon_Streak")
-	-- A red dot on DAILY while today's login reward is waiting.
-	local dailyDot = UI.Frame({ Name = "Dot", Size = UDim2.fromOffset(18, 18), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(1, -4, 0, 4), BackgroundColor3 = UI.Colors.Red, Visible = false, ZIndex = 20 }, HUDController.Buttons.Daily)
-	UI.New("UICorner", { CornerRadius = UDim.new(1, 0) }, dailyDot)
-	UI.New("UIStroke", { Color = Color3.new(1, 1, 1), Thickness = 2 }, dailyDot)
-	UI.Pulse(dailyDot, 0.15, 1.6)
-	local function refreshDailyDot()
-		dailyDot.Visible = player:GetAttribute("LoginClaimable") == true
-	end
-	player:GetAttributeChangedSignal("LoginClaimable"):Connect(refreshDailyDot)
-	refreshDailyDot()
+	HUDController.Buttons.Spin = menuTile(buttons, "SPIN", UI.Colors.Pink, 7, "@", "Icon_Spin")
+	HUDController.Buttons.LobbyGifts = menuTile(buttons, "GIFTS", UI.Colors.Gold, 8, "G", "Icon_Gift")
+	-- Red dots: today's login reward, today's free spin, and a playtime gift ready to open.
+	tileDot(HUDController.Buttons.Daily, { "LoginClaimable" }, function()
+		return player:GetAttribute("LoginClaimable") == true
+	end)
+	tileDot(HUDController.Buttons.Spin, { "SpinReady" }, function()
+		return player:GetAttribute("SpinReady") == true
+	end)
+	HUDController.Buttons.Spin.Activated:Connect(function()
+		Controllers.SpinController.Open()
+	end)
+	HUDController.Buttons.LobbyGifts.Activated:Connect(function()
+		Controllers.GiftController.Open()
+	end)
 	HUDController.Buttons.Daily.Activated:Connect(function()
 		Controllers.DailyRewardController.Open()
 	end)
@@ -148,15 +180,108 @@ local function buildLobbyHUD()
 		Controllers.DailyRewardController.Open()
 	end)
 
-	resumeFrame = UI.Panel({ Size = UDim2.fromOffset(400, 84), AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -24), Visible = false, BackgroundTransparency = 0.06 }, lobbyFrame)
+	-- The saved Cash wallet, under the level badge (ProgressionController: 12, 12, 254 x 50).
+	walletPanel = UI.Panel({ Name = "Wallet", Size = UDim2.fromOffset(200, 40), Position = UDim2.fromOffset(12, 68), BackgroundTransparency = 0.08 }, lobbyFrame)
+	UI.Stroke(walletPanel, UI.Colors.Cash, 2.5)
+	UI.Glow(walletPanel, UI.Colors.Cash, 12, 0.85)
+	local walletBadge = UI.Surface3D({ Size = UDim2.fromOffset(32, 32), Position = UDim2.fromOffset(4, 4) }, walletPanel, UI.Colors.Green, 16, 0.12)
+	local walletIcon = UI.Icon(walletBadge, "Icon_Cash", "$", { TextSize = 18 })
+	walletIcon.Size = UDim2.fromScale(0.7, 0.62)
+	walletIcon.AnchorPoint = Vector2.new(0.5, 0.5)
+	walletIcon.Position = UDim2.fromScale(0.5, 0.45)
+	walletLabel = UI.Label({ Text = "$0", TextSize = 24, TextWrapped = false, Size = UDim2.new(1, -48, 1, -4), Position = UDim2.fromOffset(42, 1), TextXAlignment = Enum.TextXAlignment.Left }, walletPanel)
+	UI.TextGradient(walletLabel, UI.Colors.Cash)
+	shownWallet = attr("Wallet", 0)
+	walletLabel.Text = FormatUtil.CashExact(shownWallet)
+
+	-- PLAY NOW: a solo run of your next room in one tap (circles are for parties). The checkpoint
+	-- line above it says when that run resumes.
+	playFrame = UI.Frame({ Name = "PlayNow", BackgroundTransparency = 1, Size = UDim2.fromOffset(400, 140), AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -14) }, lobbyFrame)
+	playButton = UI.Button({ Name = "PlayNowButton", Text = "PLAY NOW", RichText = true, Color = UI.Colors.Green, Size = UDim2.fromOffset(300, 78), AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, 0), TextSize = 34, Shine = 2.2, Corner = 18 }, playFrame)
+	UI.Glow(playButton, UI.Colors.Green, 18, 0.55)
+	UI.PadBadge(playButton, Enum.KeyCode.ButtonX)
+	playButton.Activated:Connect(HUDController.PlayNow)
+
+	resumeFrame = UI.Panel({ Size = UDim2.fromOffset(380, 44), AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -88), Visible = false, BackgroundTransparency = 0.06 }, playFrame)
 	UI.Stroke(resumeFrame, UI.Colors.Cyan, 2.5)
-	resumeLabel = UI.Label({ Text = "", TextSize = 18, TextWrapped = false, Size = UDim2.new(1, -150, 0, 40), Position = UDim2.fromOffset(12, 6), TextXAlignment = Enum.TextXAlignment.Left }, resumeFrame)
+	resumeLabel = UI.Label({ Text = "", FitText = 16, TextWrapped = false, Size = UDim2.new(1, -140, 1, 0), Position = UDim2.fromOffset(12, 0), TextXAlignment = Enum.TextXAlignment.Left }, resumeFrame)
 	UI.TextGradient(resumeLabel, UI.Colors.Cyan)
-	UI.Label({ Text = "Step into a circle to resume", TextSize = 14, Font = UI.FontBody, TextColor3 = UI.Colors.TextDim, Size = UDim2.new(1, -150, 0, 26), Position = UDim2.fromOffset(12, 48), TextXAlignment = Enum.TextXAlignment.Left }, resumeFrame)
-	local fresh = UI.Button({ Text = "START FRESH", Color = UI.Colors.Red, Size = UDim2.fromOffset(128, 46), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -12, 0.5, 0), TextSize = 14 }, resumeFrame)
+	local fresh = UI.Button({ Text = "START FRESH", Color = UI.Colors.Red, Size = UDim2.fromOffset(118, 34), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -5, 0.5, 0), FitText = 13 }, resumeFrame)
 	fresh.Activated:Connect(function()
 		Remotes.Event("DiscardCheckpoint"):FireServer()
 	end)
+end
+
+-- The room PLAY NOW would start (the server decides: QueueService.QuickPlayRoom).
+local function playRoom(): (number, number)
+	local cpRoom, cpPercent = attr("CheckpointRoomId", 0), attr("CheckpointPercent", 0)
+	if cpRoom > 0 and cpPercent > 0 then
+		return cpRoom, cpPercent
+	end
+	return math.min(attr("HighestRoomCompleted", 0) + 1, RoomRegistry.GetHighestAvailable()), 0
+end
+
+local function refreshPlay()
+	if not playButton then
+		return
+	end
+	local queued = attr("QueueId", "") ~= ""
+	playFrame.Visible = not queued and not attr("Teleporting", false)
+	local room, percent = playRoom()
+	local sub = percent > 0 and string.format("RESUME ROOM %s · %d%%", FormatUtil.RoomNumber(room), math.floor(percent * 100)) or string.format("ROOM %s · SOLO", FormatUtil.RoomNumber(room))
+	if os.clock() < playBusyUntil then
+		playButton.Text = "STARTING..."
+	else
+		playButton.Text = string.format('PLAY NOW<br/><font size="15">%s</font>', sub)
+	end
+end
+
+function HUDController.PlayNow()
+	if os.clock() < playBusyUntil or attr("InMatch", false) or attr("QueueId", "") ~= "" then
+		return
+	end
+	playBusyUntil = os.clock() + 4
+	refreshPlay()
+	Remotes.Event("QuickPlay"):FireServer()
+	task.delay(4.1, refreshPlay)
+end
+
+local function refreshWallet()
+	local wallet = attr("Wallet", 0)
+	if wallet == shownWallet or os.clock() < walletHoldUntil then
+		return
+	end
+	local from = shownWallet
+	shownWallet = wallet
+	UI.CountUp(walletLabel, from, wallet, FormatUtil.CashExact, 0.6)
+	if wallet > from then
+		UI.PopIn(walletPanel, 0.9, 0.25)
+	end
+end
+
+-- The spin wheel reveals its own prize: the wallet waits until it has.
+function HUDController.HoldWallet(seconds: number)
+	walletHoldUntil = os.clock() + seconds
+	task.delay(seconds + 0.05, refreshWallet)
+end
+
+function HUDController.AddTileDot(button: TextButton, attributes: { string }, isOn: () -> boolean)
+	return tileDot(button, attributes, isOn)
+end
+
+function HUDController.SetTileText(button: TextButton, text: string)
+	local label = tileLabels[button]
+	if label and label.Text ~= text then
+		label.Text = text
+	end
+end
+
+function HUDController.GetWalletPanel(): Frame
+	return walletPanel
+end
+
+function HUDController.GetPlayButton(): TextButton
+	return playButton
 end
 
 local function buildMatchHUD()
@@ -207,11 +332,15 @@ local function buildMatchHUD()
 	UI.Glow(streakFrame, UI.Colors.Orange, 14, 0.5)
 	UI.Pulse(streakFrame, 0.035, 7)
 
-	local buttons = tileGrid(matchFrame, 2, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -10, 0, 10) })
+	local buttons = tileGrid(matchFrame, 3, 2, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -10, 0, 10) })
 	HUDController.Buttons.Upgrades = menuTile(buttons, "UPGRADES", UI.Colors.Green, 1, "UP", "Icon_Upgrades")
 	HUDController.Buttons.Shop = menuTile(buttons, "SHOP", UI.Colors.Purple, 2, "$", "Icon_Shop")
 	HUDController.Buttons.Hint = menuTile(buttons, "HINT", UI.Colors.Cyan, 3, "?", "Icon_Hint")
 	HUDController.Buttons.Settings = menuTile(buttons, "SETTINGS", UI.Colors.Locked, 4, "*", "Icon_Settings")
+	HUDController.Buttons.Gifts = menuTile(buttons, "GIFTS", UI.Colors.Gold, 5, "G", "Icon_Gift")
+	HUDController.Buttons.Gifts.Activated:Connect(function()
+		Controllers.GiftController.Open()
+	end)
 	HUDController.Buttons.Upgrades.Activated:Connect(function()
 		Controllers.UpgradeController.Open()
 	end)
@@ -240,7 +369,9 @@ local function buildMatchHUD()
 		UI.ListLayout(boostsFrame, Enum.FillDirection.Vertical, 5, Enum.HorizontalAlignment.Left)
 		teamFrame = UI.Frame({ BackgroundTransparency = 1, Size = UDim2.fromOffset(236, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 4 }, sideStack)
 	else
-		boostsFrame = UI.Frame({ BackgroundTransparency = 1, Size = UDim2.fromOffset(190, 84), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -12, 0, 18 + gridHeight) }, matchFrame)
+		rightStack = UI.Frame({ Name = "RightStack", BackgroundTransparency = 1, Size = UDim2.new(0, 250, 1, -(30 + gridHeight)), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -12, 0, 18 + gridHeight) }, matchFrame)
+		UI.ListLayout(rightStack :: Frame, Enum.FillDirection.Vertical, 8, Enum.HorizontalAlignment.Right)
+		boostsFrame = UI.Frame({ BackgroundTransparency = 1, Size = UDim2.fromOffset(190, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 2 }, rightStack)
 		UI.ListLayout(boostsFrame, Enum.FillDirection.Vertical, 5, Enum.HorizontalAlignment.Right)
 		teamFrame = UI.Frame({ BackgroundTransparency = 1, Size = UDim2.fromOffset(236, 120), Position = UDim2.fromOffset(12, 168) }, matchFrame)
 	end
@@ -264,8 +395,10 @@ local function refreshLobby()
 	local cpRoom, cpPercent = attr("CheckpointRoomId", 0), attr("CheckpointPercent", 0)
 	resumeFrame.Visible = cpRoom > 0 and cpPercent > 0
 	if resumeFrame.Visible then
-		resumeLabel.Text = string.format("RESUME ROOM %s - %d%%", FormatUtil.RoomNumber(cpRoom), math.floor(cpPercent * 100))
+		resumeLabel.Text = string.format("CHECKPOINT: ROOM %s · %d%%", FormatUtil.RoomNumber(cpRoom), math.floor(cpPercent * 100))
 	end
+	refreshPlay()
+	refreshWallet()
 end
 
 local function refreshMatchStatic()
@@ -376,6 +509,24 @@ local function refreshBoosts()
 	if tm > now then
 		table.insert(entries, { Text = "TEAM MUSCLE  " .. FormatUtil.Time(tm - now), Color = UI.Colors.Purple })
 	end
+	local sp = attr("SpeedBoostExpires", 0)
+	if sp > now then
+		table.insert(entries, { Text = "2X SPEED  " .. FormatUtil.Time(sp - now), Color = UI.Colors.Cyan })
+	end
+	local xp = attr("XPBoostExpires", 0)
+	if xp > now then
+		table.insert(entries, { Text = "2X XP  " .. FormatUtil.Time(xp - now), Color = UI.Colors.Pink })
+	end
+	local lift = attr("LiftExpires", 0)
+	if lift > now then
+		table.insert(entries, { Text = string.format("LIFT %d  %s", attr("LiftWeight", 0), FormatUtil.Time(lift - now)), Color = UI.Colors.Orange })
+	end
+	if attr("TreasureRadar", "") ~= "" and attr("TreasureRadar", "") == attr("MatchId", "") then
+		table.insert(entries, { Text = "TREASURE RADAR", Color = UI.Colors.Gold })
+	end
+	if attr("FriendBonus", false) then
+		table.insert(entries, { Text = "FRIEND BONUS +25%", Color = UI.Colors.Green })
+	end
 	for i, e in ipairs(entries) do
 		local row = UI.Panel({ Size = UDim2.fromOffset(186, 24), BackgroundTransparency = 0.15, LayoutOrder = i }, boostsFrame)
 		UI.Stroke(row, e.Color, 2)
@@ -457,9 +608,17 @@ function HUDController.Init()
 		workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(replace)
 	end
 	player:GetAttributeChangedSignal("InMatch"):Connect(refreshVisibility)
+	player:GetAttributeChangedSignal("Wallet"):Connect(refreshWallet)
+	for _, name in ipairs({ "QueueId", "Teleporting", "HighestRoomCompleted" }) do
+		player:GetAttributeChangedSignal(name):Connect(refreshPlay)
+	end
 	-- Controllers: a D-pad direction opens its tile's menu, unless it is steering a selection.
 	UserInputService.InputBegan:Connect(function(input, gameProcessed)
 		if gameProcessed or GuiService.SelectedObject ~= nil then
+			return
+		end
+		if input.KeyCode == Enum.KeyCode.ButtonX and lobbyFrame.Visible and playFrame.Visible and not UI.GetOpenMenu() then
+			HUDController.PlayNow()
 			return
 		end
 		for _, s in ipairs(padShortcuts) do
@@ -577,6 +736,16 @@ function HUDController.GetSideStack(): Frame?
 	return sideStack
 end
 
+-- Desktop only: the right-side column under the tiles (boosts first).
+function HUDController.GetRightStack(): Frame?
+	return rightStack
+end
+
+-- The room panel at the top (the gift bar hangs under it).
+function HUDController.GetMatchTop(): Frame
+	return matchTop
+end
+
 function HUDController.GetLobbyFrame(): Frame
 	return lobbyFrame
 end
@@ -586,9 +755,9 @@ end
 -- (12 + 50, ProgressionController) keeps the line clear of it on narrow phones.
 function HUDController.TopClear(): number
 	if matchFrame and matchFrame.Visible then
-		return topY + 104
+		return topY + 104 + 36 -- the panel and the gift bar under it
 	end
-	return 12 + 50
+	return 68 + 40 -- under the wallet
 end
 
 return HUDController

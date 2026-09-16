@@ -2,7 +2,9 @@
 	Server-authoritative per-player match session state, replicated through player attributes,
 	plus derived stats that fold upgrades, passes and boosts together:
 	  GetMaxWeight (Strength), GetThrowSpeed, GetHoldResponsiveness (Strength level + FastHands),
-	  GetWalkSpeed, GetCashMultiplier.
+	  GetWalkSpeed, GetCashMultiplier, GetXPMultiplier.
+	Timed extras: 2x Speed and 2x XP boosts (saved like the others) and Lift It Now (LiftWeight
+	until LiftExpires, this room only).
 ]]
 
 local Players = game:GetService("Players")
@@ -38,6 +40,13 @@ local SessionDefaults = {
 	ThrowSpeed = 50,
 	StrengthBoostExpires = 0,
 	CashBoostExpires = 0,
+	SpeedBoostExpires = 0,
+	XPBoostExpires = 0,
+	LiftWeight = 0,
+	LiftExpires = 0,
+	TreasureRadar = "",
+	FriendBonus = false,
+	RoomSaved = 0,
 	VIPFreeHints = 0,
 	HotCold = "",
 	HeldObjectId = "",
@@ -125,7 +134,7 @@ function restoreBoosts(player: Player)
 		return
 	end
 	local now = workspace:GetServerTimeNow()
-	for _, attr in ipairs({ "StrengthBoostExpires", "CashBoostExpires" }) do
+	for _, attr in ipairs({ "StrengthBoostExpires", "CashBoostExpires", "SpeedBoostExpires", "XPBoostExpires" }) do
 		local expires = data.Boosts[attr] or 0
 		if expires > now then
 			player:SetAttribute(attr, expires)
@@ -170,7 +179,12 @@ local function maxWeightAt(player: Player, level: number): number
 		temp *= Effects.TeamMuscleStrengthMultiplier
 	end
 	temp = math.min(temp, GameConfig.MaxTempStrengthMultiplier)
-	return math.min(math.floor(weight * temp + 1e-6), GameConfig.MaxWeightCap)
+	local lifted = math.floor(weight * temp + 1e-6)
+	-- Lift It Now: anything up to the weight it was bought for, for a minute.
+	if (player:GetAttribute("LiftExpires") or 0) > now() then
+		lifted = math.max(lifted, player:GetAttribute("LiftWeight") or 0)
+	end
+	return math.min(lifted, GameConfig.MaxWeightCap)
 end
 
 function PlayerSessionService.GetMaxWeight(player: Player): number
@@ -211,6 +225,10 @@ function PlayerSessionService.GetWalkSpeed(player: Player): number
 	if player:GetAttribute("InMatch") and owns(player, "VIP") then
 		speed *= Effects.VIPWalkSpeedMultiplier
 	end
+	-- 2x Speed, capped so grabbing and throwing on the run stay under control.
+	if player:GetAttribute("InMatch") and (player:GetAttribute("SpeedBoostExpires") or 0) > now() then
+		speed = math.max(speed, math.min(speed * Effects.SpeedBoostMultiplier, Effects.MaxBoostedWalkSpeed))
+	end
 	return speed
 end
 
@@ -223,6 +241,10 @@ function PlayerSessionService.GetCashMultiplier(player: Player): number
 		mult *= Effects.CashBoostMultiplier
 	end
 	return math.min(mult, GameConfig.MaxCashMultiplier)
+end
+
+function PlayerSessionService.GetXPMultiplier(player: Player): number
+	return (player:GetAttribute("XPBoostExpires") or 0) > now() and Effects.XPBoostMultiplier or 1
 end
 
 function PlayerSessionService.RecomputeDerived(player: Player)

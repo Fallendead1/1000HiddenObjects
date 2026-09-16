@@ -97,6 +97,45 @@ function MonetizationService.GrantProduct(player: Player, key: string): boolean
 		else
 			Services.PlayerSessionService.ExtendBoost(player, "StrengthBoostExpires", effects.BoostDurationSeconds)
 		end
+	elseif key == "SpeedBoost10Min" then
+		Services.PlayerSessionService.ExtendBoost(player, "SpeedBoostExpires", effects.BoostDurationSeconds)
+		Services.NotificationService.Send(player, "Premium", "2X SPEED activated!")
+	elseif key == "DoubleXP15Min" then
+		Services.PlayerSessionService.ExtendBoost(player, "XPBoostExpires", effects.XPBoostSeconds)
+		Services.NotificationService.Send(player, "Premium", "2X XP activated!")
+	elseif key == "LiftItNow" then
+		if match and match.State == "Searching" then
+			Services.RetentionService.ActivateLift(player)
+			Services.NotificationService.Send(player, "Premium", "LIFT IT NOW: grab it! (60 s)")
+		else
+			MonetizationService.Bank(player, key)
+		end
+	elseif key == "JunkBlaster" then
+		local count = Services.RetentionService.Blast(player)
+		if count then
+			Services.NotificationService.Send(player, "Premium", count > 0 and string.format("JUNK BLASTER: %d packed junk burst open!", count) or "JUNK BLASTER: no packed junk close enough to burst.")
+		else
+			MonetizationService.Bank(player, key)
+		end
+	elseif key == "TreasureRadar" then
+		if match and match.State ~= "Results" and match.State ~= "Returning" and match.State ~= "Ended" and Services.RetentionService.ActivateRadar(player) then
+			Services.NotificationService.Send(player, "Premium", "TREASURE RADAR: every treasure in this room sparkles!")
+		else
+			MonetizationService.Bank(player, key)
+		end
+	elseif key == "StarterPack" then
+		Services.DataService.Update(player, function(data)
+			data.StarterPack = true
+			data.Banked.CashBoost = (data.Banked.CashBoost or 0) + effects.StarterPackCashBoostSeconds
+			data.Banked.QuickHint = (data.Banked.QuickHint or 0) + effects.StarterPackQuickHints
+		end)
+		if script.Parent:FindFirstChild("PetService") then
+			Services.PetService.GivePet(player, "MopPup", "StarterPack")
+		end
+		if match and match.State == "Searching" then
+			MonetizationService.ApplyBanked(player)
+		end
+		Services.NotificationService.Send(player, "Premium", "STARTER PACK unlocked! Your boosts and hints start in your next room.", 5)
 	else
 		return false
 	end
@@ -110,6 +149,12 @@ function MonetizationService.Bank(player: Player, key: string)
 		data.Banked[key] = (data.Banked[key] or 0) + 1
 	end)
 	Services.DataService.Save(player)
+	local helpers = { LiftItNow = "LIFT IT NOW saved - it turns on the next time something is too heavy.", JunkBlaster = "JUNK BLASTER saved - use it near packed junk in your next room.", TreasureRadar = "TREASURE RADAR saved - it turns on in your next room." }
+	if helpers[key] then
+		Services.RetentionService.Publish(player)
+		Services.NotificationService.Send(player, "Premium", helpers[key], 5)
+		return
+	end
 	local name = key == "SuperHint" and "Super Hint" or "Quick Hint"
 	local match = Services.MatchService.GetMatchForPlayer(player)
 	if match and match.State == "Searching" and not Services.HintService.HintsUnlocked(match) then
@@ -137,7 +182,17 @@ function MonetizationService.ApplyBanked(player: Player)
 			d.Banked.CashBoost = 0
 			d.Banked.StrengthBoost = 0
 		end)
-		Services.NotificationService.Send(player, "Success", "Your daily reward boost is on for this room!")
+		Services.NotificationService.Send(player, "Success", "Your saved boost is on!")
+	end
+	-- A Treasure Radar bought outside a room turns on in this one.
+	if (data.Banked.TreasureRadar or 0) > 0 and player:GetAttribute("TreasureRadar") == "" and Services.RetentionService.ActivateRadar(player) then
+		Services.DataService.Update(player, function(d)
+			d.Banked.TreasureRadar -= 1
+		end)
+		Services.NotificationService.Send(player, "Premium", "Your saved TREASURE RADAR is on!")
+	end
+	if (data.Banked.JunkBlaster or 0) > 0 then
+		Services.RetentionService.Publish(player)
 	end
 	MonetizationService.ApplyBankedHints(player)
 end
@@ -243,6 +298,13 @@ function MonetizationService.PromptPurchase(player: Player, key: string)
 	if def.MatchOnly and not Services.MatchService.IsPlayerInMatch(player) then
 		Services.NotificationService.Send(player, "Warning", "This can only be used inside a room.")
 		return
+	end
+	if def.OneTime then
+		local data = Services.DataService.Get(player)
+		if not data or data[key] then
+			Services.NotificationService.Send(player, "Info", "You already have the " .. def.Name .. ".")
+			return
+		end
 	end
 	if kind == "Gamepass" and MonetizationService.OwnsPass(player, key) then
 		Services.NotificationService.Send(player, "Info", "You already own this.")

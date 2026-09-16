@@ -199,6 +199,11 @@ local function banner(big: string, small: string, color: Color3, sound: string?)
 	end)
 end
 
+-- Other controllers' big moments (first-time rewards) share the same queue.
+function ProgressionController.Banner(big: string, small: string, color: Color3, sound: string?)
+	banner(big, small, color, sound)
+end
+
 -- ===== Daily challenges =====
 
 local function challengeRow(parent: Instance, c, order: number)
@@ -268,7 +273,7 @@ function ProgressionController.Init()
 
 	-- In-match tracker: right side under the boosts, or on touch in the left-side stack (the right
 	-- side belongs to the GRAB button there). Tap it for the full menu.
-	local stack = Controllers.HUDController.GetSideStack()
+	local stack = Controllers.HUDController.GetSideStack() or Controllers.HUDController.GetRightStack()
 	tracker = UI.Panel({ Size = UDim2.fromOffset(250, 94), AnchorPoint = stack and Vector2.zero or Vector2.new(1, 0), Position = UDim2.new(1, -12, 0, 300), BackgroundTransparency = 0.12, Visible = false, LayoutOrder = 3 }, stack or Controllers.HUDController.GetMatchFrame())
 	UI.Stroke(tracker, UI.Colors.Cyan, 2)
 	local trackerTitle = UI.Label({ Text = "DAILY CHALLENGES", TextSize = 13, TextWrapped = false, Size = UDim2.new(1, -16, 0, 18), Position = UDim2.fromOffset(8, 4), TextXAlignment = Enum.TextXAlignment.Left }, tracker)
@@ -294,7 +299,8 @@ function ProgressionController.Init()
 			-- A moment later, so a challenge that caused it shows first.
 			task.delay(0.1, banner, "LEVEL " .. tostring(payload.Level or "?") .. "!", (payload.NewTitle and "NEW TITLE: " or "") .. string.upper(payload.Title or ""), UI.Colors.Cyan, "LevelUp")
 		elseif name == "ChallengeDone" then
-			banner("CHALLENGE COMPLETE!", "+" .. (payload.Reward or "") .. "   +100 XP", UI.Colors.Green, "CashAward")
+			local saved = (payload.Cash or 0) > 0 and string.format("   +$%d SAVED", payload.Cash) or ""
+			banner("CHALLENGE COMPLETE!", "+" .. (payload.Reward or "") .. "   +100 XP" .. saved, UI.Colors.Green, "CashAward")
 		end
 	end)
 

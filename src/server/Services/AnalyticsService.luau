@@ -442,7 +442,7 @@ function AnalyticsService.DailyStep(player: Player, key: string, a: any?)
 end
 
 function AnalyticsService.XP(player: Player, amount: number, reason: string, total: number)
-	AnalyticsService.Economy(player, "Source", "XP", amount, total, reason == "Daily" and "TimedReward" or "Gameplay", reason)
+	AnalyticsService.Economy(player, "Source", "XP", amount, total, (reason == "Daily" or reason == "Gift") and "TimedReward" or "Gameplay", reason)
 end
 
 function AnalyticsService.LevelUp(player: Player, level: number, title: string)
@@ -543,6 +543,11 @@ function AnalyticsService.Init(role: string)
 			AnalyticsService.Event(player, "fps", math.clamp(math.floor(value + 0.5), 1, 240), device, where(player))
 		elseif kind == "invite" then
 			AnalyticsService.Event(player, "invite_prompt", 1, where(player))
+		elseif kind == "offer" and type(value) == "string" and AnalyticsConfig.Offers[value] and type(extra) == "string" and AnalyticsConfig.OfferSteps[extra] then
+			AnalyticsService.Event(player, "offer_" .. extra, 1, value, where(player))
+		end
+		if kind == "menu" or kind == "shop_tab" or kind == "offer" then
+			Services.RetentionService.Touch(player)
 		end
 	end)
 end

@@ -51,6 +51,8 @@ local Template = {
 	Boosts = {
 		StrengthBoostExpires = 0,
 		CashBoostExpires = 0,
+		SpeedBoostExpires = 0,
+		XPBoostExpires = 0,
 	},
 	-- Hints (paid or rewarded) and reward boosts (seconds) waiting for the next room.
 	Banked = {
@@ -58,9 +60,25 @@ local Template = {
 		SuperHint = 0,
 		CashBoost = 0,
 		StrengthBoost = 0,
+		-- Paid one-shot helpers bought outside a room (used in the next one).
+		LiftItNow = 0,
+		JunkBlaster = 0,
+		TreasureRadar = 0,
 	},
 	-- Daily login reward: the last UTC day claimed and the streak up to it.
-	Login = { Day = 0, Streak = 0 },
+	-- FreezeWeek: the last week (see RetentionService) whose free streak freeze was used.
+	Login = { Day = 0, Streak = 0, FreezeWeek = 0 },
+	-- The lasting Cash wallet (WalletService): saved from rooms, spent on eggs.
+	Wallet = 0,
+	WalletEarned = 0,
+	-- Retention (RetentionService): today's active playtime and gifts, the gift bar, firsts,
+	-- the free daily spin, the one-time Starter Pack and the notification question.
+	Playtime = { Day = 0, Seconds = 0, Claimed = 0 },
+	GiftBar = { Count = 0, Level = 0 },
+	Firsts = {},
+	Spin = { Day = 0 },
+	StarterPack = false,
+	NotifyAsked = false,
 	-- Lasting progression (not a currency): Cleaner XP, room mastery stars, daily challenges.
 	CleanerXP = 0,
 	Stars = {}, -- [tostring(roomId)] = bitmask: 1 object found, 2 cleaned 25%, 4 every treasure
@@ -369,6 +387,9 @@ function DataService.UpdateReplicatedSummary(player: Player)
 	player:SetAttribute("FinderWins", data.FinderWins)
 	player:SetAttribute("TotalMessCleared", data.TotalMessCleared)
 	player:SetAttribute("TutorialCompleted", data.TutorialCompleted)
+	player:SetAttribute("Wallet", data.Wallet)
+	player:SetAttribute("StarterPackOwned", data.StarterPack == true)
+	player:SetAttribute("NotifyAsked", data.NotifyAsked == true)
 	player:SetAttribute("CheckpointRoomId", data.Checkpoint.RoomId or 0)
 	player:SetAttribute("CheckpointPercent", data.Checkpoint.Percent or 0)
 	player:SetAttribute("Setting_Music", data.Settings.Music)

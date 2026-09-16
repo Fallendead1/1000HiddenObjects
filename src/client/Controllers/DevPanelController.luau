@@ -35,8 +35,9 @@ function DevPanelController.Init()
 		return
 	end
 
-	local toggle = UI.Button({ Text = "DEV", Color = UI.Colors.Orange, Size = UDim2.fromOffset(60, 32), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 12, 0.5, 40), TextSize = 16 }, UI.Layers.Top)
-	local panel = UI.Panel({ Size = UDim2.fromOffset(240, 470), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 80, 0.5, 40), Visible = false, BackgroundTransparency = 0.05 }, UI.Layers.Top)
+	-- Bottom left, out of the way of the lobby's side cards.
+	local toggle = UI.Button({ Text = "DEV", Color = UI.Colors.Orange, Size = UDim2.fromOffset(60, 32), AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 12, 1, -12), TextSize = 16 }, UI.Layers.Top)
+	local panel = UI.Panel({ Size = UDim2.fromOffset(240, 470), AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 80, 1, -12), Visible = false, BackgroundTransparency = 0.05 }, UI.Layers.Top)
 	local scroll = UI.New("ScrollingFrame", {
 		BackgroundTransparency = 1,
 		Size = UDim2.new(1, -8, 1, -8),
@@ -69,6 +70,9 @@ function DevPanelController.Init()
 			send("StartRoom", n, 1)
 		end)
 	end
+	button("Start Room #001 (easy, solo)", UI.Colors.Green, function()
+		send("StartRoom", 1, 1, true)
+	end)
 	button("Reset / End Room", UI.Colors.Red, function()
 		send("ResetRoom")
 	end)
@@ -109,6 +113,20 @@ function DevPanelController.Init()
 			send("MockPurchase", def.Key)
 		end)
 	end
+
+	header("RETENTION")
+	button("+$1K Wallet", UI.Colors.Cash, function()
+		send("AddWallet", 1000)
+	end)
+	button("+5 min playtime", UI.Colors.Gold, function()
+		send("AddPlaytime", 5)
+	end)
+	button("Miss a day (streak freeze)", UI.Colors.Orange, function()
+		send("MissADay")
+	end)
+	button("Reset wallet / gifts / spin / firsts", UI.Colors.Red, function()
+		send("ResetRetention")
+	end)
 
 	header("DATA")
 	button("Reset Save Data", UI.Colors.Red, function()

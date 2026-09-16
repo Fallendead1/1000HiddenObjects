@@ -13,6 +13,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage.Shared
+local EconomyConfig = require(Shared.Config.EconomyConfig)
 local GameConfig = require(Shared.Config.GameConfig)
 local ProgressionConfig = require(Shared.Config.ProgressionConfig)
 local Remotes = require(Shared.Utility.Remotes)
@@ -52,17 +53,23 @@ local function rewardFor(day: number, slot: number)
 	return ProgressionConfig.Rewards[(day + slot - 1) % #ProgressionConfig.Rewards + 1]
 end
 
--- Daily login: today's reward in the 7-day cycle (1-7), whether it can still be claimed, and the
--- streak it counts as. Missing a day starts the streak (and the cycle) over.
-local function loginStatus(data): (number, boolean, number)
+-- Daily login: today's reward in the 7-day cycle (1-7), whether it can still be claimed, the
+-- streak it counts as, and whether that streak needs this week's streak freeze. Missing a day
+-- starts the streak (and the cycle) over, unless the weekly freeze covers it.
+local function loginStatus(data): (number, boolean, number, boolean)
 	local day = today()
 	local login = data.Login
 	local count = #ProgressionConfig.LoginRewards
 	if login.Day == day then
-		return (login.Streak - 1) % count + 1, false, login.Streak
+		return (login.Streak - 1) % count + 1, false, login.Streak, false
 	end
-	local streak = login.Day == day - 1 and login.Streak + 1 or 1
-	return (streak - 1) % count + 1, true, streak
+	local streak, frozen = 1, false
+	if login.Day == day - 1 then
+		streak = login.Streak + 1
+	elseif login.Day == day - 2 and login.Streak > 0 and Services.RetentionService.FreezeReady(data, day) then
+		streak, frozen = login.Streak + 1, true
+	end
+	return (streak - 1) % count + 1, true, streak, frozen
 end
 
 -- ===== Overhead tag =====
@@ -240,7 +247,9 @@ function ProgressionService.Publish(player: Player)
 	end
 	player:SetAttribute("DailyChallenges", HttpService:JSONEncode(list))
 	player:SetAttribute("DailyResetAt", (data.Daily.Day + 1) * 86400)
-	local loginDay, claimable, streak = loginStatus(data)
+	local loginDay, claimable, streak, frozen = loginStatus(data)
+	player:SetAttribute("LoginFrozen", frozen)
+	player:SetAttribute("LoginFreezeReady", Services.RetentionService.FreezeReady(data, today()))
 	player:SetAttribute("LoginDay", loginDay)
 	player:SetAttribute("LoginClaimable", claimable)
 	player:SetAttribute("LoginStreak", claimable and streak - 1 or streak) -- days claimed in a row so far
@@ -256,6 +265,10 @@ local function addXP(player: Player, data, amount: number, reason: string)
 	if amount <= 0 then
 		return
 	end
+	-- 2x XP boost: everything earned in rooms (gifts and daily rewards stay as they are).
+	if reason ~= "Daily" and reason ~= "Gift" then
+		amount = math.floor(amount * Services.PlayerSessionService.GetXPMultiplier(player) + 0.5)
+	end
 	local before = ProgressionConfig.LevelFor(data.CleanerXP)
 	data.CleanerXP += amount
 	Services.DataService.MarkDirty(player)
@@ -266,6 +279,16 @@ local function addXP(player: Player, data, amount: number, reason: string)
 		local title = ProgressionConfig.TitleFor(after)
 		Remotes.Event("FXEvent"):FireClient(player, "LevelUp", { Level = after, Title = title, NewTitle = title ~= ProgressionConfig.TitleFor(before) })
 		Services.AnalyticsService.LevelUp(player, after, title)
+		task.defer(Services.RetentionService.First, player, "LevelUp")
+	end
+end
+
+-- XP from outside the game hooks (gifts, the spin): added and published at once.
+function ProgressionService.GiveXP(player: Player, amount: number, reason: string)
+	local data = Services.DataService.Get(player)
+	if data then
+		addXP(player, data, amount, reason)
+		ProgressionService.Publish(player)
 	end
 end
 
@@ -278,7 +301,8 @@ local function grantReward(player: Player, data, reward, challenge)
 		end
 	end
 	addXP(player, data, ProgressionConfig.XP.Challenge, "Challenge")
-	Remotes.Event("FXEvent"):FireClient(player, "ChallengeDone", { Text = string.format(challenge.Text, challenge.Goal), Reward = reward.Text })
+	task.defer(Services.WalletService.Add, player, EconomyConfig.Challenge, "Gameplay", "Challenge", true)
+	Remotes.Event("FXEvent"):FireClient(player, "ChallengeDone", { Text = string.format(challenge.Text, challenge.Goal), Reward = reward.Text, Cash = EconomyConfig.Challenge })
 	Services.AnalyticsService.Event(player, "challenge_done", 1, challenge.Id, reward.Kind)
 end
 
@@ -349,13 +373,16 @@ function ProgressionService.OnChunkBurst(player: Player)
 	track(player, data, "ChunkBurst", 1)
 	addXP(player, data, ProgressionConfig.XP.ChunkBurst, "Chunk")
 	ProgressionService.Publish(player)
+	Services.RetentionService.Touch(player)
+	Services.RetentionService.First(player, "Chunk")
 end
 
--- Called for every party member when a room is completed. Returns { Earned, New } star masks.
+-- Called for every party member when a room is completed. Returns { Earned, New } star masks
+-- and Saved: what the room paid into the wallet (deposits and the completion rewards).
 function ProgressionService.OnRoomComplete(player: Player, match, isFinder: boolean, firstClear: boolean)
 	local data = Services.DataService.Get(player)
 	if not data then
-		return { Earned = 0, New = 0 }
+		return { Earned = 0, New = 0, Saved = 0 }
 	end
 	local earned = 1
 	if (match.Progress or 0) >= ProgressionConfig.Stars[2].Fraction then
@@ -385,7 +412,12 @@ function ProgressionService.OnRoomComplete(player: Player, match, isFinder: bool
 	track(player, data, "RoomComplete", 1)
 	addXP(player, data, xp, "Room")
 	ProgressionService.Publish(player)
-	return { Earned = earned, New = new }
+	local bonus = EconomyConfig.RoomComplete + newCount * EconomyConfig.Star
+		+ (match.Hard and EconomyConfig.RoomCompleteHardBonus or 0)
+		+ (isFinder and EconomyConfig.KeyFound or 0)
+		+ (firstClear and EconomyConfig.FirstClear or 0)
+	Services.WalletService.Add(player, bonus, "Gameplay", "RoomComplete", true)
+	return { Earned = earned, New = new, Saved = Services.WalletService.RoomSaved(player) + bonus, Bonus = bonus }
 end
 
 function ProgressionService.Init()
@@ -397,12 +429,18 @@ function ProgressionService.Init()
 		if not data then
 			return
 		end
-		local cycleDay, claimable, streak = loginStatus(data)
+		local cycleDay, claimable, streak, frozen = loginStatus(data)
 		if not claimable then
 			return
 		end
 		local reward = ProgressionConfig.LoginRewards[cycleDay]
-		data.Login = { Day = today(), Streak = streak }
+		data.Login.Day = today()
+		data.Login.Streak = streak
+		if frozen then
+			Services.RetentionService.UseFreeze(data, today())
+			Services.NotificationService.Send(player, "Success", string.format("Your weekly Streak Freeze kept your %d-day streak!", streak), 5)
+			Services.AnalyticsService.Event(player, "streak_freeze", streak)
+		end
 		grantLoginReward(player, data, reward)
 		Services.DataService.MarkDirty(player)
 		Services.DataService.Save(player)

@@ -51,6 +51,8 @@ function UpgradeService.TryUpgrade(player: Player, key: string): (boolean, strin
 	Services.PlayerSessionService.RecomputeDerived(player)
 	Remotes.Event("FXEvent"):FireClient(player, "Upgrade", { Key = key, Level = level + 1 })
 	Services.AnalyticsService.Upgraded(player, key, level + 1, cost, free, player:GetAttribute("RoomCash") or 0)
+	Services.RetentionService.Touch(player)
+	Services.RetentionService.First(player, "Upgrade")
 	return true, string.format("%s upgraded!", def.Name)
 end
 

@@ -43,7 +43,9 @@ local function isDev(): boolean
 end
 
 local function buildCard(info, order: number)
-	local owned = info.Kind == "Gamepass" and player:GetAttribute("Pass_" .. info.Key) == true
+	local def = MonetizationConfig.FindDef(info.Key)
+	local owned = (info.Kind == "Gamepass" and player:GetAttribute("Pass_" .. info.Key) == true)
+		or (def ~= nil and def.OneTime == true and player:GetAttribute(info.Key .. "Owned") == true)
 	local accent = TabColors[info.Tab] or UI.Colors.Cyan
 	local card = UI.Panel({ Size = UDim2.new(1, -14, 0, 112), BackgroundColor3 = UI.Colors.PanelLight, LayoutOrder = order }, listFrame)
 	UI.Stroke(card, owned and UI.Colors.Green or UI.Colors.Stroke, 2.5)
@@ -56,7 +58,7 @@ local function buildCard(info, order: number)
 
 	UI.Label({ Text = info.Name, TextSize = 21, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd, Size = UDim2.new(1, -290, 0, 26), Position = UDim2.fromOffset(104, 12), TextXAlignment = Enum.TextXAlignment.Left }, card)
 	local ribbon = UI.Surface3D({ Size = UDim2.fromOffset(116, 22), Position = UDim2.fromOffset(104, 40) }, card, owned and UI.Colors.Green or accent, 11, 0.14)
-	UI.Label({ Text = owned and "OWNED" or TabInfo[info.Tab].Ribbon, TextSize = 12, TextWrapped = false, Size = UDim2.new(1, -8, 0.86, 0), Position = UDim2.fromOffset(4, 0) }, ribbon)
+	UI.Label({ Text = owned and "OWNED" or (def and def.Ribbon) or TabInfo[info.Tab].Ribbon, TextSize = 12, TextWrapped = false, Size = UDim2.new(1, -8, 0.86, 0), Position = UDim2.fromOffset(4, 0) }, ribbon)
 	UI.Label({ Text = info.Description, TextSize = 13, Font = UI.FontBody, TextColor3 = UI.Colors.TextDim, Size = UDim2.new(1, -290, 0, 40), Position = UDim2.fromOffset(104, 66), TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top }, card)
 
 	local priceText
@@ -177,6 +179,11 @@ function ShopController.Init()
 
 	Remotes.Event("PurchaseUpdate").OnClientEvent:Connect(function(kind)
 		if kind == "PassGranted" and menu.IsOpen() then
+			render()
+		end
+	end)
+	player:GetAttributeChangedSignal("StarterPackOwned"):Connect(function()
+		if menu.IsOpen() then
 			render()
 		end
 	end)

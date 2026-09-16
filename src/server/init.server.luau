@@ -54,6 +54,8 @@ local startOrder = {
 	"ChunkService",
 	"DepositService",
 	"ProgressionService",
+	"WalletService",
+	"RetentionService",
 	"EconomyService",
 	"UpgradeService",
 	"HintService",

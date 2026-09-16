@@ -2,6 +2,8 @@
 	Object Found ceremony (~6 seconds) followed by the Results screen.
 	Ceremony: gold flash + vignette, the key rises and spins, three confetti waves,
 	OBJECT FOUND! -> GOLDEN KEY / Found by -> 1 / 1000.
+	Results: what the run saved to the wallet, and NEXT ROOM, which starts by itself after a short
+	countdown (STAY or RETURN TO LOBBY stops it).
 ]]
 
 local CollectionService = game:GetService("CollectionService")
@@ -41,6 +43,52 @@ local resContrib: Frame
 local resStars: Frame
 local returnButton: TextButton
 local nextButton: TextButton
+local stayButton: TextButton
+local resSaved: TextLabel
+local nextToken = 0 -- bumps whenever the NEXT ROOM countdown should stop
+
+local function stopCountdown()
+	nextToken += 1
+	if stayButton then
+		stayButton.Visible = false
+		nextButton.Size = UDim2.new(1, -40, 0, 54)
+	end
+end
+
+local function playNext()
+	stopCountdown()
+	UI.SetButtonEnabled(nextButton, false, "STARTING...")
+	Remotes.Event("PlayNext"):FireServer()
+	-- The server answers by moving you on; if it can't, the button comes back.
+	local my = nextToken
+	task.delay(15, function()
+		if nextToken == my and results.Visible then
+			UI.SetButtonEnabled(nextButton, true)
+			nextButton.Text = "NEXT ROOM"
+		end
+	end)
+end
+
+-- NEXT ROOM (n): counts down and starts the next room unless stopped.
+local function startCountdown(seconds: number)
+	stopCountdown()
+	local my = nextToken
+	stayButton.Visible = true
+	nextButton.Size = UDim2.new(1, -160, 0, 54)
+	task.spawn(function()
+		for n = seconds, 1, -1 do
+			if nextToken ~= my or not results.Visible then
+				return
+			end
+			nextButton.Text = string.format("NEXT ROOM (%d)", n)
+			task.wait(1)
+		end
+		if nextToken == my and results.Visible then
+			Controllers.AnalyticsController.Track("menu", "AutoNext")
+			playNext()
+		end
+	end)
+end
 
 local function setCeremony(big: string, small: string, color: Color3?, size: number?)
 	ceremonyBig.Text = big
@@ -212,18 +260,34 @@ local function showResults(payload)
 		end
 	end
 
-	if payload.NextRoomAvailable then
-		nextButton.Text = "NEXT ROOM"
+	-- Cash this run saved to the wallet (deposits + the room's rewards).
+	local saved = stars.Saved or 0
+	resSaved.Visible = saved > 0
+	resSaved.Text = string.format("+%s SAVED", FormatUtil.CashExact(saved))
+	if saved > 0 then
+		task.delay(0.6, function()
+			UI.PopIn(resSaved, 0.4, 0.35)
+		end)
+	end
+
+	stopCountdown()
+	local nextNum = (payload.ObjectNumber or 1) + 1
+	local canNext = payload.NextRoomAvailable and (payload.CanNext or {})[tostring(player.UserId)] == true
+	if canNext then
 		UI.SetButtonEnabled(nextButton, true)
+		nextButton.Text = "NEXT ROOM"
+		startCountdown(payload.AutoNextSeconds or 10)
+	elseif payload.NextRoomAvailable then
+		nextButton.Text = string.format("ROOM %s - LOCKED", FormatUtil.RoomNumber(nextNum))
+		UI.SetButtonEnabled(nextButton, false)
 	else
-		local nextNum = (payload.ObjectNumber or 1) + 1
 		nextButton.Text = string.format("ROOM %s - COMING SOON", FormatUtil.RoomNumber(nextNum))
 		UI.SetButtonEnabled(nextButton, false)
 	end
-	-- Controllers: RETURN TO LOBBY is selected once the card has settled, so A goes back.
+	-- Controllers: once the card has settled, A goes on to the next room (or back to the lobby).
 	task.delay(0.35, function()
 		if results.Visible then
-			UI.SelectForGamepad(returnButton)
+			UI.SelectForGamepad(canNext and nextButton or returnButton)
 		end
 	end)
 end
@@ -256,6 +320,9 @@ function ResultsController.Init()
 	keyIcon.Size = UDim2.fromScale(0.74, 0.66)
 	keyIcon.AnchorPoint = Vector2.new(0.5, 0.5)
 	keyIcon.Position = UDim2.fromScale(0.5, 0.45)
+	resSaved = UI.Label({ Text = "", TextSize = 20, TextWrapped = false, Size = UDim2.fromOffset(170, 30), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -18, 0, 110), TextXAlignment = Enum.TextXAlignment.Right, Visible = false }, resultsCard)
+	UI.TextGradient(resSaved, UI.Colors.Cash)
+	UI.Stroke(resSaved, Color3.new(0, 0, 0), 2.5, 0)
 	resObject = UI.Label({ Text = "#001 - Golden Key", TextSize = 24, TextWrapped = false, Size = UDim2.new(1, 0, 0, 32), Position = UDim2.fromOffset(0, 156) }, resultsCard)
 	UI.TextGradient(resObject, UI.Colors.Gold)
 	resStats = UI.Label({ Text = "", TextSize = 18, Font = UI.FontBody, TextColor3 = UI.Colors.TextDim, Size = UDim2.new(0.5, -20, 0, 110), Position = UDim2.fromOffset(20, 192), TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top }, resultsCard)
@@ -266,20 +333,27 @@ function ResultsController.Init()
 	UI.ListLayout(resStars, Enum.FillDirection.Horizontal, 10, Enum.HorizontalAlignment.Center)
 
 	returnButton = UI.Button({ Text = "RETURN TO LOBBY", Color = UI.Colors.Green, Size = UDim2.new(1, -40, 0, 54), Position = UDim2.new(0, 20, 1, -132), TextSize = 22, Shine = true }, resultsCard)
-	nextButton = UI.Button({ Text = "ROOM #002 - COMING SOON", Color = UI.Colors.Gold, Size = UDim2.new(1, -40, 0, 54), Position = UDim2.new(0, 20, 1, -68), TextSize = 20, Shine = true }, resultsCard)
+	nextButton = UI.Button({ Name = "NextRoom", Text = "ROOM #002 - COMING SOON", Color = UI.Colors.Gold, Size = UDim2.new(1, -40, 0, 54), Position = UDim2.new(0, 20, 1, -68), TextSize = 20, Shine = true }, resultsCard)
 	UI.SetButtonEnabled(nextButton, false)
+	stayButton = UI.Button({ Name = "Stay", Text = "STAY", Color = UI.Colors.PanelLight, Size = UDim2.fromOffset(110, 54), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -20, 1, -68), TextSize = 18, Visible = false }, resultsCard)
 
 	returnButton.Activated:Connect(function()
+		stopCountdown()
 		results.Visible = false
 		UI.ClearSelection(results)
 		Remotes.Event("ReturnToLobby"):FireServer()
 	end)
 	nextButton.Activated:Connect(function()
 		if nextButton.Active then
-			results.Visible = false
-			UI.ClearSelection(results)
-			Remotes.Event("ReturnToLobby"):FireServer()
+			playNext()
 		end
+	end)
+	stayButton.Activated:Connect(function()
+		stopCountdown()
+		if nextButton.Active then
+			nextButton.Text = "NEXT ROOM"
+		end
+		UI.SelectForGamepad(nextButton)
 	end)
 
 	Remotes.Event("MatchUpdate").OnClientEvent:Connect(function(eventName, payload)
@@ -288,6 +362,7 @@ function ResultsController.Init()
 		elseif eventName == "Results" then
 			showResults(payload or {})
 		elseif eventName == "ReturnedToLobby" then
+			stopCountdown()
 			results.Visible = false
 			ceremony.Visible = false
 			Controllers.FXController.SetVignette(nil, 1, 0.3)

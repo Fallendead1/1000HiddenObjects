@@ -19,6 +19,9 @@
 	Countdown, RoomId, RoomNumber, RoomName, TargetName, OwnerUserId, OwnerName,
 	SelectionDeadline, ResumePercent, Hard.
 	Player attribute: QueueId ("" when not queued).
+
+	PLAY NOW (QuickPlay) skips the circles: a solo run of the player's next room (or the room
+	their checkpoint is in) straight away. A brand-new player's first room is an easy run.
 ]]
 
 local Players = game:GetService("Players")
@@ -91,6 +94,19 @@ end
 -- Unlocked = any existing room up to (and including) the player's next required room.
 function QueueService.CanPlayRoom(player: Player, roomId: number): boolean
 	return RoomRegistry.Exists(roomId) and roomId <= highestCompleted(player) + 1
+end
+
+-- A party of brand-new players (nobody has found an object yet) gets an easy first Room #001.
+local function isEasyRun(players: { Player }, roomId: number, hard: boolean?): boolean
+	if roomId ~= 1 or hard then
+		return false
+	end
+	for _, player in ipairs(players) do
+		if highestCompleted(player) > 0 then
+			return false
+		end
+	end
+	return true
 end
 
 -- Hard Mode for a room unlocks once the player has completed it (found its object).
@@ -275,6 +291,7 @@ local function launch(q: Queue)
 		ResumePercent = resume,
 		QueueId = q.Id,
 		Hard = hard,
+		Easy = isEasyRun(party, roomId, hard),
 	})
 	for _, player in ipairs(party) do
 		if player.Parent then
@@ -385,6 +402,53 @@ local function step(q: Queue)
 	updateDisplay(q)
 end
 
+-- The room PLAY NOW starts: the checkpoint's room, else the next room to clear, else the last room.
+function QueueService.QuickPlayRoom(player: Player): number
+	local data = Services.DataService.Get(player)
+	local cp = data and data.Checkpoint
+	if cp and (cp.Percent or 0) > 0 and QueueService.CanPlayRoom(player, cp.RoomId) then
+		return cp.RoomId
+	end
+	local nextRoom = highestCompleted(player) + 1
+	if RoomRegistry.Exists(nextRoom) then
+		return nextRoom
+	end
+	return RoomRegistry.GetHighestAvailable()
+end
+
+local quickPlaying: { [Player]: boolean } = {}
+
+function QueueService.QuickPlay(player: Player)
+	if quickPlaying[player] or not player:GetAttribute("DataLoaded") or player:GetAttribute("Teleporting")
+		or (player:GetAttribute("QueueId") or "") ~= "" or Services.MatchService.IsPlayerInMatch(player) then
+		return
+	end
+	local roomId = QueueService.QuickPlayRoom(player)
+	if not QueueService.CanPlayRoom(player, roomId) then
+		return
+	end
+	quickPlaying[player] = true
+	local sessionId = Services.AnalyticsService.NewId()
+	local resume = Services.CheckpointService.ResolveResumePercent({ player }, roomId)
+	Services.AnalyticsService.PartyStep(player, sessionId, "Ready", "play now", "solo", "normal")
+	Services.AnalyticsService.Event(player, "play_now", roomId, resume > 0 and "resume" or "fresh", player:GetAttribute("TutorialCompleted") and "after tutorial" or "in tutorial")
+	player:SetAttribute("Teleporting", true)
+	Services.AnalyticsService.PartyStep(player, sessionId, "Launched", "solo")
+	task.wait(0.3) -- a beat for the loading screen to come up
+	Services.TeleportServiceWrapper.TeleportParty({
+		Players = { player },
+		RoomId = roomId,
+		ResumePercent = resume,
+		QueueId = "PlayNow",
+		Hard = false,
+		Easy = isEasyRun({ player }, roomId, false),
+	})
+	if player.Parent then
+		player:SetAttribute("Teleporting", false)
+	end
+	quickPlaying[player] = nil
+end
+
 local function hostedQueue(player: Player, queueId: any, state: string): Queue?
 	local q = type(queueId) == "string" and byId[queueId] or nil
 	if not q or q.Busy or q.State ~= state or q.Owner ~= player then
@@ -437,6 +501,13 @@ function QueueService.Init(role: string)
 		else
 			q.Owner = q.Owner or q.Players[1]
 			updateDisplay(q)
+		end
+	end)
+
+	Remotes.Event("QuickPlay").OnServerEvent:Connect(function(player)
+		if partyLimiter:Allow(player) and serverRole ~= "Match" then
+			Services.RetentionService.Touch(player)
+			QueueService.QuickPlay(player)
 		end
 	end)
 
@@ -518,6 +589,7 @@ function QueueService.Start(role: string)
 	Players.PlayerRemoving:Connect(function(player)
 		lockedNoticeAt[player] = nil
 		blockedNoticeAt[player] = nil
+		quickPlaying[player] = nil
 		rejoinBlockedUntil[player] = nil
 		for _, q in ipairs(queues) do
 			local idx = table.find(q.Players, player)

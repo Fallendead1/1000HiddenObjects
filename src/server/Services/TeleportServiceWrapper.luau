@@ -36,6 +36,7 @@ export type PartyLaunch = {
 	ResumePercent: number,
 	QueueId: string?,
 	Hard: boolean?,
+	Easy: boolean?,
 }
 
 -- Hands the players' data over cleanly: a final save that lets go of each profile, so the
@@ -80,6 +81,7 @@ function TeleportServiceWrapper.TeleportParty(launch: PartyLaunch): boolean
 			Seed = seed,
 			MatchId = matchId,
 			Hard = launch.Hard == true,
+			Easy = launch.Easy == true,
 		})
 	end
 
@@ -105,6 +107,7 @@ function TeleportServiceWrapper.TeleportParty(launch: PartyLaunch): boolean
 		ResumePercent = launch.ResumePercent,
 		Seed = seed,
 		Hard = launch.Hard == true,
+		Easy = launch.Easy == true,
 		PartySessions = Services.AnalyticsService.PartySessions(launch.Players),
 		ExpectedUserIds = (function()
 			local ids = {}

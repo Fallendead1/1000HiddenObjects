@@ -351,6 +351,7 @@ function ObjectService.Grab(player: Player, root: any): (boolean, string?)
 	end
 	local weight = root:GetAttribute("Weight") or 1
 	if weight > Services.PlayerSessionService.GetMaxWeight(player) then
+		Services.RetentionService.NoteTooHeavy(player, weight)
 		Remotes.Event("FXEvent"):FireClient(player, "TooHeavy", { Name = root:GetAttribute("DisplayName"), Weight = weight, RequiredLevel = Services.PlayerSessionService.StrengthLevelToLift(player, weight) or UpgradeConfig.StrengthLevelFor(weight) })
 		return false, "TooHeavy"
 	end
@@ -405,6 +406,7 @@ function ObjectService.Grab(player: Player, root: any): (boolean, string?)
 	setState(root, "Held")
 	player:SetAttribute("HeldObjectId", root:GetAttribute("ObjectId"))
 	Services.AnalyticsService.Grabbed(player)
+	Services.RetentionService.Touch(player)
 	-- Lifting the last thing off the key reveals it right away.
 	Services.MatchService.OnObjectGrabbed(root)
 	return true, nil
