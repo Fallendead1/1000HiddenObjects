@@ -1,9 +1,13 @@
 --[[
-	Room registry. Adding Room #002 = drop Room002.luau next to Room001.luau and add it here.
+	Room registry. Adding a room = drop RoomNNN.luau next to Room001.luau and add it here
+	(plus its object in Shared.Data.TargetData). Kit.luau holds helpers shared by the configs.
 ]]
 
 local Rooms = {
 	[1] = require(script.Room001),
+	[2] = require(script.Room002),
+	[3] = require(script.Room003),
+	[4] = require(script.Room004),
 }
 
 local RoomRegistry = {}

@@ -415,8 +415,9 @@ function DataService.UpdateReplicatedSummary(player: Player)
 	player:SetAttribute("Setting_SFX", data.Settings.SFX)
 	player:SetAttribute("Setting_ReduceVFX", data.Settings.ReduceVFX)
 	player:SetAttribute("Setting_CameraShake", data.Settings.CameraShake)
-	local best = data.BestTimes["1"]
-	player:SetAttribute("BestTimeRoom1", best or 0)
+	for key, best in pairs(data.BestTimes) do
+		player:SetAttribute("BestTimeRoom" .. key, best or 0)
+	end
 end
 
 function DataService.ResetProfile(player: Player)

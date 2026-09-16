@@ -45,6 +45,7 @@ local returnButton: TextButton
 local nextButton: TextButton
 local stayButton: TextButton
 local resSaved: TextLabel
+local resIcon: Frame
 local nextToken = 0 -- bumps whenever the NEXT ROOM countdown should stop
 
 local function stopCountdown()
@@ -200,6 +201,19 @@ local function showResults(payload)
 
 	resTitle.Text = string.format("ROOM #%s COMPLETE", payload.RoomNumber or "001")
 	resObject.Text = string.format("%s  -  %s  ✓", TargetData.FormatNumber(payload.ObjectNumber or 1), payload.TargetName or "")
+	-- The found object's own picture (a letter until its art exists).
+	local target = TargetData.GetById(payload.TargetId or "")
+	for _, c in ipairs(resIcon:GetChildren()) do
+		if c.Name == "ObjectIcon" then
+			c:Destroy()
+		end
+	end
+	local objectIcon = UI.Icon(resIcon, target and target.IconKey or "Icon_Key", target and string.upper(string.sub(target.Name, 1, 1)) or "?", { TextSize = 50 })
+	objectIcon.Name = "ObjectIcon"
+	objectIcon.Size = UDim2.fromScale(0.74, 0.66)
+	objectIcon.AnchorPoint = Vector2.new(0.5, 0.5)
+	objectIcon.Position = UDim2.fromScale(0.5, 0.45)
+	UI.SetSurfaceColor(resIcon, target and target.Color or UI.Colors.Gold)
 	local mine = 0
 	for _, c in ipairs(payload.Contributions or {}) do
 		if c.UserId == player.UserId then
@@ -316,10 +330,7 @@ function ResultsController.Init()
 	local icon = UI.Surface3D({ Size = UDim2.fromOffset(84, 84), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 68) }, resultsCard, UI.Colors.Gold, 18, 0.1)
 	UI.Glow(icon, UI.Colors.Gold, 22, 0.45)
 	UI.Pulse(icon, 0.05, 2.5)
-	local keyIcon = UI.Icon(icon, "Icon_Key", "K", { TextSize = 50 })
-	keyIcon.Size = UDim2.fromScale(0.74, 0.66)
-	keyIcon.AnchorPoint = Vector2.new(0.5, 0.5)
-	keyIcon.Position = UDim2.fromScale(0.5, 0.45)
+	resIcon = icon
 	resSaved = UI.Label({ Text = "", TextSize = 20, TextWrapped = false, Size = UDim2.fromOffset(170, 30), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -18, 0, 110), TextXAlignment = Enum.TextXAlignment.Right, Visible = false }, resultsCard)
 	UI.TextGradient(resSaved, UI.Colors.Cash)
 	UI.Stroke(resSaved, Color3.new(0, 0, 0), 2.5, 0)

@@ -38,8 +38,11 @@ local function ensureDaily(player: Player, data): boolean
 	end
 	local rng = Random.new(player.UserId * 31 + day)
 	local pool = {}
-	for i = 1, #ProgressionConfig.Challenges do
-		pool[i] = i
+	local reach = (data.HighestRoomCompleted or 0) + 1
+	for i, c in ipairs(ProgressionConfig.Challenges) do
+		if not c.MinRoom or reach >= c.MinRoom then
+			table.insert(pool, i)
+		end
 	end
 	local ids = {}
 	for _ = 1, math.min(ProgressionConfig.DailyCount, #pool) do

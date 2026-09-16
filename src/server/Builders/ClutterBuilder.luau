@@ -38,6 +38,8 @@ local placeParams = OverlapParams.new()
 placeParams.FilterType = Enum.RaycastFilterType.Include
 -- Rectangles (room-local XZ) no pile may place into: deposit bins and a margin around them.
 local keepOut: { { Center: Vector2, Size: Vector2 } } = {}
+-- The treasures the room being built hides (its config.TreasureKeys, else the shared set).
+local treasureKeys: { string } = ClutterConfig.TreasureKeys
 local spawnCounter = 0
 local spawnRng = Random.new()
 
@@ -306,9 +308,10 @@ local function regionFor(config, localPos: Vector3): string
 	return best or "CenterFloor"
 end
 
-local function insideExclusion(exclusions, x: number, z: number): boolean
+-- padX / padZ grow each rectangle by an object's half footprint (so it can't poke in).
+local function insideExclusion(exclusions, x: number, z: number, padX: number?, padZ: number?): boolean
 	for _, rect in ipairs(exclusions or {}) do
-		if math.abs(x - rect.Center.X) <= rect.Size.X / 2 and math.abs(z - rect.Center.Y) <= rect.Size.Y / 2 then
+		if math.abs(x - rect.Center.X) <= rect.Size.X / 2 + (padX or 0) and math.abs(z - rect.Center.Y) <= rect.Size.Y / 2 + (padZ or 0) then
 			return true
 		end
 	end
@@ -323,7 +326,7 @@ end
 
 local function maybeTreasure(rng: Random, key: string): string
 	if rng:NextNumber() < ClutterConfig.TreasureChance then
-		return ClutterConfig.TreasureKeys[rng:NextInteger(1, #ClutterConfig.TreasureKeys)]
+		return treasureKeys[rng:NextInteger(1, #treasureKeys)]
 	end
 	return key
 end
@@ -392,7 +395,7 @@ local function buildHeap(pile, config, origin: CFrame, rng: Random, folder: Inst
 					px = math.clamp(math.cos(ang) * r * sizeX, -sizeX / 2 + hx * 0.6, sizeX / 2 - hx * 0.6)
 					pz = math.clamp(math.sin(ang) * r * sizeZ, -sizeZ / 2 + hz * 0.6, sizeZ / 2 - hz * 0.6)
 				end
-				if not insideExclusion(pile.Exclusions, pile.Center.X + px, pile.Center.Z + pz) and not insideExclusion(keepOut, pile.Center.X + px, pile.Center.Z + pz) then
+				if not insideExclusion(pile.Exclusions, pile.Center.X + px, pile.Center.Z + pz) and not insideExclusion(keepOut, pile.Center.X + px, pile.Center.Z + pz, hx, hz) then
 					local ax, bx = cellRange(px, hx, nx, sizeX)
 					local az, bz = cellRange(pz, hz, nz, sizeZ)
 					local top = 0
@@ -513,6 +516,7 @@ function ClutterBuilder.Build(config, origin: CFrame, folder: Instance, variant:
 		table.insert(filter, part)
 	end
 	placeParams.FilterDescendantsInstances = filter
+	treasureKeys = config.TreasureKeys or ClutterConfig.TreasureKeys
 	keepOut = {}
 	for _, bin in ipairs(config.DepositBins or {}) do
 		table.insert(keepOut, { Center = Vector2.new(bin.Center.X, bin.Center.Z), Size = Vector2.new(bin.Size.X + 3, bin.Size.Z + 3) })

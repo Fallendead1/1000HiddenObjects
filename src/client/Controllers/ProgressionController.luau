@@ -310,7 +310,7 @@ function ProgressionController.Init()
 			Controllers.FXController.Burst(payload.Position + Vector3.new(0, 1, 0), UI.Colors.Gold, 40, 0.55)
 			Controllers.FXController.CameraShake(0.4)
 			Controllers.FXController.ScreenFlash(UI.Colors.Gold, 0.5)
-			Controllers.FXController.FloatingText("THE KEY BURST OUT!", UI.Colors.Gold, UDim2.fromScale(0.5, 0.4), 40)
+			Controllers.FXController.FloatingText(string.format("THE %s BURST OUT!", string.upper(matchState:GetAttribute("TargetName") or "KEY")), UI.Colors.Gold, UDim2.fromScale(0.5, 0.4), 40)
 		end
 	end)
 

@@ -122,7 +122,7 @@ local function render()
 	if not unlocked then
 		hardButton.Text = "HARD MODE"
 		hardButton.BackgroundColor3 = UI.Colors.Locked
-		hardHint.Text = "Find the key in this room to unlock"
+		hardHint.Text = "Find this room's object to unlock"
 		hardHint.TextColor3 = UI.Colors.TextDim
 	elseif hard then
 		hardButton.Text = "HARD MODE: ON"

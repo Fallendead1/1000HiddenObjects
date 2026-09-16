@@ -44,6 +44,7 @@ local ProgressionConfig = {
 
 	DailyCount = 3,
 	-- Stat names are tracked by ProgressionService. Max = the best single value counts (not a sum).
+	-- MinRoom = only offered once that room is unlocked (its bins only stand in that room).
 	Challenges = {
 		{ Id = "Clean40", Text = "Clean %d objects into bins", Stat = "Deposit", Goal = 40 },
 		{ Id = "Laundry15", Text = "Clean %d clothes into the Laundry Basket", Stat = "Match_Laundry", Goal = 15 },
@@ -56,6 +57,12 @@ local ProgressionConfig = {
 		{ Id = "Treasure2", Text = "Find %d treasures", Stat = "Treasure", Goal = 2 },
 		{ Id = "Chunks10", Text = "Break open %d packed junk", Stat = "ChunkBurst", Goal = 10 },
 		{ Id = "Room1", Text = "Complete %d room", Stat = "RoomComplete", Goal = 1 },
+		{ Id = "Dishes20", Text = "Wash %d dishes in the Dish Rack", Stat = "Match_DishRack", Goal = 20, MinRoom = 2 },
+		{ Id = "Pantry15", Text = "Stock the pantry with %d foods", Stat = "Match_Pantry", Goal = 15, MinRoom = 2 },
+		{ Id = "Recycle15", Text = "Recycle %d things", Stat = "Match_Recycling", Goal = 15, MinRoom = 2 },
+		{ Id = "Games5", Text = "Put away %d games on the Game Shelf", Stat = "Match_GameShelf", Goal = 5, MinRoom = 3 },
+		{ Id = "Tools15", Text = "Put away %d tools in the Toolbox", Stat = "Match_Toolbox", Goal = 15, MinRoom = 4 },
+		{ Id = "Sports10", Text = "Clean %d sports things into the Sports Bin", Stat = "Match_SportsBin", Goal = 10, MinRoom = 4 },
 	},
 
 	-- Daily login rewards: a 7-day cycle; missing a day starts over at day 1. Hints and boosts are

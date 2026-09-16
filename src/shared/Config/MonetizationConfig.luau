@@ -58,10 +58,16 @@ local MonetizationConfig = {
 		ThousandObjects = 0,
 		FirstFinderWin = 0,
 		Room001Speed = 0,
+		Room002Speed = 0,
+		Room003Speed = 0,
+		Room004Speed = 0,
 	},
 	-- A room's best time (saved only when it's a legit run) at or under Seconds earns its badge.
 	SpeedBadges = {
 		["1"] = { Badge = "Room001Speed", Seconds = 300 },
+		["2"] = { Badge = "Room002Speed", Seconds = 300 },
+		["3"] = { Badge = "Room003Speed", Seconds = 360 },
+		["4"] = { Badge = "Room004Speed", Seconds = 420 },
 	},
 
 	Effects = {

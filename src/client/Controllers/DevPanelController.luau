@@ -70,15 +70,22 @@ function DevPanelController.Init()
 			send("StartRoom", n, 1)
 		end)
 	end
+	for _, id in ipairs({ 2, 3, 4 }) do
+		button(string.format("Start Room #%03d (solo)", id), UI.Colors.Green, function()
+			send("StartRoom", 1, id)
+		end)
+	end
 	button("Start Room #001 (easy, solo)", UI.Colors.Green, function()
 		send("StartRoom", 1, 1, true)
 	end)
 	button("Reset / End Room", UI.Colors.Red, function()
 		send("ResetRoom")
 	end)
-	button("Validate Room #001", UI.Colors.Cyan, function()
-		send("ValidateRoom", 1)
-	end)
+	for _, id in ipairs({ 1, 2, 3, 4 }) do
+		button(string.format("Validate Room #%03d", id), UI.Colors.Cyan, function()
+			send("ValidateRoom", id)
+		end)
+	end
 
 	header("PROGRESS")
 	button("+$10K", UI.Colors.Cash, function()
