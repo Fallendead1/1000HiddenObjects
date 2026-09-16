@@ -29,12 +29,13 @@ local C = Color3.fromRGB
 local Types: { [string]: BinType } = {
 	Laundry = { Type = "Laundry", Name = "LAUNDRY BASKET", Short = "LAUNDRY", PropKey = "Bin_Laundry", Color = C(90, 160, 255), Categories = { "Clothes", "Shoes", "Bedding", "Bag" }, IconKey = "Bin_Laundry" },
 	Toys = { Type = "Toys", Name = "TOY BIN", Short = "TOYS", PropKey = "Bin_Toys", Color = C(255, 120, 200), Categories = { "Toy" }, IconKey = "Bin_Toys" },
-	Books = { Type = "Books", Name = "BOOK CART", Short = "BOOKS", PropKey = "Bin_Books", Color = C(255, 180, 60), Categories = { "Book", "Paper", "School" }, IconKey = "Bin_Books" },
+	Books = { Type = "Books", Name = "BOOK CART", Short = "BOOKS", PropKey = "Bin_Books", Color = C(255, 180, 60), Categories = { "Book", "Paper", "School", "Keepsake" }, IconKey = "Bin_Books" },
 	DishRack = { Type = "DishRack", Name = "DISH RACK", Short = "DISHES", PropKey = "Bin_DishRack", Color = C(120, 220, 255), Categories = { "Dishes" }, IconKey = "Bin_DishRack" },
 	Pantry = { Type = "Pantry", Name = "PANTRY SHELF", Short = "PANTRY", PropKey = "Bin_Pantry", Color = C(255, 210, 90), Categories = { "Food" }, IconKey = "Bin_Pantry" },
 	Recycling = { Type = "Recycling", Name = "RECYCLING BIN", Short = "RECYCLE", PropKey = "Bin_Recycling", Color = C(70, 170, 255), Categories = { "Recyclable", "Paper", "Book" }, IconKey = "Bin_Recycling" },
 	GameShelf = { Type = "GameShelf", Name = "GAME SHELF", Short = "GAMES", PropKey = "Bin_GameShelf", Color = C(170, 110, 255), Categories = { "Game", "Electronics" }, IconKey = "Bin_GameShelf" },
 	Toolbox = { Type = "Toolbox", Name = "TOOLBOX", Short = "TOOLS", PropKey = "Bin_Toolbox", Color = C(230, 70, 60), Categories = { "Tools", "Electronics" }, IconKey = "Bin_Toolbox" },
+	Keepsakes = { Type = "Keepsakes", Name = "OLD TRUNK", Short = "KEEPSAKES", PropKey = "Bin_Keepsakes", Color = C(190, 130, 70), Categories = { "Keepsake" }, IconKey = "Bin_Keepsakes" },
 	SportsBin = { Type = "SportsBin", Name = "SPORTS BIN", Short = "SPORTS", PropKey = "Bin_SportsBin", Color = C(255, 140, 40), Categories = { "Sports", "Toy", "Shoes" }, IconKey = "Bin_SportsBin" },
 	Trash = { Type = "Trash", Name = "TRASH CAN", Short = "TRASH", PropKey = "Bin_Trash", Color = C(110, 210, 120), Categories = { "Junk", "Electronics", "Recyclable", "Dishes", "Food", "Game", "Tools", "Sports" }, IconKey = "Bin_Trash" },
 	Donation = { Type = "Donation", Name = "DONATION BOX", Short = "DONATE", PropKey = "Bin_Donation", Color = C(200, 150, 100), Categories = { "Box", "Container", "Appliance", "Decor", "Tire" }, HeavyWeight = 4, IconKey = "Bin_Donation" },
@@ -43,7 +44,7 @@ local Types: { [string]: BinType } = {
 local DepositConfig = {
 	Types = Types,
 	-- Preference order (see the header). Trash comes last on purpose.
-	Order = { "Laundry", "Toys", "Books", "DishRack", "Pantry", "Recycling", "GameShelf", "Toolbox", "SportsBin", "Donation", "Trash" },
+	Order = { "Laundry", "Toys", "Keepsakes", "Books", "DishRack", "Pantry", "Recycling", "GameShelf", "Toolbox", "SportsBin", "Donation", "Trash" },
 	MatchMultiplier = 2,
 	SwishMultiplier = 1.5,
 	SwishMinDistance = 10, -- studs (XZ) from where it was thrown

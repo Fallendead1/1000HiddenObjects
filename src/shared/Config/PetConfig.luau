@@ -81,6 +81,8 @@ local PetConfig = {
 		Dusty = { Key = "Dusty", Name = "DUSTY EGG", Price = 500, Color = C(200, 170, 130), Odds = { SockPuppy = 38, SoapSlime = 38, MopPup = 12, BroomBird = 12 } },
 		Shiny = { Key = "Shiny", Name = "SHINY EGG", Price = 2000, Color = C(90, 200, 255), Odds = { MopPup = 30, BroomBird = 30, LaundryFrog = 22, VacuumCat = 15, DusterParrot = 3 } },
 		Royal = { Key = "Royal", Name = "ROYAL EGG", Price = 6000, Color = C(200, 90, 255), Odds = { LaundryFrog = 30, VacuumCat = 25, DusterParrot = 22, RoombaTurtle = 20, GoldenBroomDragon = 3 } },
+		-- Never sold: the guaranteed Rare-or-better egg for a Mega room's first clear.
+		Attic = { Key = "Attic", Name = "ATTIC EGG", Price = 0, Hidden = true, Color = C(190, 140, 80), Odds = { LaundryFrog = 35, VacuumCat = 30, DusterParrot = 20, RoombaTurtle = 13, GoldenBroomDragon = 2 } },
 	},
 
 	-- Slots: 1, +1 at Cleaner level SlotLevel, +1 with the Pet Slot pass.

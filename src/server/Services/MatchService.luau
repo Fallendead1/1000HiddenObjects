@@ -911,6 +911,16 @@ function MatchService.CompleteMatch(finder: Player)
 		starsByUser[tostring(player.UserId)] = Services.ProgressionService.OnRoomComplete(player, match, player == finder, firstClear)
 		canNextByUser[tostring(player.UserId)] = Services.QueueService.CanPlayRoom(player, roomId + 1)
 		task.defer(Services.RetentionService.First, player, "Room")
+		-- A Mega room's first clear: a guaranteed Rare-or-better egg (hatched after the results).
+		if firstClear and match.Config.FirstClearEgg then
+			local eggKey = match.Config.FirstClearEgg
+			task.delay(GameConfig.CeremonySeconds + 1.5, function()
+				if player.Parent then
+					Services.PetService.GrantEgg(player, eggKey, "MegaRoom")
+					Services.ProgressionService.RefreshTag(player)
+				end
+			end)
+		end
 		Services.DataService.Save(player)
 		local data = Services.DataService.Get(player)
 		if data then

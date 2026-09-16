@@ -529,7 +529,7 @@ function ClutterBuilder.Build(config, origin: CFrame, folder: Instance, variant:
 		elseif pile.Layout ~= "Carpet" then
 			local heap = table.clone(pile)
 			heap.Count = math.floor(pile.Count * (config.CountMultiplier or 1) + 0.5)
-			if pile.Center.Y == 0 and pile.MaxHeight > 2 then
+			if (pile.Center.Y == 0 or pile.Floor) and pile.MaxHeight > 2 then
 				heap.MaxHeight = pile.MaxHeight + (config.FloorHeapHeightBonus or 0)
 				-- Only real floor heaps get packed-junk bottoms (not scatter, shelves or furniture tops).
 				heap.ChunkFraction = config.ChunkFraction

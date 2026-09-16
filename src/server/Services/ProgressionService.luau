@@ -17,6 +17,7 @@ local EconomyConfig = require(Shared.Config.EconomyConfig)
 local GameConfig = require(Shared.Config.GameConfig)
 local PetConfig = require(Shared.Config.PetConfig)
 local ProgressionConfig = require(Shared.Config.ProgressionConfig)
+local RoomRegistry = require(Shared.Config.RoomConfigs)
 local Remotes = require(Shared.Utility.Remotes)
 local RateLimiter = require(Shared.Utility.RateLimiter)
 
@@ -206,10 +207,20 @@ function ProgressionService.RefreshTag(player: Player)
 	local label = tag:FindFirstChild("Text") :: TextLabel
 	local level = player:GetAttribute("CleanerLevel") or 1
 	local vip = Services.MonetizationService.OwnsPass(player, "VIP")
-	-- Completing the Pet Index adds its title.
+	-- An earned title rides along: the Pet Index's, else the latest Mega room's first clear.
 	local data = Services.DataService.Get(player)
-	local petTitle = data and data.Pets and data.Pets.IndexRewarded and (" · " .. string.upper(PetConfig.IndexTitle)) or ""
-	label.Text = string.format("%sLV %d · %s%s", vip and "VIP · " or "", level, string.upper(player:GetAttribute("CleanerTitle") or ProgressionConfig.TitleFor(level)), petTitle)
+	local earned = nil
+	if data and data.Pets and data.Pets.IndexRewarded then
+		earned = PetConfig.IndexTitle
+	elseif data then
+		local best = 0
+		for id, config in pairs(RoomRegistry.GetAll()) do
+			if config.FirstClearTitle and data.HighestRoomCompleted >= id and id > best then
+				best, earned = id, config.FirstClearTitle
+			end
+		end
+	end
+	label.Text = string.format("%sLV %d · %s%s", vip and "VIP · " or "", level, string.upper(player:GetAttribute("CleanerTitle") or ProgressionConfig.TitleFor(level)), earned and (" · " .. string.upper(earned)) or "")
 	-- Gold gradient for VIP pass owners, a cool white for everyone else.
 	local gradient = label:FindFirstChild("Gradient")
 	if gradient and gradient:IsA("UIGradient") then
@@ -420,6 +431,7 @@ function ProgressionService.OnRoomComplete(player: Player, match, isFinder: bool
 	ProgressionService.Publish(player)
 	local bonus = EconomyConfig.RoomComplete + newCount * EconomyConfig.Star
 		+ (match.Hard and EconomyConfig.RoomCompleteHardBonus or 0)
+		+ (match.Config.Mega and EconomyConfig.MegaRoomBonus or 0)
 		+ (isFinder and EconomyConfig.KeyFound or 0)
 		+ (firstClear and EconomyConfig.FirstClear or 0)
 	Services.WalletService.Add(player, bonus, "Gameplay", "RoomComplete", true)

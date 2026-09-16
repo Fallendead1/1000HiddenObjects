@@ -433,6 +433,11 @@ function MonetizationService.CheckBadges(player: Player)
 	if data.FinderWins >= 1 then
 		table.insert(toAward, "FirstFinderWin")
 	end
+	for roomId, badge in pairs(MonetizationConfig.ClearBadges) do
+		if data.HighestRoomCompleted >= roomId then
+			table.insert(toAward, badge)
+		end
+	end
 	for roomKey, speed in pairs(MonetizationConfig.SpeedBadges) do
 		local best = data.BestTimes[roomKey]
 		if best and best <= speed.Seconds then

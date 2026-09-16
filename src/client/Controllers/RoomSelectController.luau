@@ -90,7 +90,7 @@ local function render()
 	end
 	local def = TargetData.Get(roomId)
 	titleLabel.Text = "ROOM #" .. config.DisplayNumber
-	nameLabel.Text = string.upper(config.Name)
+	nameLabel.Text = string.upper(config.Name) .. (config.Mega and "  ·  MEGA ROOM" or "")
 	targetLabel.Text = "Find the " .. config.TargetName
 	iconFrame.BackgroundColor3 = def and def.Color or UI.Colors.Gold
 	iconGlyph.Text = string.upper(string.sub(config.TargetName, 1, 1))

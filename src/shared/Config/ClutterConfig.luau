@@ -16,8 +16,8 @@
 	             name its own (config.TreasureKeys).
 
 	Categories decide the right bin (DepositConfig): Clothes, Shoes, Bedding, Bag, Toy, Book,
-	Paper, School, Dishes, Food, Recyclable, Game, Tools, Sports, Junk, Electronics, Box,
-	Container, Appliance, Decor, Tire.
+	Paper, School, Dishes, Food, Recyclable, Game, Tools, Sports, Keepsake, Junk, Electronics,
+	Box, Container, Appliance, Decor, Tire.
 ]]
 
 local C = Color3.fromRGB
@@ -214,9 +214,9 @@ add({ Key = "OldToolbox_A", DisplayName = "OLD TOOLBOX", Category = "Box", Weigh
 	Extras = { { Offset = CFrame.new(0, 0.9, 0), Size = Vector3.new(1.4, 0.25, 0.25), Color = C(40, 40, 40) } } })
 
 -- ===== Room #005: Attic =====
-add({ Key = "OldLetter_A", DisplayName = "OLD LETTER", Category = "Paper", Weight = 1, CashValue = 1, Shape = "Block", Size = Vector3.new(1.2, 0.08, 0.9), Colors = { C(235, 220, 180), C(220, 200, 160) }, Material = Enum.Material.SmoothPlastic })
-add({ Key = "PhotoAlbum_A", DisplayName = "PHOTO ALBUM", Category = "Book", Weight = 2, CashValue = 3, Shape = "Block", Size = Vector3.new(1.7, 0.5, 1.4), Colors = { C(120, 60, 50), C(40, 70, 110) }, Material = Enum.Material.Fabric })
-add({ Key = "Lantern_A", DisplayName = "OLD LANTERN", Category = "Decor", Weight = 2, CashValue = 4, Shape = "Block", Size = Vector3.new(0.8, 1.3, 0.8), Colors = { C(90, 80, 60) }, Material = Enum.Material.Metal,
+add({ Key = "OldLetter_A", DisplayName = "OLD LETTER", Category = "Keepsake", Weight = 1, CashValue = 1, Shape = "Block", Size = Vector3.new(1.2, 0.08, 0.9), Colors = { C(235, 220, 180), C(220, 200, 160) }, Material = Enum.Material.SmoothPlastic })
+add({ Key = "PhotoAlbum_A", DisplayName = "PHOTO ALBUM", Category = "Keepsake", Weight = 2, CashValue = 3, Shape = "Block", Size = Vector3.new(1.7, 0.5, 1.4), Colors = { C(120, 60, 50), C(40, 70, 110) }, Material = Enum.Material.Fabric })
+add({ Key = "Lantern_A", DisplayName = "OLD LANTERN", Category = "Keepsake", Weight = 2, CashValue = 4, Shape = "Block", Size = Vector3.new(0.8, 1.3, 0.8), Colors = { C(90, 80, 60) }, Material = Enum.Material.Metal,
 	Extras = { { Offset = CFrame.new(0, 0, 0), Size = Vector3.new(0.6, 0.9, 0.6), Color = C(255, 220, 140) } } })
 add({ Key = "Suitcase_A", DisplayName = "OLD SUITCASE", Category = "Box", Weight = 4, CashValue = 8, Shape = "Block", Size = Vector3.new(2.6, 0.9, 1.8), Colors = { C(140, 90, 50), C(90, 60, 40), C(60, 80, 70) }, Material = Enum.Material.Fabric,
 	Extras = { { Offset = CFrame.new(0, 0.55, 0), Size = Vector3.new(0.8, 0.2, 0.15), Color = C(40, 30, 20) } } })

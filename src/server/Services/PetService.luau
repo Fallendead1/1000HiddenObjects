@@ -190,7 +190,7 @@ end
 
 local function buyEgg(player: Player, eggKey: any)
 	local egg = type(eggKey) == "string" and PetConfig.Eggs[eggKey]
-	if not egg then
+	if not egg or egg.Hidden then
 		return
 	end
 	local session = "pets " .. tostring(player.UserId)

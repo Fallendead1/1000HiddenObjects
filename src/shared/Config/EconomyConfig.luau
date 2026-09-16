@@ -18,6 +18,7 @@ return {
 	RoomCompleteHardBonus = 25, -- extra on Hard Mode
 	KeyFound = 25, -- the finder only
 	FirstClear = 100, -- the first time a player completes that room
+	MegaRoomBonus = 150, -- extra for completing a Mega room (they are about twice as long)
 	Star = 25, -- per newly earned mastery star
 	Challenge = 25, -- per daily challenge completed
 

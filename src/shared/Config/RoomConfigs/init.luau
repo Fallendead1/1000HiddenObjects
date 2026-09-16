@@ -8,6 +8,7 @@ local Rooms = {
 	[2] = require(script.Room002),
 	[3] = require(script.Room003),
 	[4] = require(script.Room004),
+	[5] = require(script.Room005),
 }
 
 local RoomRegistry = {}

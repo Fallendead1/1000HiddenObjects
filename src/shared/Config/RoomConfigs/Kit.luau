@@ -10,9 +10,10 @@
 local Kit = {}
 
 function Kit.Piles(mixes)
-	local function heap(id: string, region: string, mix: string, center: Vector3, size: Vector2, count: number, maxHeight: number)
+	-- floor = true: an upper-floor heap that still gets packed junk and the height bonus.
+	local function heap(id: string, region: string, mix: string, center: Vector3, size: Vector2, count: number, maxHeight: number, floor: boolean?)
 		assert(mixes[mix], "unknown mix " .. mix)
-		return { Id = id, RegionId = region, Layout = "Heap", Mix = mixes[mix], Center = center, Size = size, Count = count, MaxHeight = maxHeight }
+		return { Id = id, RegionId = region, Layout = "Heap", Mix = mixes[mix], Center = center, Size = size, Count = count, MaxHeight = maxHeight, Floor = floor }
 	end
 	local function row(id: string, region: string, mix: string, from: Vector3, to: Vector3, baseY: number, depthX: number)
 		assert(mixes[mix], "unknown mix " .. mix)
@@ -43,13 +44,14 @@ function Kit.deco(name: string, size: Vector3, center: Vector3, color: Color3, m
 	return f
 end
 
--- The way out, centred on the front wall of a 90 x 70 room.
-function Kit.door(list, doorColor: Color3, frameColor: Color3)
-	table.insert(list, Kit.solid("Door", Vector3.new(7, 12, 0.6), Vector3.new(0, 6, 34.6), doorColor, Enum.Material.Wood))
-	table.insert(list, Kit.deco("DoorFrameL", Vector3.new(0.6, 12.6, 0.9), Vector3.new(-3.8, 6.3, 34.5), frameColor))
-	table.insert(list, Kit.deco("DoorFrameR", Vector3.new(0.6, 12.6, 0.9), Vector3.new(3.8, 6.3, 34.5), frameColor))
-	table.insert(list, Kit.deco("DoorFrameTop", Vector3.new(8.2, 0.6, 0.9), Vector3.new(0, 12.6, 34.5), frameColor))
-	table.insert(list, Kit.deco("DoorKnob", Vector3.new(0.6, 0.6, 0.6), Vector3.new(2.6, 5.6, 34.1), Color3.fromRGB(220, 190, 90), Enum.Material.Metal, { Shape = Enum.PartType.Ball }))
+-- The way out, centred on the front wall (halfZ = half the room's depth; 35 for 90 x 70 rooms).
+function Kit.door(list, doorColor: Color3, frameColor: Color3, halfZ: number?)
+	local z = (halfZ or 35) - 0.4
+	table.insert(list, Kit.solid("Door", Vector3.new(7, 12, 0.6), Vector3.new(0, 6, z), doorColor, Enum.Material.Wood))
+	table.insert(list, Kit.deco("DoorFrameL", Vector3.new(0.6, 12.6, 0.9), Vector3.new(-3.8, 6.3, z - 0.1), frameColor))
+	table.insert(list, Kit.deco("DoorFrameR", Vector3.new(0.6, 12.6, 0.9), Vector3.new(3.8, 6.3, z - 0.1), frameColor))
+	table.insert(list, Kit.deco("DoorFrameTop", Vector3.new(8.2, 0.6, 0.9), Vector3.new(0, 12.6, z - 0.1), frameColor))
+	table.insert(list, Kit.deco("DoorKnob", Vector3.new(0.6, 0.6, 0.6), Vector3.new(2.6, 5.6, z - 0.5), Color3.fromRGB(220, 190, 90), Enum.Material.Metal, { Shape = Enum.PartType.Ball }))
 end
 
 -- A wall shelf unit against the right (+X) or left (-X) wall: back, two sides, shelves.
