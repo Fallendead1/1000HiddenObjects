@@ -39,7 +39,7 @@ local ProgressionConfig = {
 	Stars = {
 		{ Key = "Key", Bit = 1, Text = "Find the object" },
 		{ Key = "Clean", Bit = 2, Text = "Clean 25% of the room", Fraction = 0.25 },
-		{ Key = "Treasure", Bit = 4, Text = "Clean every treasure into a bin" },
+		{ Key = "Treasure", Bit = 4, Text = "Clean 10 treasures into bins in one run", Count = 10 },
 	},
 
 	DailyCount = 3,

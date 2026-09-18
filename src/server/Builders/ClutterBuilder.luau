@@ -324,8 +324,8 @@ local function fits(cframe: CFrame, size: Vector3): boolean
 	return #workspace:GetPartBoundsInBox(cframe, size, placeParams) == 0
 end
 
-local function maybeTreasure(rng: Random, key: string): string
-	if rng:NextNumber() < ClutterConfig.TreasureChance then
+local function maybeTreasure(rng: Random, key: string, chance: number?): string
+	if rng:NextNumber() < (chance or ClutterConfig.TreasureChance) then
 		return treasureKeys[rng:NextInteger(1, #treasureKeys)]
 	end
 	return key
@@ -336,7 +336,7 @@ local function rollContents(rng: Random, mix, keys: { string }, range: { number 
 	local contents = {}
 	local lo, hi = (range and range[1]) or 5, (range and range[2]) or 8
 	for _ = 1, rng:NextInteger(lo, hi) do
-		table.insert(contents, maybeTreasure(rng, pickFromMix(rng, mix, keys)))
+		table.insert(contents, maybeTreasure(rng, pickFromMix(rng, mix, keys), ClutterConfig.ChunkTreasureChance))
 	end
 	return contents
 end

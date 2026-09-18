@@ -35,7 +35,7 @@ local TabColors = { Permanent = UI.Colors.Gold, Boosts = UI.Colors.Green, Help =
 local TabInfo = {
 	Permanent = { Ribbon = "FOREVER", Hint = "Permanent perks: buy once, keep them forever." },
 	Boosts = { Ribbon = "10 MIN BOOST", Hint = "Timed boosts: they stack and carry between rooms." },
-	Help = { Ribbon = "INSTANT", Hint = "Clues unlock at 25% ROOM CLEANED." },
+	Help = { Ribbon = "INSTANT", Hint = "Get your next clue right now." },
 	Pets = { Ribbon = "FOREVER", Hint = "Helper pets and perks. Eggs are in the PETS menu." },
 }
 

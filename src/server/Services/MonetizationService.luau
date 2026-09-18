@@ -158,12 +158,7 @@ function MonetizationService.Bank(player: Player, key: string)
 		return
 	end
 	local name = key == "SuperHint" and "Super Hint" or "Quick Hint"
-	local match = Services.MatchService.GetMatchForPlayer(player)
-	if match and match.State == "Searching" and not Services.HintService.HintsUnlocked(match) then
-		Services.NotificationService.Send(player, "Premium", string.format("%s saved - you get it as soon as the room is %d%% cleaned.", name, math.floor(GameConfig.HintsUnlockAt * 100 + 0.5)))
-	else
-		Services.NotificationService.Send(player, "Premium", string.format("%s saved - it will be used when your next room starts.", name))
-	end
+	Services.NotificationService.Send(player, "Premium", string.format("%s saved - it will be used when your next room starts.", name))
 end
 
 function MonetizationService.ApplyBanked(player: Player)
@@ -199,8 +194,8 @@ function MonetizationService.ApplyBanked(player: Player)
 	MonetizationService.ApplyBankedHints(player)
 end
 
--- Saved Quick / Super Hints are used as soon as the room allows clues (at the start of a
--- resumed room, or the moment it reaches HintsUnlockAt); until then they stay saved.
+-- Saved Quick / Super Hints are used when a room starts (SEARCH!): one of each per room, so a
+-- stack of saved hints helps several rooms instead of giving every clue away at once.
 function MonetizationService.ApplyBankedHints(player: Player)
 	local data = Services.DataService.Get(player)
 	if not data then
@@ -211,10 +206,8 @@ function MonetizationService.ApplyBankedHints(player: Player)
 		return
 	end
 	local usedQuick, usedSuper = 0, 0
-	for _ = 1, quick do
-		if Services.HintService.GrantQuickHint(player) then
-			usedQuick += 1
-		end
+	if quick > 0 and Services.HintService.GrantQuickHint(player) then
+		usedQuick = 1
 	end
 	-- One region highlight per room is enough; keep the rest for later rooms.
 	if super > 0 and Services.HintService.GrantSuperHint(player) then
@@ -288,14 +281,6 @@ function MonetizationService.PromptPurchase(player: Player, key: string)
 	local def, kind = MonetizationConfig.FindDef(key)
 	if not def then
 		return
-	end
-	-- Never sell a clue the room won't give yet.
-	if key == "QuickHint" or key == "SuperHint" then
-		local match = Services.MatchService.GetMatchForPlayer(player)
-		if match and match.State == "Searching" and not Services.HintService.HintsUnlocked(match) then
-			Services.NotificationService.Send(player, "Warning", string.format("Hints unlock once the room is %d%% cleaned.", math.floor(GameConfig.HintsUnlockAt * 100 + 0.5)))
-			return
-		end
 	end
 	if def.MatchOnly and not Services.MatchService.IsPlayerInMatch(player) then
 		Services.NotificationService.Send(player, "Warning", "This can only be used inside a room.")

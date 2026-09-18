@@ -78,6 +78,53 @@ function FXController.Burst(position: Vector3, color: Color3, count: number, siz
 	end, count, 2.2)
 end
 
+-- The easy first run: a gold twinkle rising off the pile that hides the object. It's the
+-- player's guide, so Reduce VFX only thins it out.
+function FXController.KeyGlint(position: Vector3)
+	emitAt(position, function(pe)
+		pe.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+		pe.Lifetime = NumberRange.new(0.7, 1.2)
+		pe.Speed = NumberRange.new(1.5, 3.5)
+		pe.SpreadAngle = Vector2.new(30, 30)
+		pe.Acceleration = Vector3.new(0, 1.5, 0)
+		pe.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.5, 0.7), NumberSequenceKeypoint.new(1, 0) })
+		pe.Color = ColorSequence.new(Color3.fromRGB(255, 215, 90))
+		pe.LightEmission = 1
+		pe.Brightness = 3
+	end, reduceVFX() and 4 or 10, 1.8)
+end
+
+-- Picked up a treasure: a gold "TREASURE!" pops where it is, with sparkle and sound.
+function FXController.TreasureFound(position: Vector3, name: string?)
+	Controllers.AudioController.Play("Treasure")
+	FXController.Burst(position, UI.Colors.Gold, 14, 0.45)
+	local anchor = Instance.new("Attachment")
+	anchor.WorldPosition = position + Vector3.new(0, 1.5, 0)
+	anchor.Parent = workspace.Terrain
+	local bb = Instance.new("BillboardGui")
+	bb.Size = UDim2.fromOffset(260, 74)
+	bb.AlwaysOnTop = true
+	bb.LightInfluence = 0
+	bb.MaxDistance = 90
+	bb.Adornee = anchor
+	bb.Parent = player:WaitForChild("PlayerGui")
+	local label = UI.Label({ Text = "TREASURE!", TextSize = 38, TextWrapped = false, Size = UDim2.new(1, 0, 0, 44) }, bb)
+	UI.Stroke(label, Color3.new(0, 0, 0), 3.5, 0)
+	UI.TextGradient(label, UI.Colors.Gold)
+	local sub = UI.Label({ Text = name or "", TextSize = 18, TextWrapped = false, Size = UDim2.new(1, 0, 0, 24), Position = UDim2.fromOffset(0, 44) }, bb)
+	UI.Stroke(sub, Color3.new(0, 0, 0), 2, 0)
+	UI.PopIn(label, 0.6, 0.3)
+	UI.Tween(bb, { StudsOffset = Vector3.new(0, 2.5, 0) }, 1.5)
+	task.delay(0.9, function()
+		UI.Tween(label, { TextTransparency = 1 }, 0.6)
+		UI.Tween(sub, { TextTransparency = 1 }, 0.6)
+	end)
+	task.delay(1.6, function()
+		bb:Destroy()
+		anchor:Destroy()
+	end)
+end
+
 function FXController.Confetti(position: Vector3)
 	for _, c in ipairs({ Color3.fromRGB(255, 200, 40), Color3.fromRGB(70, 210, 110), Color3.fromRGB(70, 190, 255), Color3.fromRGB(255, 100, 150), Color3.fromRGB(255, 255, 255) }) do
 		FXController.Burst(position + Vector3.new(0, 2, 0), c, 22, 0.4)
@@ -439,6 +486,10 @@ function FXController.Init()
 			if payload.Position then
 				Controllers.AudioController.PlayAt("KeyRattle", payload.Position)
 				FXController.DustPuff(payload.Position + Vector3.new(0, 0.5, 0))
+			end
+		elseif name == "KeyGlint" then
+			if payload.Position then
+				FXController.KeyGlint(payload.Position)
 			end
 		elseif name == "CashAward" then
 			Controllers.AudioController.Play("CashAward")

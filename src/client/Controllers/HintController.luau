@@ -1,5 +1,6 @@
 --[[
-	Clue banners, region highlights (75% milestone / Super Hint) and the 97% cluster outline.
+	Clue banners (clues arrive on a timer, HintService), region highlights (clue 3 / Super Hint)
+	and the outline of whatever still covers the object (clue 5).
 ]]
 
 local CollectionService = game:GetService("CollectionService")
@@ -181,7 +182,7 @@ function HintController.Init()
 				pulseSideSign(payload.Side)
 			end
 			if payload.Stage and payload.Stage > 0 then
-				Controllers.NotificationController.Show("Info", string.format("Clue unlocked at %d%%!", payload.Percent or 0))
+				Controllers.NotificationController.Show("Info", string.format("Clue %d of 5!", payload.Stage))
 			end
 		elseif eventName == "RegionHighlight" then
 			HintController.HighlightRegion(payload.RegionId, payload.Duration or 8, payload.Super)

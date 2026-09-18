@@ -71,7 +71,7 @@ local Steps = {
 		Title = "FIND THE KEY",
 		Scene = "Key",
 		Text = function()
-			return "The Golden Key is hidden under the junk. Dig through the piles - clean 25% of the room to unlock HINTS!"
+			return "The Golden Key is hidden under the junk. CLUES arrive while you search, and junk that SHAKES near you means it's close!"
 		end,
 	},
 }
@@ -633,7 +633,11 @@ local function roomView(): View?
 	elseif roomStep == 2 then
 		return { Text = platformText("Aim at the bin with the gold x2 and RELEASE to throw!", "Aim at the bin with the gold x2 and tap THROW!", "Aim at the bin with the gold x2 and RELEASE R2!"), Tag = "2/4", Gui = action }
 	elseif roomStep == 4 then
-		return { Text = string.format("Now find the %s under the junk! HINTS unlock at 25%% cleaned.", matchState:GetAttribute("TargetName") or "Golden Key"), Tag = "4/4", Gui = hud.Buttons.Hint, Side = "Left" }
+		local target = matchState:GetAttribute("TargetName") or "Golden Key"
+		if matchState:GetAttribute("Easy") then
+			return { Text = string.format("Now find the %s! Dig where you see the gold SPARKLE on the junk.", target), Tag = "4/4" }
+		end
+		return { Text = string.format("Now find the %s! Clues come as you search, and junk that SHAKES near you means it's close.", target), Tag = "4/4", Gui = hud.Buttons.Hint, Side = "Left" }
 	elseif roomStep == 5 then
 		return { Text = string.format("That's it - have fun! (%d)", countdown), Instant = countdown < 3 }
 	end
@@ -826,7 +830,11 @@ function TutorialController.Init()
 	UI.ListLayout(line, Enum.FillDirection.Horizontal, 12, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center)
 	lineLabel = UI.Label({ Text = "", RichText = true, TextSize = 19, TextWrapped = false, AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.fromOffset(0, 36), LayoutOrder = 1 }, line)
 	local skip = UI.Button({ Name = "SkipTutorial", Text = "SKIP", Color = UI.Colors.PanelLight, Size = UDim2.fromOffset(58, 26), TextSize = 13, LayoutOrder = 2 }, line)
-	skip.Activated:Connect(TutorialController.Finish)
+	skip.Activated:Connect(function()
+		-- Which lesson they skipped from (0 = still in the lobby).
+		Controllers.AnalyticsController.Track("tutorial_skip", roomStep)
+		TutorialController.Finish()
+	end)
 
 	-- Button pointer: a white frame around the button and a bouncing arrow, over everything.
 	pointerFrame = UI.Frame({ Name = "TutorialPointer", BackgroundTransparency = 1, Visible = false }, UI.Layers.Top)

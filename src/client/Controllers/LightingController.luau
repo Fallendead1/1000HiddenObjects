@@ -42,7 +42,8 @@ local function build(className: string, props: { [string]: any }): Instance
 end
 
 local function wantLobby(): boolean
-	return game.PlaceId ~= GameConfig.MatchPlaceId and player:GetAttribute("InMatch") ~= true
+	local info = ReplicatedStorage:FindFirstChild("ServerInfo")
+	return game.PlaceId ~= GameConfig.MatchPlaceId and not (info and info:GetAttribute("Role") == "Match") and player:GetAttribute("InMatch") ~= true
 end
 
 -- Reduce VFX: no glow, no rays, no drifting clouds.

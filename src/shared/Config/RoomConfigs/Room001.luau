@@ -28,11 +28,8 @@ local Room = {
 	-- hidden under objects that have already slid off it.
 	RequiredBlockerDisplacement = 1.4,
 
-	-- Unique-object progress milestones: side / area / region / hot-cold / blocker outline.
-	-- Fractions of the room CLEANED (deposited in bins). ~4,500 objects: 2% is ~90 deposits.
-	-- Clues start once the room is 25% cleaned (GameConfig.HintsUnlockAt): side, area, region,
-	-- hot/cold, outline.
-	HintMilestones = { 0.25, 0.275, 0.31, 0.35, 0.4 },
+	-- Clues (side, area, region, hot/cold, outline) arrive on GameConfig.ClueTimes; a room may
+	-- set its own ClueTimes.
 	-- The Structure part players walk into to go back to the lobby.
 	ExitDoor = "Door",
 

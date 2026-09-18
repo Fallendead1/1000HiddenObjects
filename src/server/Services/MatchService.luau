@@ -7,7 +7,8 @@
 	The Golden Key is revealed ONLY when nothing physically covers its socket: every original
 	blocker has been moved away (or is being held) and no other object lies on the spot.
 	Room progress = ROOM CLEANED (objects deposited in bins / every real object in the room,
-	packed junk included). It drives hints and checkpoints, never the reveal.
+	packed junk included). It drives checkpoints, never the reveal; clues run on a timer
+	(HintService).
 ]]
 
 local CollectionService = game:GetService("CollectionService")
@@ -36,6 +37,8 @@ local lobbyModel: Instance? = nil
 local lobbySpawn: BasePart? = nil
 local coverParams = OverlapParams.new()
 coverParams.FilterType = Enum.RaycastFilterType.Include
+-- Players whose game has finished loading (ClientReady): a match server waits for them.
+local readyClients: { [Player]: boolean } = {}
 
 local function now(): number
 	return workspace:GetServerTimeNow()
@@ -62,7 +65,7 @@ local function resetStateConfig()
 		PartySize = 0, StartTime = 0, EndTime = 0, TotalObjects = 0, CleanedObjects = 0, Progress = 0,
 		HintStage = 0, TargetRevealed = false, TargetFound = false, FinderName = "", OutlinedObjects = "",
 		TeamMuscleExpires = 0, PlayerNames = "", ResumePercent = 0, TreasuresTotal = 0, TreasuresCleaned = 0,
-		Hard = false,
+		Hard = false, Easy = false, NextClueAt = 0,
 	}) do
 		stateConfig:SetAttribute(name, value)
 	end
@@ -146,49 +149,59 @@ local function checkTargetExposure()
 	end
 end
 
--- Random hiding spot, weighted toward DEEP ones (more junk on top, packed chunks count triple):
--- finding the key should take real digging, while shallow lucky finds stay possible but rare.
--- A brand-new player's first run (match.Easy) gets one of the shallowest spots instead, under
--- junk they can lift without upgrades.
+-- Where the key hides. Normal runs: a random spot, weighted toward deeper ones (packed chunks
+-- count triple), under junk the first Strength upgrade can lift (Hard Mode: anything liftable).
+-- A brand-new player's easy first run (match.Easy): a shallow spot under light junk close to
+-- where they start (it glints through the pile, see glintKey).
 local function selectTarget()
-	local maxWeight = UpgradeConfig.GetValue("Strength", UpgradeConfig.GetMaxLevel("Strength"))
+	local maxStrength = UpgradeConfig.GetValue("Strength", UpgradeConfig.GetMaxLevel("Strength"))
+	local limit = if match.Hard then maxStrength else math.min(GameConfig.KeyMaxBlockerWeight or maxStrength, maxStrength)
 	local starterWeight = UpgradeConfig.GetValue("Strength", 1)
-	local eligible, total = {}, 0
-	for _, socket in ipairs(match.Runtime.SocketList) do
-		local ok = #socket.Blockers > 0
-		local depth = 0
-		for _, b in ipairs(socket.Blockers) do
-			if (b:GetAttribute("Weight") or 1) > maxWeight then
-				ok = false
-			end
-			depth += b:GetAttribute("IsChunk") and 3 or 1
-		end
-		if ok then
-			local light = true
+	local spawnCF = getSpawnCFrame()
+	local function collect(maxWeight: number)
+		local list, total = {}, 0
+		for _, socket in ipairs(match.Runtime.SocketList) do
+			local depth, heaviest = 0, 0
 			for _, b in ipairs(socket.Blockers) do
-				if (b:GetAttribute("Weight") or 1) > starterWeight then
-					light = false
-				end
+				heaviest = math.max(heaviest, b:GetAttribute("Weight") or 1)
+				depth += b:GetAttribute("IsChunk") and 3 or 1
 			end
-			table.insert(eligible, { Socket = socket, Weight = depth, Light = light })
-			total += depth
+			if #socket.Blockers > 0 and heaviest <= maxWeight then
+				local weight = math.sqrt(depth)
+				local distance = if spawnCF then Vector2.new(socket.Position.X - spawnCF.X, socket.Position.Z - spawnCF.Z).Magnitude else 0
+				table.insert(list, { Socket = socket, Weight = weight, Depth = depth, Light = heaviest <= starterWeight, Distance = distance })
+				total += weight
+			end
 		end
+		return list, total
+	end
+	local eligible, total = collect(limit)
+	if #eligible == 0 then
+		eligible, total = collect(maxStrength)
 	end
 	assert(#eligible > 0, "Room has no exposable target sockets")
 	if match.Easy then
 		local pool = {}
 		for _, e in ipairs(eligible) do
-			if e.Light then
+			if e.Light and e.Distance <= (GameConfig.EasySpotMaxDistance or math.huge) then
 				table.insert(pool, e)
+			end
+		end
+		if #pool == 0 then
+			for _, e in ipairs(eligible) do
+				if e.Light then
+					table.insert(pool, e)
+				end
 			end
 		end
 		if #pool == 0 then
 			pool = eligible
 		end
+		-- Closest and shallowest first.
 		table.sort(pool, function(a, b)
-			return a.Weight < b.Weight
+			return a.Distance + a.Depth * 1.5 < b.Distance + b.Depth * 1.5
 		end)
-		match.TargetSocket = pool[match.Rng:NextInteger(1, math.max(1, math.ceil(#pool * 0.25)))].Socket
+		match.TargetSocket = pool[match.Rng:NextInteger(1, math.min(3, #pool))].Socket
 	else
 		local roll = match.Rng:NextNumber() * total
 		for _, e in ipairs(eligible) do
@@ -218,7 +231,7 @@ local function preClean(fraction: number, clearTarget: boolean?)
 	if clearTarget then
 		list = MatchService.GetCoveringObjects()
 	else
-		-- Rounded up, so "25%" really reaches 25% (hints unlock there).
+		-- Rounded up, so "25%" really reaches 25% (checkpoints and the mastery star sit there).
 		local want = math.ceil(runtime.TotalObjects * math.clamp(fraction, 0, 0.95)) - runtime.DepositedCount
 		if want <= 0 then
 			return
@@ -298,6 +311,45 @@ local function rattleKey()
 	end
 end
 
+-- The easy first run: something shiny glints on top of the pile over the key.
+local glintParams = RaycastParams.new()
+glintParams.FilterType = Enum.RaycastFilterType.Include
+local lastGlint = 0
+local function glintKey()
+	if not match.Easy or match.State ~= "Searching" or match.TargetRevealed or os.clock() - lastGlint < (GameConfig.KeyGlintInterval or 3) then
+		return
+	end
+	lastGlint = os.clock()
+	local socket = match.TargetSocket.Position
+	local top = socket
+	local folder = match.Runtime.Model:FindFirstChild("Clutter")
+	if folder then
+		glintParams.FilterDescendantsInstances = { folder }
+		local hit = workspace:Raycast(socket + Vector3.new(0, 30, 0), Vector3.new(0, -32, 0), glintParams)
+		if hit then
+			top = hit.Position
+		end
+	end
+	for _, player in ipairs(match.Players) do
+		if player.Parent then
+			Remotes.Event("FXEvent"):FireClient(player, "KeyGlint", { Position = top + Vector3.new(0, 0.4, 0) })
+		end
+	end
+end
+
+-- One snapshot per minute of searching. Roblox drops events sent while a player is leaving, so
+-- a player's last snapshot is how we know how long they stayed and how far they got.
+local function logRoomMinute()
+	if match.State ~= "Searching" or match.StartTime <= 0 then
+		return
+	end
+	local minute = math.floor((now() - match.StartTime) / 60)
+	if minute > (match.LoggedMinute or 0) and minute <= 30 then
+		match.LoggedMinute = minute
+		Services.AnalyticsService.RoomMinute(match, minute)
+	end
+end
+
 function MatchService.Init(role: string)
 	serverRole = role
 	stateConfig = Instance.new("Configuration")
@@ -357,7 +409,12 @@ function MatchService.Init(role: string)
 			Services.AnalyticsService.Event(player, "setting_changed", 1, key, settings[key] and "on" or "off")
 		end
 	end)
+	-- A player's game finished loading its controllers (init.client).
+	Remotes.Event("ClientReady").OnServerEvent:Connect(function(player)
+		readyClients[player] = true
+	end)
 	Players.PlayerRemoving:Connect(function(player)
+		readyClients[player] = nil
 		MatchService.RemovePlayer(player)
 	end)
 end
@@ -421,7 +478,9 @@ function MatchService.Start(role: string)
 				Services.HintService.RefreshOutline(match)
 				if match.TargetSocket then
 					rattleKey()
+					glintKey()
 				end
+				logRoomMinute()
 				for _, player in ipairs(match.Players) do
 					local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
 					if root and root.Position.Y < match.Runtime.FloorY - GameConfig.FallProtectionDepth then
@@ -509,6 +568,28 @@ function MatchService.StartFromTeleport()
 	for _, p in ipairs(partyPlayers) do
 		Services.DataService.WaitFor(p, 10)
 	end
+	-- Everyone's game must have loaded before the intro starts, or slow phones miss the intro
+	-- and countdown (and sit behind the loading screen while the others search).
+	local readyBy = os.clock() + (GameConfig.ClientReadyWaitSeconds or 20)
+	while os.clock() < readyBy do
+		local waiting = false
+		for _, p in ipairs(partyPlayers) do
+			if p.Parent and not readyClients[p] then
+				waiting = true
+			end
+		end
+		if not waiting then
+			break
+		end
+		task.wait(0.2)
+	end
+	-- From pressing PLAY to ready here: the whole trip, teleport included.
+	local launchedAt = tonumber(data.LaunchedAt)
+	if launchedAt then
+		for _, p in ipairs(partyPlayers) do
+			Services.AnalyticsService.Event(p, "match_ready_seconds", math.max(0, os.time() - launchedAt), readyClients[p] and "loaded" or "timed out")
+		end
+	end
 	MatchService.BeginMatch({
 		Players = partyPlayers,
 		RoomId = roomId,
@@ -584,7 +665,7 @@ function MatchService.BeginMatch(params: LaunchParams, origin: CFrame): boolean
 		PartySessions = params.PartySessions,
 	}
 
-	-- Treasures in the room (loose + packed in junk) for the "every treasure" mastery star.
+	-- Treasures in the room (loose + packed in junk) for the treasure mastery star.
 	local treasures = 0
 	for _, obj in ipairs(runtime.Objects) do
 		if obj:GetAttribute("Category") == "Treasure" then
@@ -613,6 +694,7 @@ function MatchService.BeginMatch(params: LaunchParams, origin: CFrame): boolean
 	stateConfig:SetAttribute("TreasuresTotal", match.TreasuresTotal)
 	stateConfig:SetAttribute("TreasuresCleaned", match.TreasuresCleaned)
 	stateConfig:SetAttribute("Hard", match.Hard)
+	stateConfig:SetAttribute("Easy", match.Easy)
 	publishProgress()
 	setState("Loading")
 
@@ -661,7 +743,6 @@ function MatchService.BeginMatch(params: LaunchParams, origin: CFrame): boolean
 		end
 		publishProgress()
 		Services.HintService.ResetForMatch(match)
-		Services.HintService.ApplyStagesForProgress(match, match.Progress)
 		local ok, report = RoomValidator.Validate(runtime, config)
 		if RunService:IsStudio() or not ok then
 			print(report)
@@ -680,6 +761,8 @@ function MatchService.BeginMatch(params: LaunchParams, origin: CFrame): boolean
 		stateConfig:SetAttribute("StartTime", match.StartTime)
 		setState("Searching")
 		fireMatch("Started", {})
+		match.LoggedMinute = 0
+		Services.HintService.StartClock(match)
 		Services.AnalyticsService.RoomStarted(match, os.clock() - releasedAt)
 		checkTargetExposure()
 		-- Hints bought while they couldn't be used are delivered now.
@@ -702,7 +785,7 @@ function MatchService.OnObjectDeposited(_player: Player?, treasure: boolean?)
 		stateConfig:SetAttribute("TreasuresCleaned", match.TreasuresCleaned)
 	end
 	local old, progress = publishProgress()
-	Services.HintService.OnProgress(match, progress)
+	Services.HintService.OnDeposit(match)
 	Services.CheckpointService.OnProgress(match, old, progress)
 	checkTargetExposure()
 end
@@ -1124,7 +1207,6 @@ function MatchService.ForceProgress(fraction: number)
 	if match and match.State == "Searching" then
 		preClean(fraction)
 		local old, progress = publishProgress()
-		Services.HintService.OnProgress(match, progress)
 		Services.CheckpointService.OnProgress(match, old, progress)
 	end
 end

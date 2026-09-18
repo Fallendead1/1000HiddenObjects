@@ -262,7 +262,8 @@ local function showResults(payload)
 		local star = UI.Label({ Text = has and "★" or "☆", TextSize = 34, TextColor3 = has and UI.Colors.Text or UI.Colors.TextDim, Size = UDim2.new(1, 0, 0, 36), Position = UDim2.fromOffset(0, 2) }, cell)
 		local caption = s.Text
 		if s.Key == "Treasure" then
-			caption = string.format("%s (%d/%d)", s.Text, payload.TreasuresCleaned or 0, payload.TreasuresTotal or 0)
+			local goal = math.min(s.Count or math.huge, payload.TreasuresTotal or 0)
+			caption = string.format("%s (%d/%d)", s.Text, math.min(payload.TreasuresCleaned or 0, goal), goal)
 		end
 		UI.Label({ Text = new and "NEW! " .. caption or caption, TextSize = 12, TextWrapped = true, TextColor3 = has and UI.Colors.Text or UI.Colors.TextDim, Size = UDim2.new(1, -8, 0, 30), Position = UDim2.fromOffset(4, 38) }, cell)
 		if new then

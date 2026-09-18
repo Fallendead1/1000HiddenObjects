@@ -304,7 +304,7 @@ local function buildMatchHUD()
 	UI.TextGradient(roomTargetLabel, UI.Colors.Gold)
 	progressBar = UI.ProgressBar(top, UDim2.new(1, -32, 0, 24), UDim2.fromOffset(16, 56), UI.Colors.Green)
 	progressLabel = UI.Label({ Text = "ROOM CLEANED: 0%", TextSize = 14, TextWrapped = false, Size = UDim2.new(1, 0, 1, 0), ZIndex = 3 }, progressBar.Frame)
-	timerLabel = UI.Label({ Text = "00:00", TextSize = 14, Font = UI.FontBody, TextColor3 = UI.Colors.TextDim, Size = UDim2.new(1, 0, 0, 18), Position = UDim2.fromOffset(0, 83) }, top)
+	timerLabel = UI.Label({ Text = "00:00", TextSize = 14, Font = UI.FontBody, TextColor3 = UI.Colors.TextDim, RichText = true, Size = UDim2.new(1, 0, 0, 18), Position = UDim2.fromOffset(0, 83) }, top)
 
 	-- Cash (money is lime everywhere) and how heavy you can lift. ProgressionController's slim
 	-- level strip sits right under it (y 98-122), so the left column below starts at 128.
@@ -688,7 +688,14 @@ function HUDController.Start()
 		end
 		acc = 0
 		local start, finish = matchState:GetAttribute("StartTime") or 0, matchState:GetAttribute("EndTime") or 0
-		timerLabel.Text = start > 0 and FormatUtil.Time((finish > 0 and finish or workspace:GetServerTimeNow()) - start) or "00:00"
+		local clock = start > 0 and FormatUtil.Time((finish > 0 and finish or workspace:GetServerTimeNow()) - start) or "00:00"
+		-- Clues arrive on a timer (cleaning brings them sooner): count down to the next one.
+		local nextClue = matchState:GetAttribute("NextClueAt") or 0
+		if nextClue > 0 and matchState:GetAttribute("State") == "Searching" then
+			local left = math.max(0, math.ceil(nextClue - workspace:GetServerTimeNow()))
+			clock ..= string.format("   <font color=\"#5AD2FF\">NEXT CLUE %d:%02d</font>", left // 60, left % 60)
+		end
+		timerLabel.Text = clock
 		refreshBoosts()
 	end)
 	task.delay(1, refreshTeam)

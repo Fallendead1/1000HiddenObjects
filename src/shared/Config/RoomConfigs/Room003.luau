@@ -25,7 +25,6 @@ local Room = {
 	MinimumTargetSockets = 30,
 	SocketBlockerRadius = 1.4,
 	RequiredBlockerDisplacement = 1.4,
-	HintMilestones = { 0.25, 0.275, 0.31, 0.35, 0.4 },
 	ExitDoor = "Door",
 	LayoutVariants = { 1 },
 

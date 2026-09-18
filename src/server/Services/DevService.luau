@@ -120,6 +120,11 @@ commands.SetProgress = function(player, fraction)
 	Services.MatchService.ForceProgress(tonumber(fraction) or 0.25)
 end
 
+-- Moves the clue clock forward (seconds).
+commands.ClueTime = function(player, seconds)
+	Services.HintService.DevAdvance(Services.MatchService.GetMatch(), tonumber(seconds) or 60)
+end
+
 commands.RevealTarget = function(player)
 	Services.MatchService.ForceReveal()
 end

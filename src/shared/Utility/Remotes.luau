@@ -33,6 +33,7 @@ local Remotes = {
 		"BuyEgg", -- C->S (eggKey) buy and hatch an egg with wallet Cash
 		"EquipPet", -- C->S (kind, on)
 		"PetWelcome", -- C->S () open the welcome gift (the starter pet)
+		"ClientReady", -- C->S () this player's game finished loading (a match server waits for it)
 		"DevCommand", -- C->S (command, ...)
 		"MatchUpdate", -- S->C (eventName, payload)
 		"Notification", -- S->C (kind, text, duration?)

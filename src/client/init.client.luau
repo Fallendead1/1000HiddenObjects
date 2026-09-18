@@ -78,6 +78,9 @@ for _, name in ipairs(order) do
 	end
 end
 
+-- Every controller is listening now: a match server waits for this before its intro starts.
+require(ReplicatedStorage.Shared.Utility.Remotes).Event("ClientReady"):FireServer()
+
 for _, name in ipairs(order) do
 	local controller = loaded[name]
 	if controller and controller.Start then

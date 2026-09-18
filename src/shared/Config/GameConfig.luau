@@ -11,10 +11,13 @@ return {
 	-- Extra UserIds that may use developer tools outside Studio (leave empty for production).
 	DeveloperUserIds = {},
 
-	-- Place IDs: the lobby is the start place; every party gets its own private Match server.
-	-- Both places must be published with the same build. 0 = single-place Combined servers.
+	-- Place IDs: the lobby is the start place; every party gets its own private match server.
+	-- Rooms run in reserved servers of the lobby place itself (MatchInLobbyPlace), so there is
+	-- one place to publish. MatchPlaceId is the old separate "Match Server" place: a server there
+	-- still works as a match server. LobbyPlaceId 0 = single-place Combined servers.
 	LobbyPlaceId = 117675182630398,
 	MatchPlaceId = 122762042441174,
+	MatchInLobbyPlace = true,
 
 	-- Queue / matchmaking
 	MaxPartySize = 4,
@@ -23,6 +26,9 @@ return {
 	QueueRadius = 8.5,
 	QueuePollInterval = 0.2,
 	MatchWaitForPartySeconds = 20,
+	-- A match server waits (up to this long) for every party member's game to finish loading
+	-- before the intro starts, so slow phones don't miss the intro and countdown.
+	ClientReadyWaitSeconds = 20,
 	-- The first player in an empty circle hosts it. If they haven't created a party after this
 	-- many seconds, they're moved out of the circle so it frees up for everyone else.
 	QueueSelectionTimeout = 25,
@@ -52,7 +58,7 @@ return {
 	ChunkBurstSpeed = 7, -- outward speed of the pieces
 
 	-- The key "rattles" the junk over it when a player's hands are close
-	KeyRattleDistance = 6,
+	KeyRattleDistance = 10,
 	KeyRattleInterval = 1.6,
 	-- Junk still covering the key when its chunk bursts is blasted outward. Gravity is ~196
 	-- studs/s^2, so the lift must be big to clear the spot (38 -> ~3.7 studs up, ~0.4 s aloft).
@@ -69,9 +75,22 @@ return {
 	-- most of the room is cleaned, so checkpoints sit early.
 	Checkpoints = { 0.05, 0.10, 0.15, 0.20 },
 
+	-- Where the key hides. Normal runs keep it under junk the first Strength upgrade can lift
+	-- (weight 3); Hard Mode can bury it under anything. A brand-new player's easy first run puts
+	-- it under light junk close to where they start, and it glints through the pile.
+	KeyMaxBlockerWeight = 3,
+	EasySpotMaxDistance = 32, -- studs from the room spawn
+	KeyGlintInterval = 3, -- seconds between glints on the easy first run
+
+	-- Clues arrive on a timer (seconds of searching): side, area, region, hot/cold, outline.
+	-- Every object cleaned into a bin brings the next clue this many seconds closer. The easy
+	-- first run has its own quick schedule; Hard Mode waits longer.
+	ClueTimes = { 60, 150, 240, 330, 420 },
+	EasyClueTimes = { 20, 45, 70, 95, 130 },
+	HardClueTimeScale = 1.5,
+	ClueSecondsPerDeposit = 2,
+
 	-- Hot / cold distances (studs to target cluster center)
-	-- No clue at all (not even which side the key is on) before this share of the room is cleaned.
-	HintsUnlockAt = 0.25,
 	HotCold = {
 		Warm = 30,
 		Hot = 18,

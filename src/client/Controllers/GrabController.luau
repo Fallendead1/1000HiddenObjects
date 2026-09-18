@@ -315,6 +315,11 @@ local function onGrabResult(replyId: number, ok: boolean, objectId: string?, rea
 	local folder = roomClutter()
 	heldRoot = folder and folder:FindFirstChild(objectId) :: BasePart?
 	Controllers.AudioController.Play("Grab")
+	-- A treasure: celebrate the find the first time it's picked up.
+	if heldRoot and heldRoot:GetAttribute("Category") == "Treasure" and not heldRoot:GetAttribute("TreasureSeen") then
+		heldRoot:SetAttribute("TreasureSeen", true)
+		Controllers.FXController.TreasureFound(heldRoot.Position, heldRoot:GetAttribute("DisplayName"))
+	end
 	-- Button already released while the request was in flight: throw straight away.
 	if not toggleMode and (releaseQueued or not pressDown) then
 		throwHeld()

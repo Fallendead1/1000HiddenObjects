@@ -1,9 +1,12 @@
 --[[
-	Free clue milestones (ROOM CLEANED %: objects deposited in bins), paid hints and hot/cold assistance.
+	Free clues on a timer, paid hints and hot/cold assistance.
 	Clues only ever point at areas; the key is revealed solely by moving its physical blockers.
 	Stages: 1 side, 2 area, 3 region highlight, 4 hot/cold, 5 outline the objects covering it.
-	No clue of any kind (free, paid or saved) before GameConfig.HintsUnlockAt of the room is
-	cleaned; hints bought, won or saved before then are delivered the moment it unlocks.
+
+	The clue clock starts at SEARCH! and every object cleaned into a bin moves it forward
+	(GameConfig.ClueSecondsPerDeposit), so cleaning brings clues sooner but nobody waits forever.
+	A brand-new player's easy first run has its own quick schedule and hot/cold from the start.
+	Quick and Super Hints work any time while searching.
 ]]
 
 local Players = game:GetService("Players")
@@ -18,6 +21,8 @@ local RateLimiter = require(Shared.Utility.RateLimiter)
 local Services = require(script.Parent)
 
 local HintService = {}
+
+local STAGES = 5
 
 local hintLimiter = RateLimiter.new(2, 3)
 local hotColdEnabled = false
@@ -34,17 +39,26 @@ local function stateConfig(): Configuration
 	return Services.MatchService.GetStateConfig()
 end
 
-local function unlockAt(match): number
-	return math.max(GameConfig.HintsUnlockAt or 0, match.Config.HintMilestones[1] or 0)
+local function now(): number
+	return workspace:GetServerTimeNow()
 end
 
-local function lockedText(): string
-	return string.format("Hints unlock once the room is %d%% cleaned.", math.floor((GameConfig.HintsUnlockAt or 0) * 100 + 0.5))
+-- Seconds of searching at which each stage arrives on its own.
+local function clueTimes(match): { number }
+	local times = if match.Easy then GameConfig.EasyClueTimes else (match.Config.ClueTimes or GameConfig.ClueTimes)
+	if match.Hard then
+		local scaled = {}
+		for i, t in ipairs(times) do
+			scaled[i] = t * (GameConfig.HardClueTimeScale or 1)
+		end
+		return scaled
+	end
+	return times
 end
 
--- True once the room is clean enough for any clue.
+-- Clues can be given (free on the clock, or paid) whenever the party is searching.
 function HintService.HintsUnlocked(match): boolean
-	return match ~= nil and (match.Progress or 0) >= unlockAt(match)
+	return match ~= nil and match.State == "Searching"
 end
 
 local function getTargetSide(match): string
@@ -80,25 +94,34 @@ function HintService.RefreshOutline(match)
 end
 
 local function deliverStage(match, stage: number, players: { Player }, silent: boolean?)
-	local percent = math.floor((match.Config.HintMilestones[stage] or 0) * 100)
 	local target = match.Config.TargetName
 	if stage == 1 then
 		local side = getTargetSide(match)
-		fire(players, "Clue", { Stage = stage, Percent = percent, Side = side, Text = string.format("The %s is on the %s side of the room - look for the %s SIDE sign.", target, side, side) })
+		fire(players, "Clue", { Stage = stage, Side = side, Text = string.format("The %s is on the %s side of the room - look for the %s SIDE sign.", target, side, side) })
 	elseif stage == 2 then
-		fire(players, "Clue", { Stage = stage, Percent = percent, Text = string.format("Search around the %s side.", getTargetAreaLabel(match)) })
+		fire(players, "Clue", { Stage = stage, Text = string.format("Search around the %s side.", getTargetAreaLabel(match)) })
 	elseif stage == 3 then
-		fire(players, "Clue", { Stage = stage, Percent = percent, Text = string.format("It's somewhere in the %s area!", getRegionName(match)) })
+		fire(players, "Clue", { Stage = stage, Text = string.format("It's somewhere in the %s area!", getRegionName(match)) })
 		fire(players, "RegionHighlight", { RegionId = match.TargetSocket.RegionId, Duration = MonetizationConfig.Effects.RegionHighlightDuration })
 	elseif stage == 4 then
 		hotColdEnabled = true
-		fire(players, "Clue", { Stage = stage, Percent = percent, Text = "Hot / Cold tracking enabled. Get close to feel the warmth!" })
+		fire(players, "Clue", { Stage = stage, Text = "Hot / Cold tracking enabled. Get close to feel the warmth!" })
 	elseif stage == 5 then
 		HintService.RefreshOutline(match)
-		fire(players, "Clue", { Stage = stage, Percent = percent, Text = "Almost there! The objects hiding it are outlined." })
+		fire(players, "Clue", { Stage = stage, Text = "Almost there! The objects hiding it are outlined." })
 	end
 	if not silent then
 		Services.AnalyticsService.Clue(players, stage, "free", match.Progress)
+	end
+end
+
+-- When the next stage arrives on its own (server time), or 0 when every clue is out.
+local function publishNext(match)
+	local times = clueTimes(match)
+	local nextTime = times[match.HintStage + 1]
+	local at = (nextTime and match.ClueStart) and (match.ClueStart - (match.ClueBonus or 0) + nextTime) or 0
+	if stateConfig():GetAttribute("NextClueAt") ~= at then
+		stateConfig():SetAttribute("NextClueAt", at)
 	end
 end
 
@@ -107,6 +130,20 @@ local function setStage(match, stage: number)
 	stateConfig():SetAttribute("HintStage", stage)
 	if stage >= 4 then
 		hotColdEnabled = true
+	end
+	publishNext(match)
+end
+
+-- Hands out every stage whose time has come.
+local function tickClues(match)
+	if not match.ClueStart or match.TargetRevealed then
+		return
+	end
+	local clock = now() - match.ClueStart + (match.ClueBonus or 0)
+	local times = clueTimes(match)
+	while match.HintStage < STAGES and times[match.HintStage + 1] and clock >= times[match.HintStage + 1] do
+		setStage(match, match.HintStage + 1)
+		deliverStage(match, match.HintStage, match.Players)
 	end
 end
 
@@ -118,10 +155,6 @@ function HintService.Init()
 		local match = Services.MatchService.GetMatchForPlayer(player)
 		if not match or match.State ~= "Searching" then
 			Services.NotificationService.Send(player, "Warning", "Hints are only available while searching.")
-			return
-		end
-		if not HintService.HintsUnlocked(match) then
-			Services.NotificationService.Send(player, "Warning", lockedText())
 			return
 		end
 		if kind == "Quick" then
@@ -141,17 +174,20 @@ function HintService.Start()
 		while true do
 			task.wait(GameConfig.HotCold.PollInterval)
 			local match = Services.MatchService.GetMatch()
-			if match and match.State == "Searching" and hotColdEnabled and match.TargetSocket then
-				local center = match.TargetSocket.Position
-				for _, player in ipairs(match.Players) do
-					local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
-					local state = ""
-					if root then
-						local d = (root.Position - center).Magnitude
-						state = d <= GameConfig.HotCold.VeryHot and "VERY HOT" or d <= GameConfig.HotCold.Hot and "HOT" or d <= GameConfig.HotCold.Warm and "WARM" or "COLD"
-					end
-					if player:GetAttribute("HotCold") ~= state then
-						player:SetAttribute("HotCold", state)
+			if match and match.State == "Searching" and match.TargetSocket then
+				tickClues(match)
+				if hotColdEnabled then
+					local center = match.TargetSocket.Position
+					for _, player in ipairs(match.Players) do
+						local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+						local state = ""
+						if root then
+							local d = (root.Position - center).Magnitude
+							state = d <= GameConfig.HotCold.VeryHot and "VERY HOT" or d <= GameConfig.HotCold.Hot and "HOT" or d <= GameConfig.HotCold.Warm and "WARM" or "COLD"
+						end
+						if player:GetAttribute("HotCold") ~= state then
+							player:SetAttribute("HotCold", state)
+						end
 					end
 				end
 			end
@@ -163,49 +199,54 @@ function HintService.ResetForMatch(match)
 	hotColdEnabled = false
 	if match then
 		match.HintStage = 0
+		match.ClueStart = nil
+		match.ClueBonus = 0
 		stateConfig():SetAttribute("HintStage", 0)
 	end
+	stateConfig():SetAttribute("NextClueAt", 0)
 	stateConfig():SetAttribute("OutlinedObjects", "")
 	for _, player in ipairs(Players:GetPlayers()) do
 		player:SetAttribute("HotCold", "")
 	end
 end
 
--- Silently bring the hint stage up to the current progress (checkpoint resume).
-function HintService.ApplyStagesForProgress(match, progress: number)
-	for stage, threshold in ipairs(match.Config.HintMilestones) do
-		if progress >= math.max(threshold, GameConfig.HintsUnlockAt or 0) and match.HintStage < stage then
-			setStage(match, stage)
-		end
+-- SEARCH!: the clue clock starts. The easy first run feels the warmth straight away.
+function HintService.StartClock(match)
+	match.ClueStart = now()
+	match.ClueBonus = 0
+	if match.Easy then
+		hotColdEnabled = true
 	end
-	match.HintsOpen = HintService.HintsUnlocked(match)
-	HintService.RefreshOutline(match)
+	publishNext(match)
 end
 
-function HintService.OnProgress(match, progress: number)
-	for stage, threshold in ipairs(match.Config.HintMilestones) do
-		if progress >= math.max(threshold, GameConfig.HintsUnlockAt or 0) and match.HintStage < stage then
-			setStage(match, stage)
-			deliverStage(match, stage, match.Players)
-		end
+-- An object went into a bin: the next clue comes a little sooner.
+function HintService.OnDeposit(match)
+	if not match.ClueStart then
+		return
 	end
-	-- Hints just unlocked: the ones players bought, won or saved earlier arrive now.
-	if not match.HintsOpen and HintService.HintsUnlocked(match) then
-		match.HintsOpen = true
-		for _, player in ipairs(match.Players) do
-			task.spawn(Services.MonetizationService.ApplyBankedHints, player)
-		end
+	match.ClueBonus = (match.ClueBonus or 0) + (GameConfig.ClueSecondsPerDeposit or 0)
+	publishNext(match)
+	tickClues(match)
+end
+
+-- Developer: move the clue clock forward.
+function HintService.DevAdvance(match, seconds: number)
+	if match and match.ClueStart then
+		match.ClueBonus = (match.ClueBonus or 0) + seconds
+		publishNext(match)
+		tickClues(match)
 	end
 end
 
--- Quick Hint: deliver the next milestone clue now (advances the team's stage).
+-- Quick Hint: deliver the next clue now (advances the team's stage).
 function HintService.GrantQuickHint(player: Player): boolean
 	local match = Services.MatchService.GetMatchForPlayer(player)
-	if not match or match.State ~= "Searching" or not HintService.HintsUnlocked(match) then
+	if not HintService.HintsUnlocked(match) then
 		return false
 	end
 	local nextStage = match.HintStage + 1
-	if nextStage > #match.Config.HintMilestones then
+	if nextStage > STAGES then
 		Services.NotificationService.Send(player, "Info", "All clues already revealed!")
 		return false
 	end
@@ -219,11 +260,11 @@ end
 -- Super Hint: highlight the correct region for the buyer.
 function HintService.GrantSuperHint(player: Player): boolean
 	local match = Services.MatchService.GetMatchForPlayer(player)
-	if not match or match.State ~= "Searching" or not HintService.HintsUnlocked(match) then
+	if not HintService.HintsUnlocked(match) then
 		return false
 	end
 	fire({ player }, "RegionHighlight", { RegionId = match.TargetSocket.RegionId, Duration = MonetizationConfig.Effects.SuperHintDuration, Super = true })
-	fire({ player }, "Clue", { Stage = 0, Percent = 0, Text = string.format("SUPER HINT: search the %s area!", getRegionName(match)) })
+	fire({ player }, "Clue", { Stage = 0, Text = string.format("SUPER HINT: search the %s area!", getRegionName(match)) })
 	Services.AnalyticsService.Clue({ player }, 0, "super", match.Progress)
 	return true
 end

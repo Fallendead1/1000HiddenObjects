@@ -1,6 +1,8 @@
 --[[
-	Teleports a locked party to a fresh reserved Match server, or in Combined (development)
-	mode starts the match locally without a teleport. Never blocks the queue on failure.
+	Teleports a locked party to a fresh reserved match server (a reserved server of the lobby
+	place itself, GameConfig.MatchInLobbyPlace), or in Combined (development) mode starts the
+	match locally without a teleport. Never blocks the queue on failure: a failed teleport is
+	retried once, then the player is told (and their loading screen clears, TeleportFailed).
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -15,19 +17,55 @@ local Services = require(script.Parent)
 local TeleportServiceWrapper = {}
 
 local serverRole = "Combined"
+local retried: { [Player]: boolean } = {}
+
+-- Where rooms are played.
+local function matchPlaceId(): number
+	return if GameConfig.MatchInLobbyPlace then GameConfig.LobbyPlaceId else GameConfig.MatchPlaceId
+end
+
+-- The player's loading screen clears and the error toast underneath shows (LoadingController).
+local function markFailed(player: Player)
+	player:SetAttribute("TeleportFailed", (player:GetAttribute("TeleportFailed") or 0) + 1)
+end
 
 function TeleportServiceWrapper.Init(role: string)
 	serverRole = role
-	TeleportService.TeleportInitFailed:Connect(function(player, result, message)
+	TeleportService.TeleportInitFailed:Connect(function(player, result, message, placeId, options)
 		warn("[Teleport] Init failed for", player.Name, result, message)
+		-- One quiet retry: most failures are a busy moment on Roblox's side.
+		if not retried[player] and player.Parent and placeId then
+			retried[player] = true
+			local ok = pcall(function()
+				TeleportService:TeleportAsync(placeId, { player }, options)
+			end)
+			if ok then
+				return
+			end
+		end
+		retried[player] = nil
 		Services.DataService.Reclaim(player)
 		Services.AnalyticsService.ClearTeleport(player)
 		Services.AnalyticsService.Event(player, "teleport_failed", 1, "init", tostring(result))
 		player:SetAttribute("Leaving", nil)
 		player:SetAttribute("Teleporting", false)
 		player:SetAttribute("QueueId", "")
+		markFailed(player)
 		Services.NotificationService.Send(player, "Error", "Teleport failed. Please try again.")
 	end)
+	game:GetService("Players").PlayerRemoving:Connect(function(player)
+		retried[player] = nil
+	end)
+end
+
+-- TeleportAsync with one retry a second later.
+local function teleport(placeId: number, players: { Player }, options: TeleportOptions?): (boolean, any)
+	local ok, err = pcall(TeleportService.TeleportAsync, TeleportService, placeId, players, options)
+	if not ok then
+		task.wait(1)
+		ok, err = pcall(TeleportService.TeleportAsync, TeleportService, placeId, players, options)
+	end
+	return ok, err
 end
 
 export type PartyLaunch = {
@@ -85,13 +123,17 @@ function TeleportServiceWrapper.TeleportParty(launch: PartyLaunch): boolean
 		})
 	end
 
-	local okReserve, accessCode = pcall(function()
-		return TeleportService:ReserveServer(GameConfig.MatchPlaceId)
-	end)
+	local placeId = matchPlaceId()
+	local okReserve, accessCode = pcall(TeleportService.ReserveServer, TeleportService, placeId)
+	if not okReserve then
+		task.wait(1)
+		okReserve, accessCode = pcall(TeleportService.ReserveServer, TeleportService, placeId)
+	end
 	if not okReserve then
 		warn("[Teleport] ReserveServer failed:", accessCode)
 		for _, p in ipairs(launch.Players) do
 			Services.AnalyticsService.Event(p, "teleport_failed", 1, "to room", "reserve failed")
+			markFailed(p)
 		end
 		Services.NotificationService.SendMany(launch.Players, "Error", "Teleport failed. Please try again.")
 		return false
@@ -108,6 +150,7 @@ function TeleportServiceWrapper.TeleportParty(launch: PartyLaunch): boolean
 		Seed = seed,
 		Hard = launch.Hard == true,
 		Easy = launch.Easy == true,
+		LaunchedAt = os.time(),
 		PartySessions = Services.AnalyticsService.PartySessions(launch.Players),
 		ExpectedUserIds = (function()
 			local ids = {}
@@ -119,14 +162,13 @@ function TeleportServiceWrapper.TeleportParty(launch: PartyLaunch): boolean
 	})
 
 	handOver(launch.Players)
-	local okTeleport, err = pcall(function()
-		TeleportService:TeleportAsync(GameConfig.MatchPlaceId, launch.Players, options)
-	end)
+	local okTeleport, err = teleport(placeId, launch.Players, options)
 	if not okTeleport then
 		warn("[Teleport] TeleportAsync failed:", err)
 		takeBack(launch.Players)
 		for _, p in ipairs(launch.Players) do
 			Services.AnalyticsService.Event(p, "teleport_failed", 1, "to room", "teleport failed")
+			markFailed(p)
 		end
 		Services.NotificationService.SendMany(launch.Players, "Error", "Teleport failed. Please try again.")
 		return false
@@ -143,14 +185,13 @@ function TeleportServiceWrapper.ReturnToLobby(player: Player)
 		return
 	end
 	handOver({ player })
-	local ok, err = pcall(function()
-		TeleportService:TeleportAsync(GameConfig.LobbyPlaceId, { player })
-	end)
+	local ok, err = teleport(GameConfig.LobbyPlaceId, { player })
 	if not ok then
 		warn("[Teleport] Return to lobby failed:", err)
 		takeBack({ player })
 		Services.AnalyticsService.Event(player, "teleport_failed", 1, "to lobby", "teleport failed")
 		player:SetAttribute("Leaving", nil)
+		markFailed(player)
 		Services.NotificationService.Send(player, "Error", "Couldn't get back to the lobby. Please try again.")
 	end
 end

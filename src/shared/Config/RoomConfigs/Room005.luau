@@ -34,7 +34,8 @@ local Room = {
 	MinimumTargetSockets = 40,
 	SocketBlockerRadius = 1.4,
 	RequiredBlockerDisplacement = 1.4,
-	HintMilestones = { 0.25, 0.275, 0.31, 0.35, 0.4 },
+	-- A Mega room is about twice as big: its clues come slower than GameConfig.ClueTimes.
+	ClueTimes = { 90, 210, 330, 450, 570 },
 	ExitDoor = "Door",
 	LayoutVariants = { 1 },
 

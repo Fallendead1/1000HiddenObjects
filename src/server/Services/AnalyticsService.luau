@@ -370,6 +370,32 @@ function AnalyticsService.Upgraded(player: Player, key: string, level: number, c
 end
 
 -- A clue given: free milestone clues reach the whole team, paid ones count for the buyer.
+local function depositBucket(n: number): string
+	if n == 0 then
+		return "0 deposits"
+	elseif n < 10 then
+		return "1-9 deposits"
+	elseif n < 25 then
+		return "10-24 deposits"
+	elseif n < 50 then
+		return "25-49 deposits"
+	elseif n < 100 then
+		return "50-99 deposits"
+	end
+	return "100+ deposits"
+end
+
+-- One per minute of searching (value = minutes in). Events sent while a player leaves never
+-- arrive, so each player's last room_minute shows how long they stayed and how much they did.
+function AnalyticsService.RoomMinute(match, minute: number)
+	for _, player in ipairs(match.Players) do
+		local r = activeRoom(player)
+		if r then
+			AnalyticsService.Event(player, "room_minute", minute, depositBucket(r.Counts.deposits or 0), "clue " .. tostring(match.HintStage or 0), partyLabel(match.PartySize))
+		end
+	end
+end
+
 function AnalyticsService.Clue(players: { Player }, stage: number, source: string, progress: number?)
 	for _, player in ipairs(players) do
 		count(player, "hints")
@@ -545,6 +571,8 @@ function AnalyticsService.Init(role: string)
 			AnalyticsService.Event(player, "fps", math.clamp(math.floor(value + 0.5), 1, 240), device, where(player))
 		elseif kind == "invite" then
 			AnalyticsService.Event(player, "invite_prompt", 1, where(player))
+		elseif kind == "tutorial_skip" and type(value) == "number" and value == value then
+			AnalyticsService.Event(player, "tutorial_skip", math.clamp(math.floor(value), 0, 9), where(player))
 		elseif kind == "offer" and type(value) == "string" and AnalyticsConfig.Offers[value] and type(extra) == "string" and AnalyticsConfig.OfferSteps[extra] then
 			AnalyticsService.Event(player, "offer_" .. extra, 1, value, where(player))
 		end

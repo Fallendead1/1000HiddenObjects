@@ -84,7 +84,7 @@ local Template = {
 	Pets = { Owned = {}, Equipped = {}, Welcomed = false, IndexRewarded = false },
 	-- Lasting progression (not a currency): Cleaner XP, room mastery stars, daily challenges.
 	CleanerXP = 0,
-	Stars = {}, -- [tostring(roomId)] = bitmask: 1 object found, 2 cleaned 25%, 4 every treasure
+	Stars = {}, -- [tostring(roomId)] = bitmask: 1 object found, 2 cleaned 25%, 4 ten treasures
 	Daily = { Day = 0, Ids = {}, Progress = {}, Done = {} },
 	Stats = { Swishes = 0, Treasures = 0, Chunks = 0, Keys = 0, Rooms = 0 },
 	-- UTC day this profile was created (0 = before analytics existed); brand-new players are

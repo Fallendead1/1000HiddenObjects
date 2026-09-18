@@ -454,12 +454,20 @@ function PetController.Start()
 	end)
 	RunService.RenderStepped:Connect(step)
 
-	-- The welcome pet: offered in the lobby as soon as the profile says it's still waiting.
+	-- The welcome pet: offered in the lobby once the player has finished their first room (never
+	-- before it: a brand-new player goes straight to PLAY NOW), and never on a room server.
 	local function tryWelcome()
-		if player:GetAttribute("PetWelcomed") == false and not player:GetAttribute("InMatch") and not UI.GetOpenMenu() then
+		local info = ReplicatedStorage:FindFirstChild("ServerInfo")
+		if info and info:GetAttribute("Role") == "Match" then
+			return
+		end
+		if player:GetAttribute("PetWelcomed") == false and player:GetAttribute("TutorialCompleted") == true and not player:GetAttribute("InMatch") and not UI.GetOpenMenu() then
 			PetController.OfferWelcome()
 		end
 	end
+	player:GetAttributeChangedSignal("TutorialCompleted"):Connect(function()
+		task.delay(2, tryWelcome)
+	end)
 	task.delay(1.5, tryWelcome)
 	player:GetAttributeChangedSignal("PetWelcomed"):Connect(function()
 		task.delay(0.5, tryWelcome)

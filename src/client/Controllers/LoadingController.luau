@@ -188,6 +188,45 @@ function LoadingController.Init()
 			end
 		end
 	end)
+	-- The teleport failed for good: clear the overlay so the error message underneath shows.
+	player:GetAttributeChangedSignal("TeleportFailed"):Connect(function()
+		if overlay.Visible then
+			token += 1
+			hide(0.3)
+		end
+	end)
+
+	-- Roblox shows this during a teleport instead of its default screen (and keeps it up on
+	-- arrival until the new server's game has loaded).
+	local teleportGui = Instance.new("ScreenGui")
+	teleportGui.Name = "TeleportScreen"
+	teleportGui.IgnoreGuiInset = true
+	teleportGui.DisplayOrder = 100
+	local backdrop = UI.Frame({ BackgroundColor3 = Color3.fromRGB(8, 10, 18) }, teleportGui)
+	local teleportLogo = UI.Asset("Logo")
+	if teleportLogo then
+		UI.Image({ Image = teleportLogo, Size = UDim2.fromOffset(460, 200), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0.08, 0) }, backdrop)
+	end
+	local travel = UI.Label({ Text = "LOADING...", TextSize = 44, Size = UDim2.new(1, 0, 0, 80), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5) }, backdrop)
+	UI.Stroke(travel, Color3.new(0, 0, 0), 3, 0.3)
+	UI.Label({ Text = "Tip: junk that SHAKES near you means the object is close!", TextSize = 22, TextColor3 = UI.Colors.TextDim, Size = UDim2.new(1, 0, 0, 40), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.62) }, backdrop)
+	pcall(function()
+		game:GetService("TeleportService"):SetTeleportGui(teleportGui)
+	end)
+
+	-- Just arrived on a room server: cover the lobby copy here until the intro takes over.
+	local info = ReplicatedStorage:FindFirstChild("ServerInfo")
+	if info and info:GetAttribute("Role") == "Match" and not player:GetAttribute("InMatch") then
+		token += 1
+		local myToken = token
+		show()
+		setText("LOADING YOUR ROOM...", "", UI.Colors.TextDim, 44)
+		task.delay(45, function()
+			if token == myToken and overlay.Visible then
+				hide(0.4)
+			end
+		end)
+	end
 end
 
 function LoadingController.ShowMessage(text: string, seconds: number)

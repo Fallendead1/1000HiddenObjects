@@ -239,7 +239,10 @@ local ClutterConfig = {
 	-- The bedroom's treasures (and any room without its own config.TreasureKeys).
 	TreasureKeys = { "Treasure_Coin", "Treasure_Phone", "Treasure_Watch", "Treasure_Trophy" },
 	ChunkKeys = { "JunkChunk_A", "JunkChunk_B", "JunkChunk_C" },
-	TreasureChance = 1 / 150, -- per generated object (and per chunk content)
+	-- Treasures are the small finds between keys: common in the loose junk (light, so they sit
+	-- near the top of piles where players dig), rare inside packed chunks.
+	TreasureChance = 1 / 18, -- per loose object in a heap
+	ChunkTreasureChance = 1 / 150, -- per object packed inside a junk chunk
 	-- Objects at or above this weight collide with players (big boxes/bins); lighter ones don't,
 	-- so the room never traps anyone.
 	PlayerCollisionWeight = 4,

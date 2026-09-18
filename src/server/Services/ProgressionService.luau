@@ -405,7 +405,8 @@ function ProgressionService.OnRoomComplete(player: Player, match, isFinder: bool
 	if (match.Progress or 0) >= ProgressionConfig.Stars[2].Fraction then
 		earned = bit32.bor(earned, 2)
 	end
-	if (match.TreasuresTotal or 0) > 0 and (match.TreasuresCleaned or 0) >= match.TreasuresTotal then
+	local treasureGoal = math.min(ProgressionConfig.Stars[3].Count or math.huge, match.TreasuresTotal or 0)
+	if treasureGoal > 0 and (match.TreasuresCleaned or 0) >= treasureGoal then
 		earned = bit32.bor(earned, 4)
 	end
 	local key = tostring(match.RoomId)

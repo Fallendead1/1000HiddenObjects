@@ -3,8 +3,8 @@
 
 	Roles:
 	  Combined - single-place development server: lobby + local matches (no teleports)
-	  Lobby    - production lobby place (queues and teleports parties)
-	  Match    - production reserved match server (loads one room for one party)
+	  Lobby    - production lobby server (queues and teleports parties)
+	  Match    - production reserved server of the same place (loads one room for one party)
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -17,13 +17,15 @@ local Remotes = require(Shared.Utility.Remotes)
 local Services = require(script.Services)
 
 local function determineRole(): string
-	if GameConfig.MatchPlaceId == 0 or GameConfig.LobbyPlaceId == 0 then
+	if GameConfig.LobbyPlaceId == 0 then
 		return "Combined"
 	end
 	if RunService:IsStudio() and GameConfig.DevelopmentMode then
 		return "Combined"
 	end
-	if game.PlaceId == GameConfig.MatchPlaceId then
+	-- A reserved server (one with no owner, unlike a VIP server) holds one party's room: in the
+	-- lobby place itself (GameConfig.MatchInLobbyPlace) or the old separate Match place.
+	if game.PlaceId == GameConfig.MatchPlaceId or (game.PrivateServerId ~= "" and game.PrivateServerOwnerId == 0) then
 		return "Match"
 	end
 	return "Lobby"
