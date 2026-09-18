@@ -42,6 +42,8 @@ return {
 	GrabLeniency = 2.5, -- extra server tolerance for latency
 	GrabRateLimit = 6, -- grab + throw requests per second
 	HoldDistance = 3, -- studs in front of the character (plus object radius)
+	ArmfulMaxWeight = 1, -- grabbing something this light scoops up small things beside it too
+	ArmfulRadius = 3, -- studs around the grabbed object that the scoop reaches
 	HoldMaxDistance = 12, -- server snaps a held object back if a client drags it farther
 	HoldBaseResponsiveness = 40, -- AlignPosition responsiveness at Strength Lv. 1 / weight 1
 	HoldWeightFalloff = 0.18, -- responsiveness /= 1 + weight * falloff
@@ -56,14 +58,11 @@ return {
 
 	-- Junk chunks
 	ChunkBurstSpeed = 7, -- outward speed of the pieces
+	ChunkOpenCash = 4, -- room Cash for opening packed junk (it never holds the hidden object)
 
 	-- The key "rattles" the junk over it when a player's hands are close
 	KeyRattleDistance = 10,
 	KeyRattleInterval = 1.6,
-	-- Junk still covering the key when its chunk bursts is blasted outward. Gravity is ~196
-	-- studs/s^2, so the lift must be big to clear the spot (38 -> ~3.7 studs up, ~0.4 s aloft).
-	KeyBurstSpeed = 16,
-	KeyBurstLift = 38,
 
 	-- Economy
 	MaxCashMultiplier = 4,

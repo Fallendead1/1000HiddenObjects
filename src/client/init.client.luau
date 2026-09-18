@@ -40,6 +40,7 @@ local order = {
 	"CollectionController",
 	"SettingsController",
 	"HintController",
+	"MapController",
 	"FXController",
 	"BinController",
 	"ExitDoorController",

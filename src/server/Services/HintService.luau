@@ -1,7 +1,11 @@
 --[[
 	Free clues on a timer, paid hints and hot/cold assistance.
 	Clues only ever point at areas; the key is revealed solely by moving its physical blockers.
-	Stages: 1 side, 2 area, 3 region highlight, 4 hot/cold, 5 outline the objects covering it.
+	Stages: 1 side (LEFT / RIGHT half), 2 its colour zone ("the TEAL zone: HAMPER CORNER",
+	Shared/Utility/Zones), 3 a glowing ring on the floor around it, 4 hot/cold, 5 outline the
+	objects covering it. The party's clues sit on MatchState (ClueSide, ClueZone, ClueSpot +
+	ClueSpotRadius) so the map and the room show them (MapController); a Super Hint shows the
+	buyer the zone and the ring at once.
 
 	The clue clock starts at SEARCH! and every object cleaned into a bin moves it forward
 	(GameConfig.ClueSecondsPerDeposit), so cleaning brings clues sooner but nobody waits forever.
@@ -14,8 +18,8 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage.Shared
 local GameConfig = require(Shared.Config.GameConfig)
-local MonetizationConfig = require(Shared.Config.MonetizationConfig)
 local Remotes = require(Shared.Utility.Remotes)
+local Zones = require(Shared.Utility.Zones)
 local RateLimiter = require(Shared.Utility.RateLimiter)
 
 local Services = require(script.Parent)
@@ -23,6 +27,7 @@ local Services = require(script.Parent)
 local HintService = {}
 
 local STAGES = 5
+local SPOT_RADIUS = 8 -- studs: the clue-3 ring around the object
 
 local hintLimiter = RateLimiter.new(2, 3)
 local hotColdEnabled = false
@@ -71,13 +76,24 @@ local function getRegionName(match): string
 	return region and region.Name or match.TargetSocket.RegionId
 end
 
-local function getTargetAreaLabel(match): string
-	for _, area in ipairs(match.Config.HintAreas or {}) do
-		if table.find(area.Regions, match.TargetSocket.RegionId) then
-			return area.Label
-		end
+-- "the TEAL zone: HAMPER CORNER" (a room without zones: its region's name).
+local function zoneText(match): string
+	local zone = Zones.ForRegion(match.Config, match.TargetSocket.RegionId)
+	if zone then
+		return string.format("the %s zone: %s", string.upper(zone.Color), zone.Name)
 	end
-	return getRegionName(match)
+	return "the " .. getRegionName(match) .. " area"
+end
+
+-- The clue-3 ring's centre: near the object but not on it, so the ring doesn't give the exact
+-- spot away. Picked once per room.
+local function spotCenter(match): Vector3
+	if not match.ClueSpot then
+		local a = match.Rng:NextNumber(0, math.pi * 2)
+		local d = match.Rng:NextNumber(0, SPOT_RADIUS * 0.5)
+		match.ClueSpot = match.TargetSocket.Position + Vector3.new(math.cos(a) * d, 0, math.sin(a) * d)
+	end
+	return match.ClueSpot
 end
 
 -- Stage 5: outline whatever is physically covering the key right now.
@@ -97,12 +113,16 @@ local function deliverStage(match, stage: number, players: { Player }, silent: b
 	local target = match.Config.TargetName
 	if stage == 1 then
 		local side = getTargetSide(match)
-		fire(players, "Clue", { Stage = stage, Side = side, Text = string.format("The %s is on the %s side of the room - look for the %s SIDE sign.", target, side, side) })
+		stateConfig():SetAttribute("ClueSide", side)
+		fire(players, "Clue", { Stage = stage, Side = side, Text = string.format("The %s is on the %s half of the room - look for the %s SIDE sign.", target, side, side) })
 	elseif stage == 2 then
-		fire(players, "Clue", { Stage = stage, Text = string.format("Search around the %s side.", getTargetAreaLabel(match)) })
+		local zone = Zones.ForRegion(match.Config, match.TargetSocket.RegionId)
+		stateConfig():SetAttribute("ClueZone", zone and zone.Id or "")
+		fire(players, "Clue", { Stage = stage, ZoneId = zone and zone.Id, Text = string.format("It's in %s! Follow the arrow.", zoneText(match)) })
 	elseif stage == 3 then
-		fire(players, "Clue", { Stage = stage, Text = string.format("It's somewhere in the %s area!", getRegionName(match)) })
-		fire(players, "RegionHighlight", { RegionId = match.TargetSocket.RegionId, Duration = MonetizationConfig.Effects.RegionHighlightDuration })
+		stateConfig():SetAttribute("ClueSpot", spotCenter(match))
+		stateConfig():SetAttribute("ClueSpotRadius", SPOT_RADIUS)
+		fire(players, "Clue", { Stage = stage, Text = string.format("It's inside the glowing gold ring in %s!", zoneText(match)) })
 	elseif stage == 4 then
 		hotColdEnabled = true
 		fire(players, "Clue", { Stage = stage, Text = "Hot / Cold tracking enabled. Get close to feel the warmth!" })
@@ -201,9 +221,13 @@ function HintService.ResetForMatch(match)
 		match.HintStage = 0
 		match.ClueStart = nil
 		match.ClueBonus = 0
+		match.ClueSpot = nil
 		stateConfig():SetAttribute("HintStage", 0)
 	end
 	stateConfig():SetAttribute("NextClueAt", 0)
+	stateConfig():SetAttribute("ClueSide", "")
+	stateConfig():SetAttribute("ClueZone", "")
+	stateConfig():SetAttribute("ClueSpotRadius", 0)
 	stateConfig():SetAttribute("OutlinedObjects", "")
 	for _, player in ipairs(Players:GetPlayers()) do
 		player:SetAttribute("HotCold", "")
@@ -257,14 +281,15 @@ function HintService.GrantQuickHint(player: Player): boolean
 	return true
 end
 
--- Super Hint: highlight the correct region for the buyer.
+-- Super Hint: the buyer sees the object's zone and the gold ring around it straight away.
 function HintService.GrantSuperHint(player: Player): boolean
 	local match = Services.MatchService.GetMatchForPlayer(player)
 	if not HintService.HintsUnlocked(match) then
 		return false
 	end
-	fire({ player }, "RegionHighlight", { RegionId = match.TargetSocket.RegionId, Duration = MonetizationConfig.Effects.SuperHintDuration, Super = true })
-	fire({ player }, "Clue", { Stage = 0, Text = string.format("SUPER HINT: search the %s area!", getRegionName(match)) })
+	local zone = Zones.ForRegion(match.Config, match.TargetSocket.RegionId)
+	fire({ player }, "SuperClue", { ZoneId = zone and zone.Id, Center = spotCenter(match), Radius = SPOT_RADIUS })
+	fire({ player }, "Clue", { Stage = 0, Text = string.format("SUPER HINT: it's inside the gold ring in %s!", zoneText(match)) })
 	Services.AnalyticsService.Clue({ player }, 0, "super", match.Progress)
 	return true
 end

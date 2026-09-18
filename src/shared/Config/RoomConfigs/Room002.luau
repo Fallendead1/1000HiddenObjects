@@ -61,11 +61,15 @@ Room.Regions = {
 	{ Id = "LeftFloor", Name = "LEFT FLOOR", Center = V(-24, 3, 14), Size = V(16, 6, 26) },
 }
 
-Room.HintAreas = {
-	{ Label = "FRIDGE / PANTRY / LEFT FLOOR", Regions = { "Fridge", "Pantry", "LeftFloor" } },
-	{ Label = "SINK / STOVE / ISLAND", Regions = { "Sink", "Stove", "Island" } },
-	{ Label = "DINING TABLE / BACK COUNTER", Regions = { "Dining", "BackCounter" } },
-	{ Label = "NOOK / RECYCLING / CENTER", Regions = { "Nook", "Recycling", "CenterFloor" } },
+-- Colour zones (Shared/Utility/Zones): clues name one ("the TEAL zone: HAMPER CORNER"), a sign
+-- hangs over each and the map in the corner draws them. Names never reuse a bin's word.
+Room.Zones = {
+	{ Id = "Fridge", Name = "FRIDGE CORNER", Short = "FRIDGE", Color = "Blue", Regions = { "Fridge", "Pantry" } },
+	{ Id = "Sink", Name = "SINK & STOVE", Short = "SINK", Color = "Red", Regions = { "Sink", "Stove" } },
+	{ Id = "Island", Name = "KITCHEN ISLAND", Short = "ISLAND", Color = "Yellow", Regions = { "Island" } },
+	{ Id = "Dining", Name = "DINING TABLE", Short = "DINING", Color = "Green", Regions = { "Dining", "BackCounter" } },
+	{ Id = "Nook", Name = "BREAKFAST NOOK", Short = "NOOK", Color = "Teal", Regions = { "Nook", "Recycling" } },
+	{ Id = "Middle", Name = "MIDDLE", Color = "Orange", Regions = { "CenterFloor", "LeftFloor" } },
 }
 
 Room.SideSigns = {

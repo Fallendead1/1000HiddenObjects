@@ -34,6 +34,7 @@ local SessionDefaults = {
 	StrengthLevel = 1,
 	ThrowPowerLevel = 1,
 	MoveSpeedLevel = 1,
+	ArmfulLevel = 1,
 	ObjectsCleaned = 0, -- objects this player got into a bin this room
 	Streak = 0,
 	StreakExpires = 0,
@@ -164,6 +165,7 @@ function PlayerSessionService.RestoreFromCheckpoint(player: Player, checkpoint)
 	player:SetAttribute("StrengthLevel", checkpoint.StrengthLevel or 1)
 	player:SetAttribute("ThrowPowerLevel", checkpoint.ThrowPowerLevel or 1)
 	player:SetAttribute("MoveSpeedLevel", checkpoint.MoveSpeedLevel or 1)
+	player:SetAttribute("ArmfulLevel", checkpoint.ArmfulLevel or 1)
 	PlayerSessionService.RecomputeDerived(player)
 end
 
@@ -216,6 +218,11 @@ function PlayerSessionService.GetThrowSpeed(player: Player): number
 		speed *= Effects.TeamMuscleThrowMultiplier
 	end
 	return speed
+end
+
+-- How many things one grab carries (Armful): the grabbed object plus small ones beside it.
+function PlayerSessionService.GetArmful(player: Player): number
+	return UpgradeConfig.GetValue("Armful", PlayerSessionService.GetLevel(player, "Armful"))
 end
 
 function PlayerSessionService.GetHoldResponsiveness(player: Player, weight: number): number

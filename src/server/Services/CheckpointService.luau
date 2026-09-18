@@ -63,6 +63,7 @@ function CheckpointService.SaveCheckpoint(player: Player, match, percent: number
 		cp.StrengthLevel = player:GetAttribute("StrengthLevel") or 1
 		cp.ThrowPowerLevel = player:GetAttribute("ThrowPowerLevel") or 1
 		cp.MoveSpeedLevel = player:GetAttribute("MoveSpeedLevel") or 1
+		cp.ArmfulLevel = player:GetAttribute("ArmfulLevel") or 1
 		cp.UpdatedAt = os.time()
 	end)
 	if updated then
@@ -94,6 +95,7 @@ function CheckpointService.ClearForRoom(player: Player, roomId: number)
 			data.Checkpoint.StrengthLevel = 1
 			data.Checkpoint.ThrowPowerLevel = 1
 			data.Checkpoint.MoveSpeedLevel = 1
+			data.Checkpoint.ArmfulLevel = 1
 		end
 	end)
 end

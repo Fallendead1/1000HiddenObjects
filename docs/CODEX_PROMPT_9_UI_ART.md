@@ -22,7 +22,9 @@ Save everything to output/codex-ui/ and show me:
    Keep the current layout and colours per menu (gold gifts, pink pets, purple shop...), but
    richer: a soft pattern in the menu body, stripes or dots on the coloured header, clearer
    cards. Two options (A, B) for the pattern style.
-2. **Icon_XP** (256 x 256): a bright blue star badge with "XP" on it, for XP rewards.
+2. **Icon_XP** (256 x 256): a bright blue star badge with "XP" on it, for XP rewards. Also
+   **Icon_Armful** (256 x 256): two arms hugging a small stack of three things (a sock, a toy
+   car, a book), purple accent, for the ARM CAPACITY upgrade card (it shows "AR" until then).
 3. **MenuPattern** (256 x 256, seamless tile): white shapes on transparent (tiny stars, dots or
    confetti - match option A/B). The game draws it over the dark menu body at 88% transparency,
    so it must be subtle and tile without seams.

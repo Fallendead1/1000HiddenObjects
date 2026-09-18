@@ -3,7 +3,8 @@
 	any object that ends up inside - thrown, dropped or carried in - is cleaned: it leaves the
 	room and pays the player who last held it:
 
-	  CashValue x (matching bin 2x) x (swish 1.5x) x streak (up to 1.5x) x friend bonus x cash boosts
+	  CashValue x (matching bin 2x) x (swish or bank shot 1.5x) x (long shot 1.25x) x (DOUBLE+ 1.25x)
+	    x streak (up to 1.5x) x (FEVER 2x) x friend bonus x cash boosts
 
 	The pay before the paid cash boosts is the base pay: a share of it is saved to the player's
 	lasting wallet (WalletService).
@@ -31,12 +32,15 @@ local Services = require(script.Parent)
 local DepositService = {}
 
 type Box = { Min: Vector3, Max: Vector3 }
-type Bin = { Part: BasePart, Type: string, Name: string, Touch: { Box } }
+type Bin = { Part: BasePart, Type: string, Name: string, Touch: { Box }, Back: Box? }
 
 local LENIENT_MODES = { Touch = true, Gamepad = true }
 local TOUCH_MARGIN = 0.6 -- studs around a bin that still count as touching it
 
 local bins: { Bin } = {}
+-- Armful throws: how many things from each throw group have gone in so far.
+local groupHits: { [number]: number } = {}
+local groupCount = 0
 local binsRuntime = nil
 local params = OverlapParams.new()
 params.FilterType = Enum.RaycastFilterType.Include
@@ -70,11 +74,13 @@ local function refreshBins(runtime)
 				-- The bin itself, up to a little above its rim.
 				table.insert(touch, { Min = bodyMin, Max = bodyMax + Vector3.new(0, 1, 0) })
 			end
+			local back = nil
 			local backMin, backMax = part:GetAttribute("BackMin"), part:GetAttribute("BackMax")
 			if typeof(backMin) == "Vector3" and typeof(backMax) == "Vector3" then
-				table.insert(touch, { Min = backMin, Max = backMax })
+				back = { Min = backMin, Max = backMax }
+				table.insert(touch, back)
 			end
-			table.insert(bins, { Part = part, Type = part:GetAttribute("BinType") or "", Name = part:GetAttribute("BinName") or "BIN", Touch = touch })
+			table.insert(bins, { Part = part, Type = part:GetAttribute("BinType") or "", Name = part:GetAttribute("BinName") or "BIN", Touch = touch, Back = back })
 		end
 	end
 end
@@ -106,22 +112,52 @@ function DepositService.Deposit(root: BasePart, bin: Bin)
 	local player = creditFor(root, flight)
 	local category = root:GetAttribute("Category")
 	local isMatch = DepositConfig.MatchingType(category, root:GetAttribute("Weight")) == bin.Type
-	local swish = false
-	if flight and flight.Thrown and flight.Lift and flight.ReleasePos and not flight.Cheated then
+	local swish, long, bank = false, false, false
+	if flight and flight.Thrown and flight.ReleasePos and not flight.Cheated then
 		local d = Vector2.new(root.Position.X - flight.ReleasePos.X, root.Position.Z - flight.ReleasePos.Z).Magnitude
-		swish = d >= DepositConfig.SwishMinDistance
+		swish = flight.Lift ~= nil and d >= DepositConfig.SwishMinDistance
+		long = d >= DepositConfig.LongShotDistance
+		-- Off the wall behind the bin (sweptCheck notes the moment it touched it).
+		bank = flight.BankedAt ~= nil and os.clock() - flight.BankedAt < 2.5
+		if bank then
+			swish = false
+		end
+	end
+	-- Armful: the 2nd, 3rd... thing from one throw to go in (DOUBLE!, TRIPLE!).
+	local multi = 0
+	if flight and flight.ThrowGroup and not flight.Cheated then
+		if not groupHits[flight.ThrowGroup] then
+			groupCount += 1
+			if groupCount > 300 then
+				groupHits, groupCount = {}, 1
+			end
+		end
+		multi = (groupHits[flight.ThrowGroup] or 0) + 1
+		groupHits[flight.ThrowGroup] = multi
 	end
 
-	local amount, streak = 0, 0
+	local amount, streak, fever = 0, 0, false
 	if player and limiter:Allow(player) then
 		local now = workspace:GetServerTimeNow()
 		streak = ((player:GetAttribute("StreakExpires") or 0) > now) and (player:GetAttribute("Streak") or 0) + 1 or 1
 		player:SetAttribute("Streak", streak)
 		player:SetAttribute("StreakExpires", now + DepositConfig.StreakWindow)
+		-- A long enough streak starts FEVER (once it has cooled down from the last one).
+		if streak >= DepositConfig.FeverStreak and now >= (player:GetAttribute("FeverReadyAt") or 0) then
+			player:SetAttribute("FeverUntil", now + DepositConfig.FeverSeconds)
+			player:SetAttribute("FeverReadyAt", now + DepositConfig.FeverSeconds + DepositConfig.FeverCooldown)
+			Remotes.Event("FXEvent"):FireClient(player, "Fever", { Seconds = DepositConfig.FeverSeconds })
+			Services.AnalyticsService.Event(player, "fever", streak)
+		end
+		fever = (player:GetAttribute("FeverUntil") or 0) > now
 		local base = (root:GetAttribute("CashValue") or 1)
 			* (isMatch and DepositConfig.MatchMultiplier or 1)
 			* (swish and DepositConfig.SwishMultiplier or 1)
+			* (bank and DepositConfig.BankMultiplier or 1)
+			* (long and DepositConfig.LongShotMultiplier or 1)
+			* (multi >= 2 and DepositConfig.ArmfulMultiplier or 1)
 			* DepositConfig.StreakMultiplier(streak)
+			* (fever and DepositConfig.FeverMultiplier or 1)
 			* Services.RetentionService.CashMultiplier(player)
 		amount = math.max(1, math.floor(base * Services.PlayerSessionService.GetCashMultiplier(player) + 0.5))
 		Services.EconomyService.AddCash(player, amount)
@@ -149,6 +185,10 @@ function DepositService.Deposit(root: BasePart, bin: Bin)
 			payload.Amount = amount
 			payload.Match = isMatch
 			payload.Swish = swish
+			payload.Bank = bank
+			payload.Long = long
+			payload.Fever = fever
+			payload.Multi = multi >= 2 and multi or nil
 			payload.Streak = streak
 			payload.Mine = true
 		end
@@ -229,13 +269,17 @@ local function crossesMouth(mouth: BasePart, a: Vector3, b: Vector3): boolean
 	return false
 end
 
--- Is a thrown object (by its centre plus a bit of its size) touching this bin anywhere?
-local function touchesBin(bin: Bin, root: BasePart): boolean
+local function inBox(box: Box, root: BasePart): boolean
 	local pad = Vector3.one * (TOUCH_MARGIN + math.min(1.5, root.Size.Magnitude / 2))
 	local p = root.Position
+	local mn, mx = box.Min - pad, box.Max + pad
+	return p.X >= mn.X and p.X <= mx.X and p.Y >= mn.Y and p.Y <= mx.Y and p.Z >= mn.Z and p.Z <= mx.Z
+end
+
+-- Is a thrown object (by its centre plus a bit of its size) touching this bin anywhere?
+local function touchesBin(bin: Bin, root: BasePart): boolean
 	for _, box in ipairs(bin.Touch) do
-		local mn, mx = box.Min - pad, box.Max + pad
-		if p.X >= mn.X and p.X <= mx.X and p.Y >= mn.Y and p.Y <= mx.Y and p.Z >= mn.Z and p.Z <= mx.Z then
+		if inBox(box, root) then
 			return true
 		end
 	end
@@ -259,6 +303,10 @@ local function sweptCheck()
 			lastPos[root] = p
 			local lenient = lenientThrower(root)
 			for _, bin in ipairs(bins) do
+				-- Touching the wall behind a bin: a BANK SHOT if it drops in next.
+				if bin.Back and inBox(bin.Back, root) then
+					flight.BankedAt = os.clock()
+				end
 				if (prev and crossesMouth(bin.Part, prev, p)) or (lenient and touchesBin(bin, root)) then
 					DepositService.Deposit(root, bin)
 					break

@@ -22,6 +22,7 @@ local CategoryColor = {
 	Strength = UI.Colors.Red,
 	ThrowPower = UI.Colors.Orange,
 	MoveSpeed = UI.Colors.Green,
+	Armful = UI.Colors.Purple,
 }
 
 local function buildCard(def, parent: Instance, order: number)

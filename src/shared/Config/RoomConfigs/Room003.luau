@@ -59,11 +59,16 @@ Room.Regions = {
 	{ Id = "RightFloor", Name = "RIGHT FLOOR", Center = V(19, 3, -1), Size = V(14, 6, 14) },
 }
 
-Room.HintAreas = {
-	{ Label = "FIREPLACE / LEFT FLOOR / PLANTS", Regions = { "Fireplace", "LeftFloor", "PlantCorner" } },
-	{ Label = "TV WALL / COFFEE TABLE / SOFA", Regions = { "TVWall", "CoffeeTable", "Sofa" } },
-	{ Label = "BOOKCASE / WINDOW SEAT / RIGHT FLOOR", Regions = { "Bookcase", "WindowSeat", "RightFloor" } },
-	{ Label = "BLANKET FORT / TOY RUG / GAMES", Regions = { "BlanketFort", "ToyRug", "GameCorner" } },
+-- Colour zones (Shared/Utility/Zones): clues name one ("the TEAL zone: HAMPER CORNER"), a sign
+-- hangs over each and the map in the corner draws them. Names never reuse a bin's word.
+Room.Zones = {
+	{ Id = "Fireplace", Name = "FIREPLACE", Color = "Red", Regions = { "Fireplace", "LeftFloor" } },
+	{ Id = "Sofa", Name = "TV & SOFA", Short = "SOFA", Color = "Blue", Regions = { "TVWall", "CoffeeTable", "Sofa" } },
+	{ Id = "Window", Name = "WINDOW SEAT", Short = "WINDOW", Color = "Purple", Regions = { "Bookcase", "WindowSeat", "RightFloor" } },
+	{ Id = "Fort", Name = "BLANKET FORT", Short = "FORT", Color = "Yellow", Regions = { "BlanketFort" } },
+	{ Id = "Rug", Name = "BIG RUG", Short = "RUG", Color = "Orange", Regions = { "ToyRug" } },
+	{ Id = "Arcade", Name = "ARCADE CORNER", Short = "ARCADE", Color = "Pink", Regions = { "GameCorner" } },
+	{ Id = "Plants", Name = "PLANT CORNER", Short = "PLANTS", Color = "Green", Regions = { "PlantCorner" } },
 }
 
 Room.SideSigns = {

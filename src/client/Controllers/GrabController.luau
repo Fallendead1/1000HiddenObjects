@@ -70,6 +70,12 @@ local arcBin: BasePart? = nil
 local lastThrown: BasePart? = nil
 local lastThrownAt = 0
 local fadedRoot: BasePart? = nil
+-- Armful: small things the server let us carry along with the held object, and the ones we
+-- just threw with it (for the bin magnet).
+local passengers: { BasePart } = {}
+local thrownPassengers: { BasePart } = {}
+-- Where each passenger rides, beside the held object relative to the view (right, up).
+local ARMFUL_SLOTS = { Vector2.new(1, 0), Vector2.new(-1, 0), Vector2.new(0, 1), Vector2.new(1, 1) }
 
 local rayParams = RaycastParams.new()
 rayParams.FilterType = Enum.RaycastFilterType.Exclude
@@ -165,7 +171,20 @@ local function strengthLevelFor(weight: number): number?
 	return UpgradeConfig.StrengthLevelFor(weight)
 end
 
+local function setPassengerFade(p: BasePart, amount: number)
+	p.LocalTransparencyModifier = amount
+	for _, d in ipairs(p:GetDescendants()) do
+		if d:IsA("BasePart") then
+			d.LocalTransparencyModifier = amount
+		end
+	end
+end
+
 local function setIdle()
+	for _, p in ipairs(passengers) do
+		setPassengerFade(p, 0)
+	end
+	passengers = {}
 	state = "Idle"
 	requestedObjectId = nil
 	heldId = nil
@@ -274,6 +293,43 @@ local function throwHeld()
 		lastThrown = root
 		lastThrownAt = os.clock()
 	end
+	-- Armful: everything carried with it leaves the hands the same way, as one throw.
+	thrownPassengers = {}
+	for _, p in ipairs(passengers) do
+		if p.Parent then
+			for _, c in ipairs(p:GetChildren()) do
+				if c:IsA("AlignPosition") or c:IsA("AlignOrientation") then
+					c.Enabled = false
+				end
+			end
+			p.AssemblyLinearVelocity = predictedVelocity(p, direction)
+			local att = Instance.new("Attachment")
+			att.Name = "LocalLiftAttachment"
+			att.Parent = p
+			local lift = Instance.new("VectorForce")
+			lift.Name = "LocalLift"
+			lift.Attachment0 = att
+			lift.RelativeTo = Enum.ActuatorRelativeTo.World
+			lift.ApplyAtCenterOfMass = true
+			lift.Force = Vector3.new(0, p.AssemblyMass * workspace.Gravity * (1 - GameConfig.ThrowGravityScale), 0)
+			lift.Parent = p
+			local conn
+			local function removeLocalLift()
+				if conn then
+					conn:Disconnect()
+				end
+				lift:Destroy()
+				att:Destroy()
+			end
+			conn = p.ChildAdded:Connect(function(child)
+				if child.Name == "FlightLift" then
+					removeLocalLift()
+				end
+			end)
+			task.delay(0.6, removeLocalLift)
+			table.insert(thrownPassengers, p)
+		end
+	end
 	unfade()
 	Controllers.AudioController.Play("Throw")
 	Controllers.FXController.FovPunch(2)
@@ -291,7 +347,7 @@ local function dropHeld()
 	setIdle()
 end
 
-local function onGrabResult(replyId: number, ok: boolean, objectId: string?, reason: string?)
+local function onGrabResult(replyId: number, ok: boolean, objectId: string?, reason: string?, carried: { string }?)
 	if replyId ~= requestId or state ~= "Requesting" then
 		-- A reply for a press we already gave up on: never keep that object.
 		if ok and objectId then
@@ -314,6 +370,18 @@ local function onGrabResult(replyId: number, ok: boolean, objectId: string?, rea
 	heldId = objectId
 	local folder = roomClutter()
 	heldRoot = folder and folder:FindFirstChild(objectId) :: BasePart?
+	passengers = {}
+	if folder and typeof(carried) == "table" then
+		for _, id in ipairs(carried) do
+			local p = folder:FindFirstChild(id)
+			if p and p:IsA("BasePart") then
+				table.insert(passengers, p)
+			end
+		end
+	end
+	if #passengers > 0 then
+		Controllers.FXController.FloatingText(string.format("ARMFUL x%d!", #passengers + 1), UI.Colors.Purple, UDim2.new(0.5, 0, 0.7, 0), 26)
+	end
 	Controllers.AudioController.Play("Grab")
 	-- A treasure: celebrate the find the first time it's picked up.
 	if heldRoot and heldRoot:GetAttribute("Category") == "Treasure" and not heldRoot:GetAttribute("TreasureSeen") then
@@ -467,6 +535,23 @@ local function steerHeld()
 		local flat = Vector3.new(dir.X, 0, dir.Z)
 		if flat.Magnitude > 0.05 then
 			alignOri.CFrame = CFrame.lookAt(Vector3.zero, flat.Unit)
+		end
+	end
+	-- Armful: the extra small things ride right beside it and are see-through in first person too.
+	local fade = Controllers.CameraController.IsFirstPerson() and 0.55 or 0
+	for i, p in ipairs(passengers) do
+		local pAlign = p.Parent and p:FindFirstChildOfClass("AlignPosition")
+		if pAlign then
+			local slot = ARMFUL_SLOTS[i] or ARMFUL_SLOTS[#ARMFUL_SLOTS]
+			local pRadius = math.max(p.Size.X, p.Size.Y, p.Size.Z) / 2
+			local gap = radius + pRadius + 0.2
+			local spot = target + (camera.CFrame.RightVector * slot.X + camera.CFrame.UpVector * slot.Y) * gap
+			pAlign.Position = Vector3.new(spot.X, math.max(spot.Y, hrp.Position.Y - 2 + pRadius), spot.Z)
+			local pOri = p:FindFirstChildOfClass("AlignOrientation")
+			if pOri and alignOri then
+				pOri.CFrame = alignOri.CFrame
+			end
+			setPassengerFade(p, fade)
 		end
 	end
 end
@@ -674,12 +759,7 @@ local function updateFade()
 end
 
 -- While we still simulate a fresh throw, a near miss over a bin gets nudged in.
-local function binMagnet()
-	local root = lastThrown
-	if not root or not root.Parent or os.clock() - lastThrownAt > GameConfig.OwnedFlightTime then
-		lastThrown = nil
-		return
-	end
+local function nudgeIntoBin(root: BasePart)
 	local v = root.AssemblyLinearVelocity
 	if v.Y > 0 then
 		return
@@ -691,6 +771,25 @@ local function binMagnet()
 			local flat = Vector3.new(mouth.Position.X - root.Position.X, 0, mouth.Position.Z - root.Position.Z)
 			root.AssemblyLinearVelocity = Vector3.new(v.X * 0.5 + flat.X * 3, v.Y, v.Z * 0.5 + flat.Z * 3)
 			return
+		end
+	end
+end
+
+local function binMagnet()
+	if os.clock() - lastThrownAt > GameConfig.OwnedFlightTime then
+		lastThrown = nil
+		thrownPassengers = {}
+		return
+	end
+	local root = lastThrown
+	if root and root.Parent then
+		nudgeIntoBin(root)
+	else
+		lastThrown = nil
+	end
+	for _, p in ipairs(thrownPassengers) do
+		if p.Parent then
+			nudgeIntoBin(p)
 		end
 	end
 end

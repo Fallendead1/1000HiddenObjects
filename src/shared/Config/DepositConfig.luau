@@ -51,6 +51,16 @@ local DepositConfig = {
 	StreakWindow = 3, -- seconds between deposits to keep a streak alive
 	StreakStep = 0.1, -- +10% per deposit in a streak
 	StreakMax = 1.5,
+	-- Trick shots: a BANK SHOT hits the wall behind a bin and drops in; a LONG SHOT is thrown
+	-- from far away. A streak of FeverStreak starts FEVER: double pay for a few seconds.
+	BankMultiplier = 1.5,
+	LongShotDistance = 25, -- studs (XZ) from where it was thrown
+	LongShotMultiplier = 1.25,
+	FeverStreak = 10,
+	FeverSeconds = 10,
+	FeverMultiplier = 2,
+	FeverCooldown = 20, -- seconds after a FEVER ends before the next one can start
+	ArmfulMultiplier = 1.25, -- the 2nd, 3rd... thing from one throw into a bin (DOUBLE!, TRIPLE!)
 	MaxDepositsPerSecond = 8, -- per player
 	-- Every room's bins are built this much bigger (width, height, depth; about their base) so
 	-- they stand out in the mess. Keep X = Z. 1.15 wide keeps the closest bins in Room #001 apart.

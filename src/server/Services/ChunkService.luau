@@ -3,6 +3,10 @@
 	Grabbing it bursts it: the chunk disappears and its pieces spill out as normal clutter that
 	can be grabbed, thrown and deposited. Lower pile layers are made of chunks, so a room can be
 	dug deep without thousands of live bodies.
+
+	Opening packed junk is always worth it (GameConfig.ChunkOpenCash, and its pieces often hold a
+	treasure) but it never holds the room's hidden object: that only shows once its spot is dug
+	clear (MatchService).
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -57,8 +61,15 @@ function ChunkService.Burst(chunk: BasePart, player: Player?)
 	if player then
 		Services.ProgressionService.OnChunkBurst(player)
 		Services.AnalyticsService.ChunkBurst(player)
+		-- A little Cash for opening it (the paid cash boosts count, like any pay).
+		local base = GameConfig.ChunkOpenCash or 0
+		if base > 0 and Services.MatchService.IsPlayerInMatch(player) then
+			local amount = math.max(1, math.floor(base * Services.PlayerSessionService.GetCashMultiplier(player) + 0.5))
+			Services.EconomyService.AddCash(player, amount)
+			Services.WalletService.OnDeposit(player, base, "Chunk")
+			Remotes.Event("FXEvent"):FireClient(player, "CashAward", { Position = center, Amount = amount })
+		end
 	end
-	-- The packed junk hiding the key releases it.
 	Services.MatchService.OnChunkBurst(chunk, center)
 end
 

@@ -18,6 +18,7 @@ export type Profile = {
 		StrengthLevel: number,
 		ThrowPowerLevel: number,
 		MoveSpeedLevel: number,
+		ArmfulLevel: number?,
 		UpdatedAt: number,
 	},
 	Settings: {

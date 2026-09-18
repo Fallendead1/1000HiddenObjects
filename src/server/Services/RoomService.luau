@@ -16,6 +16,7 @@ local Builders = script.Parent.Parent.Builders
 local PlaceholderRoomBuilder = require(Builders.PlaceholderRoomBuilder)
 local ClutterBuilder = require(Builders.ClutterBuilder)
 local DepositConfig = require(ReplicatedStorage.Shared.Config.DepositConfig)
+local Zones = require(ReplicatedStorage.Shared.Utility.Zones)
 
 local RoomService = {}
 
@@ -75,9 +76,10 @@ function RoomService.FootprintDistanceXZ(root: BasePart, cframe: CFrame, point: 
 end
 
 -- ===== Wayfinding =====
--- Big LEFT SIDE / RIGHT SIDE signs on the side walls and a CENTER sign hanging over the middle,
--- so "left / right side" clues read the same way from the door (you walk in facing -Z, so -X is
--- your left). Visual only: no collision, invisible to queries and throws.
+-- Big LEFT SIDE / RIGHT SIDE signs on the side walls, so "left / right side" clues read the same
+-- way from the door (you walk in facing -Z, so -X is your left), and a sign hanging over every
+-- colour zone (or, in a room without zones, a CENTER sign). Visual only: no collision, invisible
+-- to queries and throws.
 local SIGN_COLORS = {
 	LEFT = Color3.fromRGB(0, 180, 255),
 	RIGHT = Color3.fromRGB(255, 150, 0),
@@ -155,6 +157,75 @@ local function signGui(part: BasePart, face: Enum.NormalId, title: string, subti
 	end
 end
 
+-- A zone sign's face: the zone's colour with its name in white, readable from far away.
+local function zoneSignGui(part: BasePart, face: Enum.NormalId, name: string, color: Color3)
+	local gui = Instance.new("SurfaceGui")
+	gui.Name = "ZoneGui_" .. face.Name
+	gui.Face = face
+	gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+	gui.PixelsPerStud = 40
+	gui.LightInfluence = 0
+	gui.Parent = part
+	local panel = Instance.new("Frame")
+	panel.Name = "Panel"
+	panel.Size = UDim2.fromScale(1, 1)
+	panel.BackgroundColor3 = color
+	panel.Parent = gui
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 26)
+	corner.Parent = panel
+	local border = Instance.new("UIStroke")
+	border.Name = "Border"
+	border.Color = Color3.new(1, 1, 1)
+	border.Thickness = 10
+	border.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	border.Parent = panel
+	local label = Instance.new("TextLabel")
+	label.Name = "Title"
+	label.BackgroundTransparency = 1
+	label.Size = UDim2.new(1, -40, 0.8, 0)
+	label.Position = UDim2.fromScale(0, 0.1) + UDim2.fromOffset(20, 0)
+	label.Font = Enum.Font.GothamBlack
+	label.TextScaled = true
+	label.TextColor3 = Color3.new(1, 1, 1)
+	label.Text = name
+	label.Parent = panel
+	local outline = Instance.new("UIStroke")
+	outline.Color = Color3.new(0, 0, 0)
+	outline.Thickness = 5
+	outline.Parent = label
+end
+
+-- A sign hanging over every colour zone (config.Zones): a box in the zone's colour with its
+-- name on all four sides, up above the junk so it reads from anywhere in the room.
+local function addZoneSigns(folder: Instance, config, origin: CFrame)
+	local height = math.min(19, config.Size.Y - 5)
+	for _, zone in ipairs(Zones.List(config)) do
+		local color = Zones.ColorOf(zone)
+		local c = Zones.Center(config, zone)
+		local y = (zone.Sign and zone.Sign.Y > 0) and zone.Sign.Y or height
+		local width = math.clamp(#zone.Name * 0.62 + 3, 7, 15)
+		local pos = Vector3.new(c.X, y, c.Y)
+		local board = signPart(folder, "ZoneSign_" .. zone.Id, origin * CFrame.lookAt(pos, pos + Vector3.zAxis), Vector3.new(width, 3, 5), zone.Id)
+		board.Transparency = 0
+		board.Material = Enum.Material.SmoothPlastic
+		board.Color = color
+		for _, face in ipairs({ Enum.NormalId.Front, Enum.NormalId.Back, Enum.NormalId.Left, Enum.NormalId.Right }) do
+			zoneSignGui(board, face, zone.Name, color)
+		end
+		-- Hung from the ceiling (a sign with its own height, like one under a loft, has none).
+		if not (zone.Sign and zone.Sign.Y > 0) then
+			local top = config.Size.Y
+			for _, dx in ipairs({ -width / 2 + 0.6, width / 2 - 0.6 }) do
+				local cord = signPart(folder, "ZoneSignCord", origin * CFrame.new(c.X + dx, (top + y + 1.5) / 2, c.Y), Vector3.new(0.12, math.max(0.2, top - y - 1.5), 0.12), "")
+				cord.Transparency = 0
+				cord.Material = Enum.Material.Metal
+				cord.Color = Color3.fromRGB(40, 40, 50)
+			end
+		end
+	end
+end
+
 local function addWayfinding(model: Model, config, origin: CFrame)
 	local folder = Instance.new("Folder")
 	folder.Name = "Wayfinding"
@@ -169,6 +240,11 @@ local function addWayfinding(model: Model, config, origin: CFrame)
 		local pos = Vector3.new(-inward * (size.X / 2 - 0.2), y, def.Z or 0)
 		local part = signPart(folder, "SideSign_" .. side, origin * CFrame.lookAt(pos, pos + Vector3.new(inward, 0, 0)), Vector3.new(def.Width or 16, height, 0.2), side)
 		signGui(part, Enum.NormalId.Front, side .. " SIDE", def.Landmarks, SIGN_COLORS[side])
+	end
+	-- Rooms with colour zones get a sign over each zone instead of the CENTER sign.
+	if #Zones.List(config) > 0 then
+		addZoneSigns(folder, config, origin)
+		return
 	end
 	-- CENTER hangs from the ceiling over the middle of the room, readable from both ends.
 	local centerPos = Vector3.new(0, math.min(21.5, size.Y - 4.5), 0)

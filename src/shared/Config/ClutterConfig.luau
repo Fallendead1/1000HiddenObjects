@@ -242,7 +242,7 @@ local ClutterConfig = {
 	-- Treasures are the small finds between keys: common in the loose junk (light, so they sit
 	-- near the top of piles where players dig), rare inside packed chunks.
 	TreasureChance = 1 / 18, -- per loose object in a heap
-	ChunkTreasureChance = 1 / 150, -- per object packed inside a junk chunk
+	ChunkTreasureChance = 1 / 15, -- per object packed inside a junk chunk (about 1 chunk in 3 holds one)
 	-- Objects at or above this weight collide with players (big boxes/bins); lighter ones don't,
 	-- so the room never traps anyone.
 	PlayerCollisionWeight = 4,

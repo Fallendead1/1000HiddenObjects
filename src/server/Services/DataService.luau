@@ -39,6 +39,7 @@ local Template = {
 		StrengthLevel = 1,
 		ThrowPowerLevel = 1,
 		MoveSpeedLevel = 1,
+		ArmfulLevel = 1,
 		UpdatedAt = 0,
 	},
 	Settings = {

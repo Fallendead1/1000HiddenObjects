@@ -18,6 +18,8 @@ local UI = require(script.Parent.Parent.UI.UI)
 local Controllers = require(script.Parent)
 
 local player = Players.LocalPlayer
+-- Armful: what the 2nd, 3rd... thing from one throw into a bin is called.
+local MULTI_NAMES = { [2] = "DOUBLE!", [3] = "TRIPLE!", [4] = "QUADRUPLE!", [5] = "ARMFUL x5!" }
 local matchState = ReplicatedStorage:WaitForChild("MatchState")
 
 local FXController = {}
@@ -120,6 +122,44 @@ function FXController.TreasureFound(position: Vector3, name: string?)
 		UI.Tween(sub, { TextTransparency = 1 }, 0.6)
 	end)
 	task.delay(1.6, function()
+		bb:Destroy()
+		anchor:Destroy()
+	end)
+end
+
+-- A heap was cleared (PileService): a big "PILE CLEARED!" over it with its Cash, and a green
+-- "NOT HERE" when the room's hidden object wasn't under it.
+function FXController.PileCleared(position: Vector3, amount: number, notHere: boolean)
+	Controllers.AudioController.Play("LevelUp")
+	FXController.Confetti(position)
+	local anchor = Instance.new("Attachment")
+	anchor.WorldPosition = position + Vector3.new(0, 6, 0)
+	anchor.Parent = workspace.Terrain
+	local bb = Instance.new("BillboardGui")
+	bb.Size = UDim2.fromOffset(320, 110)
+	bb.AlwaysOnTop = true
+	bb.LightInfluence = 0
+	bb.MaxDistance = 150
+	bb.Adornee = anchor
+	bb.Parent = player:WaitForChild("PlayerGui")
+	local title = UI.Label({ Text = "PILE CLEARED!", TextSize = 38, TextWrapped = false, Size = UDim2.new(1, 0, 0, 44) }, bb)
+	UI.TextGradient(title, UI.Colors.Gold)
+	local cash = UI.Label({ Text = "+$" .. tostring(amount), TextSize = 28, TextWrapped = false, Size = UDim2.new(1, 0, 0, 32), Position = UDim2.fromOffset(0, 44) }, bb)
+	UI.TextGradient(cash, UI.Colors.Cash)
+	local note
+	if notHere then
+		note = UI.Label({ Text = "NOT HERE  ✓", TextSize = 22, TextWrapped = false, TextColor3 = UI.Colors.Green, Size = UDim2.new(1, 0, 0, 26), Position = UDim2.fromOffset(0, 78) }, bb)
+	end
+	UI.PopIn(title, 0.5, 0.35)
+	UI.Tween(bb, { StudsOffset = Vector3.new(0, 3, 0) }, 2.4)
+	task.delay(2, function()
+		for _, l in ipairs({ title, cash, note }) do
+			if l then
+				UI.Tween(l, { TextTransparency = 1 }, 0.5)
+			end
+		end
+	end)
+	task.delay(2.6, function()
 		bb:Destroy()
 		anchor:Destroy()
 	end)
@@ -366,7 +406,7 @@ local function onDeposit(payload)
 	Controllers.AudioController.Play(payload.Match and "DepositMatch" or "Deposit")
 	if payload.Treasure then
 		Controllers.AudioController.Play("Treasure")
-	elseif payload.Swish then
+	elseif payload.Swish or payload.Bank or payload.Long or payload.Multi then
 		Controllers.AudioController.Play("Swish")
 	end
 	local streak = payload.Streak or 0
@@ -383,14 +423,38 @@ local function onDeposit(payload)
 	if payload.Swish then
 		table.insert(tags, "SWISH!")
 	end
+	if payload.Bank then
+		table.insert(tags, "BANK SHOT!")
+	end
+	if payload.Long then
+		table.insert(tags, "LONG SHOT!")
+	end
 	if (payload.Streak or 0) >= 2 then
 		table.insert(tags, "STREAK x" .. payload.Streak)
 	end
-	worldCashPopup(payload.BinPosition + Vector3.new(0, 2, 0), payload.Amount or 0, table.concat(tags, "  "), payload.Treasure or payload.Swish)
+	if payload.Fever then
+		table.insert(tags, "FEVER x2")
+	end
+	local multiName = payload.Multi and (MULTI_NAMES[payload.Multi] or string.format("x%d!", payload.Multi)) or nil
+	if multiName then
+		table.insert(tags, multiName)
+	end
+	local trick = payload.Swish or payload.Bank or payload.Long or payload.Multi
+	worldCashPopup(payload.BinPosition + Vector3.new(0, 2, 0), payload.Amount or 0, table.concat(tags, "  "), payload.Treasure or trick)
 	cashToYou(payload.BinPosition + Vector3.new(0, 1.5, 0), payload.Amount or 1)
-	FXController.Burst(payload.BinPosition + Vector3.new(0, 1.5, 0), payload.Treasure and UI.Colors.Gold or UI.Colors.Cash, payload.Swish and 18 or 8, 0.3)
-	if payload.Swish or payload.Treasure then
+	FXController.Burst(payload.BinPosition + Vector3.new(0, 1.5, 0), payload.Treasure and UI.Colors.Gold or UI.Colors.Cash, trick and 18 or 8, 0.3)
+	if trick or payload.Treasure then
 		FXController.FovPunch(3)
+	end
+	-- A trick shot gets its name in big letters too.
+	if multiName then
+		FXController.FloatingText(multiName, UI.Colors.Purple, UDim2.new(0.5, 0, 0.36, 0), 40 + math.min(payload.Multi, 5) * 3)
+	elseif payload.Bank then
+		FXController.FloatingText("BANK SHOT!", UI.Colors.Cyan, UDim2.new(0.5, 0, 0.36, 0), 40)
+	elseif payload.Long then
+		FXController.FloatingText("LONG SHOT!", UI.Colors.Orange, UDim2.new(0.5, 0, 0.36, 0), 40)
+	elseif payload.Swish then
+		FXController.FloatingText("SWISH!", UI.Colors.Gold, UDim2.new(0.5, 0, 0.36, 0), 40)
 	end
 end
 
@@ -490,6 +554,20 @@ function FXController.Init()
 		elseif name == "KeyGlint" then
 			if payload.Position then
 				FXController.KeyGlint(payload.Position)
+			end
+		elseif name == "Fever" then
+			-- FEVER: double pay for a few seconds, with an orange glow around the screen.
+			local seconds = tonumber(payload.Seconds) or 10
+			Controllers.AudioController.Play("LevelUp")
+			FXController.FloatingText("FEVER! 2X CASH", UI.Colors.Orange, UDim2.new(0.5, 0, 0.3, 0), 52)
+			FXController.ScreenFlash(UI.Colors.Orange, 0.4)
+			FXController.SetVignette(UI.Colors.Orange, 0.45, 0.3)
+			task.delay(seconds, function()
+				FXController.SetVignette(nil, 1, 0.6)
+			end)
+		elseif name == "PileCleared" then
+			if payload.Position then
+				FXController.PileCleared(payload.Position, payload.Amount or 0, payload.NotHere == true)
 			end
 		elseif name == "CashAward" then
 			Controllers.AudioController.Play("CashAward")

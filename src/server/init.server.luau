@@ -62,6 +62,7 @@ local startOrder = {
 	"EconomyService",
 	"UpgradeService",
 	"HintService",
+	"PileService",
 	"QueueService",
 	"TeleportServiceWrapper",
 	"DevService",

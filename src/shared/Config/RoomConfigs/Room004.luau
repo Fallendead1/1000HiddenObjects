@@ -63,11 +63,14 @@ Room.Regions = {
 	{ Id = "RightFloor", Name = "RIGHT FLOOR", Center = V(20, 3, 6), Size = V(14, 6, 20) },
 }
 
-Room.HintAreas = {
-	{ Label = "WORKBENCH / TOOL WALL / GARAGE DOOR", Regions = { "Workbench", "ToolWall", "GarageDoor" } },
-	{ Label = "CAR / CENTER FLOOR", Regions = { "Car", "CenterFloor" } },
-	{ Label = "SHELVES / BIKES / FREEZER / RIGHT FLOOR", Regions = { "Shelves", "BikeRack", "Freezer", "RightFloor" } },
-	{ Label = "PAINT / SPORTS / LEFT FLOOR", Regions = { "PaintCorner", "SportsCorner", "LeftFloor" } },
+-- Colour zones (Shared/Utility/Zones): clues name one ("the TEAL zone: HAMPER CORNER"), a sign
+-- hangs over each and the map in the corner draws them. Names never reuse a bin's word.
+Room.Zones = {
+	{ Id = "Workbench", Name = "WORKBENCH", Color = "Red", Regions = { "Workbench", "ToolWall", "GarageDoor" } },
+	{ Id = "Car", Name = "COVERED CAR", Short = "CAR", Color = "Blue", Regions = { "Car", "CenterFloor" } },
+	{ Id = "Shelves", Name = "SHELVES & BIKES", Short = "SHELVES", Color = "Purple", Regions = { "Shelves", "BikeRack", "Freezer", "RightFloor" } },
+	{ Id = "Paint", Name = "PAINT CORNER", Short = "PAINT", Color = "Yellow", Regions = { "PaintCorner", "LeftFloor" } },
+	{ Id = "Ball", Name = "BALL CORNER", Short = "BALLS", Color = "Green", Regions = { "SportsCorner" } },
 }
 
 Room.SideSigns = {

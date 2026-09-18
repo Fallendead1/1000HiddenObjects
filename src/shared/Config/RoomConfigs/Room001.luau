@@ -71,11 +71,16 @@ Room.Regions = {
 	{ Id = "RightFloor", Name = "RIGHT FLOOR", Center = Vector3.new(20, 3, 6), Size = Vector3.new(16, 6, 26) },
 }
 
-Room.HintAreas = {
-	{ Label = "BED / CLOSET", Regions = { "BedPile", "Closet" } },
-	{ Label = "DESK / BOOKSHELF / WINDOW", Regions = { "Desk", "Bookshelf", "WindowArea" } },
-	{ Label = "LAUNDRY / LEFT FLOOR / DRESSER", Regions = { "LaundryCorner", "LeftFloor", "Dresser" } },
-	{ Label = "TOYS / RIGHT FLOOR / CENTER", Regions = { "ToyCorner", "RightFloor", "CenterFloor" } },
+-- Colour zones (Shared/Utility/Zones): clues name one ("the TEAL zone: HAMPER CORNER"), a sign
+-- hangs over each and the map in the corner draws them. Names never reuse a bin's word.
+Room.Zones = {
+	{ Id = "Bed", Name = "BED", Color = "Red", Regions = { "BedPile" } },
+	{ Id = "Closet", Name = "CLOSET", Color = "Purple", Regions = { "Closet" } },
+	{ Id = "Hamper", Name = "HAMPER CORNER", Short = "HAMPER", Color = "Teal", Regions = { "LaundryCorner" } },
+	{ Id = "Dresser", Name = "DRESSER & WINDOW", Short = "DRESSER", Color = "Yellow", Regions = { "Dresser", "WindowArea" } },
+	{ Id = "Desk", Name = "DESK & SHELF", Short = "DESK", Color = "Blue", Regions = { "Desk", "Bookshelf" } },
+	{ Id = "Play", Name = "PLAY CORNER", Short = "PLAY", Color = "Pink", Regions = { "ToyCorner" } },
+	{ Id = "Middle", Name = "MIDDLE", Color = "Orange", Regions = { "CenterFloor", "LeftFloor", "RightFloor" }, Sign = Vector3.new(0, 0, 4) },
 }
 
 -- Wall signs that make LEFT / RIGHT clues readable from the door (you walk in facing -Z, so -X is

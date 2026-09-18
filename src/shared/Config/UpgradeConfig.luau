@@ -6,6 +6,8 @@
 	              objects snappier: +20% hold responsiveness per level).
 	ThrowPower -> launch speed (studs/second) of a thrown object before weight falloff.
 	MoveSpeed  -> WalkSpeed.
+	Armful     -> how many things one grab carries: the object plus small (Weight 1) ones right
+	              beside it, all thrown together (ObjectService scoop).
 ]]
 
 export type UpgradeLevel = { Value: number, Cost: number }
@@ -64,6 +66,19 @@ local Upgrades: { UpgradeDef } = {
 			{ Value = 20, Cost = 180 },
 			{ Value = 22, Cost = 400 },
 			{ Value = 24, Cost = 800 },
+		},
+	},
+	{
+		Key = "Armful",
+		Name = "ARM CAPACITY",
+		Description = "Grab more small things at once and throw them all together.",
+		Icon = "AR",
+		Attribute = "ArmfulLevel",
+		Format = function(v) return tostring(math.floor(v)) .. " at once" end,
+		Levels = {
+			{ Value = 3, Cost = 0 },
+			{ Value = 4, Cost = 120 },
+			{ Value = 5, Cost = 350 },
 		},
 	},
 }

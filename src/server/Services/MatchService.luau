@@ -66,6 +66,7 @@ local function resetStateConfig()
 		HintStage = 0, TargetRevealed = false, TargetFound = false, FinderName = "", OutlinedObjects = "",
 		TeamMuscleExpires = 0, PlayerNames = "", ResumePercent = 0, TreasuresTotal = 0, TreasuresCleaned = 0,
 		Hard = false, Easy = false, NextClueAt = 0,
+		ClueSide = "", ClueZone = "", ClueSpotRadius = 0, PilesCleared = "",
 	}) do
 		stateConfig:SetAttribute(name, value)
 	end
@@ -213,14 +214,9 @@ local function selectTarget()
 		end
 	end
 	match.TargetSocket = match.TargetSocket or eligible[#eligible].Socket
-	-- The lowest packed junk on the spot secretly holds the key: breaking it open releases it.
-	local keyChunk, lowest = nil, math.huge
-	for _, b in ipairs(match.TargetSocket.Blockers) do
-		if b:GetAttribute("IsChunk") and b.Position.Y < lowest then
-			keyChunk, lowest = b, b.Position.Y
-		end
-	end
-	match.KeyChunk = keyChunk
+	-- The key is never inside packed junk: it shows only once its spot is dug clear, so opening
+	-- packed junk everywhere can't find it (packed junk pays a reward instead, ChunkService).
+	match.KeyChunk = nil
 end
 
 -- Silently clean objects as if deposited, no Cash (checkpoint resume + dev tools).
@@ -695,6 +691,8 @@ function MatchService.BeginMatch(params: LaunchParams, origin: CFrame): boolean
 	stateConfig:SetAttribute("TreasuresCleaned", match.TreasuresCleaned)
 	stateConfig:SetAttribute("Hard", match.Hard)
 	stateConfig:SetAttribute("Easy", match.Easy)
+	-- Where the room sits, so the map can place things (room-local = origin space).
+	stateConfig:SetAttribute("RoomOrigin", origin)
 	publishProgress()
 	setState("Loading")
 
@@ -759,6 +757,8 @@ function MatchService.BeginMatch(params: LaunchParams, origin: CFrame): boolean
 		end
 		match.StartTime = now()
 		stateConfig:SetAttribute("StartTime", match.StartTime)
+		-- The room's heaps become goals (after a resumed room's pre-clean).
+		Services.PileService.Setup(match)
 		setState("Searching")
 		fireMatch("Started", {})
 		match.LoggedMinute = 0
@@ -790,40 +790,9 @@ function MatchService.OnObjectDeposited(_player: Player?, treasure: boolean?)
 	checkTargetExposure()
 end
 
--- Blasts whatever is still piled on the key's spot outward so the key lies in plain sight.
-local function blastFromKey()
-	local socket = match.TargetSocket.Position
-	for _, root in ipairs(MatchService.GetCoveringObjects()) do
-		local away = Vector3.new(root.Position.X - socket.X, 0, root.Position.Z - socket.Z)
-		if away.Magnitude < 0.1 then
-			local a = match.Rng:NextNumber(0, math.pi * 2)
-			away = Vector3.new(math.cos(a), 0, math.sin(a))
-		end
-		-- Heavier junk moves less.
-		local k = 1 / math.sqrt(math.max(1, root:GetAttribute("Weight") or 1))
-		Services.ObjectService.Activate(root)
-		-- Passes through players while flying (ObjectService restores the group once it settles).
-		root.CollisionGroup = "ClutterFlying"
-		root.AssemblyLinearVelocity = away.Unit * GameConfig.KeyBurstSpeed * k + Vector3.new(0, GameConfig.KeyBurstLift * k, 0)
-		root.AssemblyAngularVelocity = Vector3.new(match.Rng:NextNumber(-5, 5), match.Rng:NextNumber(-5, 5), match.Rng:NextNumber(-5, 5))
-	end
-end
-
--- The packed junk hiding the key was broken open: the key bursts out of it.
-function MatchService.OnChunkBurst(chunk: Instance, position: Vector3)
-	if not match or match.State ~= "Searching" or match.TargetRevealed or chunk ~= match.KeyChunk then
-		return
-	end
-	blastFromKey()
-	-- A second push clears what the first wave's own junk kept from leaving.
-	local thisMatch = match
-	task.delay(0.5, function()
-		if match == thisMatch and match.State == "Searching" then
-			blastFromKey()
-		end
-	end)
-	fireMatch("KeyBurst", { Position = position })
-	MatchService.RevealTarget()
+-- Packed junk was broken open: if it lay on the key's spot, the spot may be clear now.
+function MatchService.OnChunkBurst(_chunk: Instance, _position: Vector3)
+	checkTargetExposure()
 end
 
 function MatchService.OnObjectSettled(_root: BasePart)
@@ -1191,6 +1160,7 @@ function MatchService.EndMatch()
 	match = nil
 	resetStateConfig()
 	Services.HintService.ResetForMatch(nil)
+	Services.PileService.Reset()
 	for _, player in ipairs(remaining) do
 		if serverRole ~= "Match" then
 			MatchService.MovePlayerToLobby(player)

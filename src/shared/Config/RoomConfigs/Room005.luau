@@ -73,11 +73,15 @@ Room.Regions = {
 	{ Id = "RightFloor", Name = "RIGHT FLOOR", Center = V(38, 3, -4), Size = V(16, 6, 16) },
 }
 
-Room.HintAreas = {
-	{ Label = "UPSTAIRS: THE LOFT", Regions = { "LoftLeft", "LoftCenter", "LoftRight" } },
-	{ Label = "UNDER THE LOFT", Regions = { "UnderLoft" } },
-	{ Label = "LEFT: TRUNK / WARDROBE / FRONT LEFT", Regions = { "TrunkLeft", "Wardrobe", "FrontLeft", "LeftFloor" } },
-	{ Label = "RIGHT: DOLLHOUSE / TRUNK / SOFA / FRONT", Regions = { "Dollhouse", "TrunkRight", "CoveredSofa", "FrontCenter", "RightFloor" } },
+-- Colour zones (Shared/Utility/Zones): clues name one ("the TEAL zone: HAMPER CORNER"), a sign
+-- hangs over each and the map in the corner draws them. Names never reuse a bin's word.
+Room.Zones = {
+	{ Id = "Loft", Name = "THE LOFT (UPSTAIRS)", Short = "LOFT (UP)", Color = "Purple", Regions = { "LoftLeft", "LoftCenter", "LoftRight" }, Upstairs = true },
+	-- Its sign hangs under the loft's front edge (the loft floor is at LOFT).
+	{ Id = "UnderLoft", Name = "UNDER THE LOFT", Short = "UNDER LOFT", Color = "Blue", Regions = { "UnderLoft" }, Sign = V(0, LOFT - 3.5, -18) },
+	{ Id = "Wardrobe", Name = "WARDROBE", Color = "Red", Regions = { "Wardrobe", "TrunkLeft", "LeftFloor", "FrontLeft" } },
+	{ Id = "Dollhouse", Name = "DOLLHOUSE", Color = "Pink", Regions = { "Dollhouse", "TrunkRight", "RightFloor" } },
+	{ Id = "Sofa", Name = "OLD SOFA", Short = "SOFA", Color = "Orange", Regions = { "CoveredSofa", "FrontCenter" } },
 }
 
 Room.SideSigns = {

@@ -18,6 +18,12 @@
 	pile, whatever rested on it wakes up and falls (wakeAbove). Thrown objects pass through players
 	until they land.
 
+	Armful: grabbing something small (ArmfulMaxWeight) also scoops up the small, uncovered things
+	right beside it, up to the player's Arm Capacity. They ride along beside the held object
+	(the holder steers them too) and leave the hands with it: thrown the same way as one throw
+	group (DepositService calls DOUBLE!, TRIPLE!) or set down. The held object itself behaves
+	exactly as without them.
+
 	Cash is never paid here: objects pay when deposited in a bin (DepositService).
 ]]
 
@@ -38,7 +44,7 @@ local Services = require(script.Parent)
 
 local ObjectService = {}
 
-type Held = { Root: BasePart, Attachment: Attachment, AlignPos: AlignPosition, AlignOri: AlignOrientation }
+type Held = { Root: BasePart, Attachment: Attachment, AlignPos: AlignPosition, AlignOri: AlignOrientation, Passengers: { BasePart } }
 export type Flight = {
 	Since: number,
 	StillFor: number,
@@ -53,6 +59,8 @@ export type Flight = {
 	LaunchVelocity: Vector3?,
 	CheckPos: Vector3?,
 	CheckAt: number?,
+	ThrowGroup: number?,
+	BankedAt: number?,
 }
 
 local runtime = nil
@@ -66,6 +74,11 @@ local grabLimiter = RateLimiter.new(GameConfig.GrabRateLimit, GameConfig.GrabRat
 -- Throws get their own, looser budget so a legitimate release is never swallowed.
 local throwLimiter = RateLimiter.new(GameConfig.GrabRateLimit * 2, GameConfig.GrabRateLimit * 2)
 local rng = Random.new()
+local throwGroups = 0
+local scoopParams = OverlapParams.new()
+scoopParams.FilterType = Enum.RaycastFilterType.Include
+local coverParams = RaycastParams.new()
+coverParams.FilterType = Enum.RaycastFilterType.Exclude
 
 local SOFT = { Clothes = true, Bedding = true, Bag = true, Toy = true, Shoes = true, Chunk = true }
 local PAPER = { Paper = true, Book = true, School = true }
@@ -294,12 +307,69 @@ local function makeActive(root: BasePart, by: Player?, state: string, keepOwner:
 	end
 end
 
+-- A carried passenger (Armful) lets go: no longer held, its hold constraints removed.
+local function detachPassenger(p: BasePart)
+	heldBy[p] = nil
+	for _, name in ipairs({ "ArmfulAlignPosition", "ArmfulAlignOrientation", "ArmfulAttachment" }) do
+		local inst = p:FindFirstChild(name)
+		if inst then
+			inst:Destroy()
+		end
+	end
+	p:SetAttribute("HeldByUserId", 0)
+end
+
+-- Everything carried with the held object leaves the hands with it: thrown the same way (the
+-- thrower's client launches them too, as one throw group) or set down. Returns the group id.
+local function releasePassengers(player: Player, h: Held, velocity: Vector3): number?
+	local passengers = h.Passengers
+	h.Passengers = {}
+	if #passengers == 0 then
+		return nil
+	end
+	local hrp = characterRoot(player)
+	local throwing = velocity.Magnitude > 1 and hrp ~= nil and player.Parent ~= nil
+	local group = nil
+	if throwing then
+		throwGroups += 1
+		group = throwGroups
+	end
+	for _, p in ipairs(passengers) do
+		if heldBy[p] == player then
+			detachPassenger(p)
+			if p.Parent then
+				if hrp and (p.Position - hrp.Position).Magnitude > GameConfig.HoldMaxDistance then
+					p.CFrame = CFrame.new(hrp.Position + hrp.CFrame.LookVector * 3 + Vector3.new(0, 1.5, 0))
+				end
+				makeActive(p, player, "Flying", throwing)
+				local info = active[p]
+				info.Thrown = true
+				info.ReleasePos = p.Position
+				if throwing then
+					local v = velocity.Unit * ObjectService.ThrowVelocity(player, p:GetAttribute("Weight") or 1, velocity.Unit).Magnitude
+					info.LaunchVelocity = v
+					p.CollisionGroup = "ClutterFlying"
+					addLift(p)
+					info.Lift = true
+					info.MaxSpeed = v.Magnitude
+					info.Owned = true
+					info.ThrowGroup = group
+				else
+					p.AssemblyLinearVelocity = Vector3.zero
+				end
+			end
+		end
+	end
+	return group
+end
+
 local function release(player: Player, velocity: Vector3)
 	local h = held[player]
 	if not h then
 		return
 	end
 	held[player] = nil
+	local group = releasePassengers(player, h, velocity)
 	local root = h.Root
 	heldBy[root] = nil
 	h.AlignPos:Destroy()
@@ -331,9 +401,94 @@ local function release(player: Player, velocity: Vector3)
 		info.Lift = true
 		info.MaxSpeed = velocity.Magnitude
 		info.Owned = true
+		info.ThrowGroup = group
 	else
 		root.AssemblyLinearVelocity = velocity
 	end
+end
+
+-- Armful: the small, uncovered things right beside a small grabbed object, same kind first and
+-- then closest, up to the player's Arm Capacity (the grabbed object counts as one).
+local function scoopCandidates(player: Player, root: BasePart, hrp: BasePart): { BasePart }
+	local room = Services.PlayerSessionService.GetArmful(player) - 1
+	local folder = root.Parent
+	if room <= 0 or not folder or (root:GetAttribute("Weight") or 1) > GameConfig.ArmfulMaxWeight then
+		return {}
+	end
+	scoopParams.FilterDescendantsInstances = { folder }
+	local found, seen = {}, { [root] = true }
+	for _, part in ipairs(workspace:GetPartBoundsInRadius(root.Position, GameConfig.ArmfulRadius, scoopParams)) do
+		local obj = clutterRootOf(part, folder)
+		if obj and not seen[obj] then
+			seen[obj] = true
+			local flight = active[obj]
+			if obj:GetAttribute("Movable") == true and not obj:GetAttribute("IsChunk") and not obj:GetAttribute("Deposited")
+				and obj:GetAttribute("Category") ~= "Treasure" and (obj:GetAttribute("Weight") or 1) <= GameConfig.ArmfulMaxWeight
+				and not heldBy[obj] and not (flight and flight.Thrown) then
+				-- Only what's on top: something buried stays for digging.
+				coverParams.FilterDescendantsInstances = { obj, root, player.Character :: Instance }
+				local above = workspace:Raycast(obj.Position + Vector3.new(0, obj.Size.Y / 2 - 0.05, 0), Vector3.new(0, 4, 0), coverParams)
+				local cover = above and clutterRootOf(above.Instance, folder)
+				if not cover and hasLineOfSight(hrp.Position + Vector3.new(0, 1.5, 0), obj) then
+					table.insert(found, obj)
+				end
+			end
+		end
+	end
+	local category = root:GetAttribute("Category")
+	table.sort(found, function(a, b)
+		local sa, sb = a:GetAttribute("Category") == category, b:GetAttribute("Category") == category
+		if sa ~= sb then
+			return sa
+		end
+		return (a.Position - root.Position).Magnitude < (b.Position - root.Position).Magnitude
+	end)
+	local picked = {}
+	for i = 1, math.min(room, #found) do
+		picked[i] = found[i]
+	end
+	return picked
+end
+
+-- Picks up one Armful passenger: held like the main object (no collision, the holder simulates
+-- and steers it), but through its own constraints.
+local function carry(player: Player, p: BasePart, responsiveness: number)
+	if p.Anchored then
+		wakeAbove(p)
+	end
+	active[p] = nil
+	clearLift(p)
+	unsettled[p] = nil
+	heldBy[p] = player
+	p.Anchored = false
+	p.CanCollide = false
+	local attachment = Instance.new("Attachment")
+	attachment.Name = "ArmfulAttachment"
+	attachment.Parent = p
+	local alignPos = Instance.new("AlignPosition")
+	alignPos.Name = "ArmfulAlignPosition"
+	alignPos.Mode = Enum.PositionAlignmentMode.OneAttachment
+	alignPos.Attachment0 = attachment
+	alignPos.Position = p.Position
+	alignPos.MaxForce = 1e7
+	alignPos.MaxVelocity = 80
+	alignPos.Responsiveness = responsiveness
+	alignPos.Parent = p
+	local alignOri = Instance.new("AlignOrientation")
+	alignOri.Name = "ArmfulAlignOrientation"
+	alignOri.Mode = Enum.OrientationAlignmentMode.OneAttachment
+	alignOri.Attachment0 = attachment
+	alignOri.CFrame = p.CFrame.Rotation
+	alignOri.MaxTorque = 1e7
+	alignOri.Responsiveness = responsiveness
+	alignOri.Parent = p
+	pcall(function()
+		p:SetNetworkOwner(player)
+	end)
+	p:SetAttribute("HeldByUserId", player.UserId)
+	p:SetAttribute("LastHolderUserId", player.UserId)
+	setState(p, "Held")
+	Services.MatchService.OnObjectGrabbed(p)
 end
 
 function ObjectService.Grab(player: Player, root: any): (boolean, string?)
@@ -403,7 +558,11 @@ function ObjectService.Grab(player: Player, root: any): (boolean, string?)
 	pcall(function()
 		root:SetNetworkOwner(player)
 	end)
-	held[player] = { Root = root, Attachment = attachment, AlignPos = alignPos, AlignOri = alignOri }
+	local passengers = scoopCandidates(player, root, hrp)
+	held[player] = { Root = root, Attachment = attachment, AlignPos = alignPos, AlignOri = alignOri, Passengers = passengers }
+	for _, p in ipairs(passengers) do
+		carry(player, p, responsiveness)
+	end
 	root:SetAttribute("HeldByUserId", player.UserId)
 	root:SetAttribute("LastHolderUserId", player.UserId)
 	setState(root, "Held")
@@ -447,6 +606,16 @@ function ObjectService.GetHeld(player: Player): BasePart?
 	return h and h.Root or nil
 end
 
+-- The ObjectIds of the small things carried along with the held object (Armful).
+function ObjectService.GetPassengerIds(player: Player): { string }
+	local ids = {}
+	local h = held[player]
+	for _, p in ipairs(h and h.Passengers or {}) do
+		table.insert(ids, p:GetAttribute("ObjectId"))
+	end
+	return ids
+end
+
 function ObjectService.GetHolder(root: BasePart): Player?
 	return heldBy[root]
 end
@@ -473,7 +642,15 @@ end
 -- rested on it falls.
 function ObjectService.Forget(root: BasePart)
 	local holder = heldBy[root]
-	if holder then
+	local h = holder and held[holder]
+	if h and h.Root ~= root then
+		-- A carried passenger (it went into a bin while carried): only it leaves the hands.
+		local i = table.find(h.Passengers, root)
+		if i then
+			table.remove(h.Passengers, i)
+		end
+		detachPassenger(root)
+	elseif holder then
 		release(holder, Vector3.zero)
 	end
 	active[root] = nil
@@ -555,7 +732,8 @@ function ObjectService.Init()
 			audit(player, "Dev_GrabsGranted")
 		end
 		local objectId = ok and root:GetAttribute("ObjectId") or nil
-		Remotes.Event("GrabResult"):FireClient(player, tonumber(requestId) or 0, ok, objectId, reason)
+		local passengers = ok and ObjectService.GetPassengerIds(player) or nil
+		Remotes.Event("GrabResult"):FireClient(player, tonumber(requestId) or 0, ok, objectId, reason, passengers)
 	end)
 	Remotes.Event("ThrowObject").OnServerEvent:Connect(function(player, objectId, direction)
 		audit(player, "Dev_ThrowRequests")
@@ -608,6 +786,18 @@ function ObjectService.Start()
 			elseif (h.Root.Position - hrp.Position).Magnitude > GameConfig.HoldMaxDistance then
 				h.Root.CFrame = CFrame.new(hrp.Position + hrp.CFrame.LookVector * 3 + Vector3.new(0, 1.5, 0))
 				h.Root.AssemblyLinearVelocity = Vector3.zero
+			end
+			if held[player] == h and hrp then
+				for i = #h.Passengers, 1, -1 do
+					local p = h.Passengers[i]
+					if not p.Parent then
+						table.remove(h.Passengers, i)
+						heldBy[p] = nil
+					elseif (p.Position - hrp.Position).Magnitude > GameConfig.HoldMaxDistance then
+						p.CFrame = CFrame.new(h.Root.Position + Vector3.new(0, 1, 0))
+						p.AssemblyLinearVelocity = Vector3.zero
+					end
+				end
 			end
 		end
 		local now = os.clock()
