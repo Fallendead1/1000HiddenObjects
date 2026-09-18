@@ -12,6 +12,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage.Shared
 local RetentionConfig = require(Shared.Config.RetentionConfig)
+local RewardInfo = require(Shared.Config.RewardInfo)
 local Remotes = require(Shared.Utility.Remotes)
 
 local UI = require(script.Parent.Parent.UI.UI)
@@ -129,7 +130,7 @@ local function spinTo(index: number, text: string)
 	task.delay(SPIN_TIME + 0.1, function()
 		spinning = false
 		local s = SEGMENTS[index]
-		Controllers.GiftController.Reveal("YOU WON!", text, colorOf(s and s.Color))
+		Controllers.GiftController.Reveal("YOU WON!", text, colorOf(s and s.Color), nil, RewardInfo.Of(s and s.Reward))
 		refresh()
 	end)
 end

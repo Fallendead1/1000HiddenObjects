@@ -86,7 +86,7 @@ local Template = {
 	CleanerXP = 0,
 	Stars = {}, -- [tostring(roomId)] = bitmask: 1 object found, 2 cleaned 25%, 4 ten treasures
 	Daily = { Day = 0, Ids = {}, Progress = {}, Done = {} },
-	Stats = { Swishes = 0, Treasures = 0, Chunks = 0, Keys = 0, Rooms = 0 },
+	Stats = { Swishes = 0, Treasures = 0, Chunks = 0, Keys = 0, Rooms = 0, PlaySeconds = 0 }, -- PlaySeconds: all-time active play
 	-- UTC day this profile was created (0 = before analytics existed); brand-new players are
 	-- tracked through the onboarding funnel for their first days.
 	FirstJoinDay = 0,

@@ -15,6 +15,7 @@ local RunService = game:GetService("RunService")
 local Shared = ReplicatedStorage.Shared
 local FormatUtil = require(Shared.Utility.FormatUtil)
 local RetentionConfig = require(Shared.Config.RetentionConfig)
+local RewardInfo = require(Shared.Config.RewardInfo)
 local Remotes = require(Shared.Utility.Remotes)
 
 local UI = require(script.Parent.Parent.UI.UI)
@@ -139,12 +140,14 @@ end
 
 -- ===== Reveals =====
 
--- A gift card that pops up in the middle of the screen with its reward, then drifts away.
-function GiftController.Reveal(title: string, text: string, color: Color3, glyph: string?)
-	local holder = UI.Frame({ BackgroundTransparency = 1, Size = UDim2.fromOffset(420, 190), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.42) }, UI.Layers.Overlay)
+-- A reward card that pops up in the middle of the screen: the reward's icon, what you got and
+-- (with info, RewardInfo) one line on what it does. Then it drifts away.
+function GiftController.Reveal(title: string, text: string, color: Color3, glyph: string?, info: RewardInfo.Info?)
+	local explain = info and info.Explain
+	local holder = UI.Frame({ BackgroundTransparency = 1, Size = UDim2.fromOffset(460, explain and 250 or 190), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.42) }, UI.Layers.Overlay)
 	local rays = UI.Image({ Image = UI.Asset("Rays") or "", Size = UDim2.fromOffset(300, 300), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0, 56), ImageColor3 = color, ImageTransparency = 0.4, ZIndex = 0 }, holder)
 	local box = UI.Surface3D({ Size = UDim2.fromOffset(96, 96), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 8) }, holder, color, 20, 0.12)
-	local icon = UI.Icon(box, "Gift_Box", glyph or "G", { TextSize = 48 })
+	local icon = UI.Icon(box, info and info.Icon or "Gift_Box", (info and info.Glyph) or glyph or "G", { TextSize = 40 })
 	icon.Size = UDim2.fromScale(0.78, 0.7)
 	icon.AnchorPoint = Vector2.new(0.5, 0.5)
 	icon.Position = UDim2.fromScale(0.5, 0.45)
@@ -154,6 +157,11 @@ function GiftController.Reveal(title: string, text: string, color: Color3, glyph
 	UI.TextGradient(top, color)
 	local bottom = UI.Label({ Text = text, TextSize = 22, TextWrapped = false, Size = UDim2.new(1, 0, 0, 30), Position = UDim2.fromOffset(0, 152) }, holder)
 	UI.Stroke(bottom, Color3.new(0, 0, 0), 2.5, 0)
+	if explain then
+		local note = UI.Panel({ Size = UDim2.fromOffset(440, 54), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 190), BackgroundTransparency = 0.12 }, holder)
+		UI.Stroke(note, color, 2)
+		UI.Label({ Text = explain, TextSize = 17, Font = UI.FontBody, TextWrapped = true, Size = UDim2.new(1, -24, 1, -8), Position = UDim2.fromOffset(12, 4) }, note)
+	end
 	UI.PopIn(holder, 0.3, 0.4)
 	Controllers.AudioController.Play("CashAward")
 	Controllers.FXController.ScreenFlash(color, 0.45)
@@ -167,12 +175,17 @@ function GiftController.Reveal(title: string, text: string, color: Color3, glyph
 			spin += dt * 40
 			rays.Rotation = spin
 		end)
-		task.wait(2.4)
+		-- Long enough to read the explanation.
+		task.wait(explain and 4.2 or 2.4)
 		for _, d in ipairs(holder:GetDescendants()) do
 			if d:IsA("TextLabel") then
-				UI.Tween(d, { TextTransparency = 1 }, 0.35)
+				UI.Tween(d, { TextTransparency = 1, BackgroundTransparency = 1 }, 0.35)
 			elseif d:IsA("ImageLabel") then
-				UI.Tween(d, { ImageTransparency = 1 }, 0.35)
+				UI.Tween(d, { ImageTransparency = 1, BackgroundTransparency = 1 }, 0.35)
+			elseif d:IsA("Frame") then
+				UI.Tween(d, { BackgroundTransparency = 1 }, 0.35)
+			elseif d:IsA("UIStroke") then
+				UI.Tween(d, { Transparency = 1 }, 0.35)
 			end
 		end
 		UI.Tween(holder, { Position = holder.Position - UDim2.fromOffset(0, 40) }, 0.35)
@@ -221,30 +234,33 @@ end
 -- ===== Lifecycle =====
 
 function GiftController.Init()
-	menu = UI.Menu("Gifts", "FREE GIFTS", UDim2.fromOffset(760, 430), UI.Colors.Gold)
+	menu = UI.Menu("Gifts", "FREE GIFTS", UDim2.fromOffset(760, 480), UI.Colors.Gold)
 	headerLabel = UI.Label({ Text = "", TextSize = 22, TextWrapped = false, Size = UDim2.new(1, 0, 0, 28) }, menu.Content)
 	UI.TextGradient(headerLabel, UI.Colors.Gold)
 	UI.Label({ Text = "Keep playing to open every gift. A new set every day!", TextSize = 14, Font = UI.FontBody, TextColor3 = UI.Colors.TextDim, Size = UDim2.new(1, 0, 0, 18), Position = UDim2.fromOffset(0, 30) }, menu.Content)
 
-	local grid = UI.Frame({ BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 200), Position = UDim2.fromOffset(0, 56) }, menu.Content)
+	local grid = UI.Frame({ BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 250), Position = UDim2.fromOffset(0, 56) }, menu.Content)
 	local layout = UI.GridLayout(grid, UDim2.new(1 / 5, -8, 0.5, -5), 8)
 	layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
 	for i, gift in ipairs(GIFTS) do
 		local color = colorOf(gift.Color)
 		local card = UI.Panel({ BackgroundColor3 = UI.Colors.PanelLight, LayoutOrder = i }, grid)
 		UI.Label({ Text = string.format("%d MIN", gift.Minutes), TextSize = 13, TextWrapped = false, Size = UDim2.new(1, 0, 0, 16), Position = UDim2.fromOffset(0, 4) }, card)
-		local badge = UI.Surface3D({ Size = UDim2.fromOffset(34, 34), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 22) }, card, color, 10, 0.12)
-		local icon = UI.Icon(badge, "Gift_Box", "G", { TextSize = 18 })
+		local badge = UI.Surface3D({ Size = UDim2.fromOffset(42, 42), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 20) }, card, color, 12, 0.12)
+		-- The card's icon is what's inside (Cash, XP, a hint, a boost), so it matches its words.
+		local inside = RewardInfo.Of(gift.Reward)
+		local icon = UI.Icon(badge, inside.Icon, inside.Glyph, { TextSize = 16 })
 		icon.Size = UDim2.fromScale(0.74, 0.66)
 		icon.AnchorPoint = Vector2.new(0.5, 0.5)
 		icon.Position = UDim2.fromScale(0.5, 0.45)
-		UI.Label({ Text = gift.Text, TextSize = 11, Font = UI.FontBody, Size = UDim2.new(1, -6, 0, 26), Position = UDim2.fromOffset(3, 58) }, card)
+		local what = UI.Label({ Text = gift.Text, TextSize = 13, Size = UDim2.new(1, -6, 0, 32), Position = UDim2.fromOffset(3, 66) }, card)
+		UI.TextGradient(what, color)
 		local state = UI.Label({ Text = "", TextSize = 12, TextWrapped = false, Size = UDim2.new(1, 0, 0, 14), Position = UDim2.new(0, 0, 1, -16) }, card)
 		cards[i] = { Card = card, State = state, Pulsing = false }
 	end
 
-	openButton = UI.Button({ Name = "OpenGift", Text = "OPEN GIFT", Color = UI.Colors.Gold, Size = UDim2.fromOffset(280, 56), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 268), TextSize = 24, Shine = 2.5 }, menu.Content)
-	footerLabel = UI.Label({ Text = "", TextSize = 14, Font = UI.FontBody, TextColor3 = UI.Colors.TextDim, Size = UDim2.new(1, 0, 0, 18), Position = UDim2.fromOffset(0, 330) }, menu.Content)
+	openButton = UI.Button({ Name = "OpenGift", Text = "OPEN GIFT", Color = UI.Colors.Gold, Size = UDim2.fromOffset(280, 56), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 318), TextSize = 24, Shine = 2.5 }, menu.Content)
+	footerLabel = UI.Label({ Text = "", TextSize = 14, Font = UI.FontBody, TextColor3 = UI.Colors.TextDim, Size = UDim2.new(1, 0, 0, 18), Position = UDim2.fromOffset(0, 380) }, menu.Content)
 	openButton.Activated:Connect(open)
 	menu.Primary = openButton
 	menu.OnOpen(refreshMenu)
@@ -264,7 +280,8 @@ function GiftController.Init()
 			if c then
 				UI.Flash(c.Card, UI.Colors.Gold, 0.8)
 			end
-			GiftController.Reveal("FREE GIFT!", payload.Text or "", colorOf(payload.Color))
+			local gift = GIFTS[payload.Index or 0]
+			GiftController.Reveal("FREE GIFT!", payload.Text or "", colorOf(payload.Color), nil, RewardInfo.Of(gift and gift.Reward))
 			refreshMenu()
 		elseif name == "GiftBar" then
 			if barFrame then

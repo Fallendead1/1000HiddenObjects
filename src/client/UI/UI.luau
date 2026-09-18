@@ -1181,6 +1181,12 @@ function UI.Menu(name: string, title: string, size: UDim2, accent: Color3?)
 	UI.Stroke(frame, BLACK, 3)
 	UI.Gradient(frame, Color3.fromRGB(48, 51, 70), Color3.fromRGB(16, 17, 26))
 	UI.New("UISizeConstraint", { MaxSize = Vector2.new(1100, 800), MinSize = Vector2.new(280, 200) }, frame)
+	-- Optional art (GameAssets.UIImages MenuPattern): a soft tiled pattern over the menu body.
+	local bodyPattern = UI.Asset("MenuPattern")
+	if bodyPattern then
+		local pattern = UI.New("ImageLabel", { Name = "Pattern", BackgroundTransparency = 1, Image = bodyPattern, ImageTransparency = 0.88, ScaleType = Enum.ScaleType.Tile, TileSize = UDim2.fromOffset(160, 160), Size = UDim2.fromScale(1, 1), ZIndex = 0 }, frame)
+		UI.Corner(pattern, 16)
+	end
 	local home = frame.Position
 	-- Never taller or wider than the safe area (the content scrolls): matters on phones.
 	local design = Vector2.new(size.X.Offset, size.Y.Offset)
@@ -1194,6 +1200,12 @@ function UI.Menu(name: string, title: string, size: UDim2, accent: Color3?)
 	UI.Layers.Menus:GetPropertyChangedSignal("AbsoluteSize"):Connect(fit)
 
 	local titleBar = UI.Surface3D({ Name = "Header", Size = UDim2.new(1, 0, 0, 62) }, frame, accent or UI.Colors.Gold, 16, 0.1)
+	-- Optional art (UIImages HeaderPattern): white stripes or dots tiled over the header colour.
+	local headerPattern = UI.Asset("HeaderPattern")
+	if headerPattern then
+		local pattern = UI.New("ImageLabel", { Name = "Pattern", BackgroundTransparency = 1, Image = headerPattern, ImageTransparency = 0.8, ScaleType = Enum.ScaleType.Tile, TileSize = UDim2.fromOffset(64, 64), Size = UDim2.fromScale(1, 1), ZIndex = 0 }, titleBar)
+		UI.Corner(pattern, 16)
+	end
 	UI.Label({ Text = title, TextSize = 30, Size = UDim2.new(1, -150, 0.9, 0), Position = UDim2.fromOffset(75, 0), TextWrapped = false, TextScaled = false }, titleBar)
 	local close = UI.Button({ Name = "Close", Text = "", Color = UI.Colors.Red, Size = UDim2.fromOffset(48, 46), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -10, 0.45, 0), TextSize = 22 }, titleBar)
 	UI.Icon(close, "Icon_Close", "X", { TextSize = 24 })

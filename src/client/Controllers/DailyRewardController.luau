@@ -10,6 +10,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local ProgressionConfig = require(ReplicatedStorage.Shared.Config.ProgressionConfig)
+local RewardInfo = require(ReplicatedStorage.Shared.Config.RewardInfo)
 local Remotes = require(ReplicatedStorage.Shared.Utility.Remotes)
 
 local UI = require(script.Parent.Parent.UI.UI)
@@ -19,8 +20,6 @@ local player = Players.LocalPlayer
 
 local DailyRewardController = {}
 
-local KindColors = { XP = UI.Colors.Cyan, Hint = UI.Colors.Purple, Boost = UI.Colors.Green, Bundle = UI.Colors.Gold }
-local KindGlyphs = { XP = "XP", Hint = "?", Boost = "2X", Bundle = "7" }
 
 local menu
 local cards: { { Card: Frame, State: TextLabel, Pulsing: boolean } } = {}
@@ -111,8 +110,14 @@ function DailyRewardController.Init()
 	for day, reward in ipairs(ProgressionConfig.LoginRewards) do
 		local card = UI.Panel({ Size = UDim2.new(1 / 7, -8, 1, 0), BackgroundColor3 = UI.Colors.PanelLight, LayoutOrder = day }, row)
 		UI.Label({ Text = "DAY " .. day, TextSize = 14, TextWrapped = false, Size = UDim2.new(1, 0, 0, 20), Position = UDim2.fromOffset(0, 6) }, card)
-		local badge = UI.Surface3D({ Size = UDim2.fromOffset(50, 50), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 30) }, card, KindColors[reward.Kind] or UI.Colors.Gold, 14, 0.12)
-		UI.Label({ Text = KindGlyphs[reward.Kind] or "★", TextSize = 20, TextWrapped = false, Size = UDim2.new(1, 0, 0.86, 0) }, badge)
+		-- The icon is what the day gives (XP, a hint, a boost), so it matches its words. Day 7 is gold.
+		local inside = RewardInfo.Of(reward)
+		local badgeColor = if day == #ProgressionConfig.LoginRewards then UI.Colors.Gold else (UI.Colors[inside.Color] or UI.Colors.Gold)
+		local badge = UI.Surface3D({ Size = UDim2.fromOffset(50, 50), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 30) }, card, badgeColor, 14, 0.12)
+		local icon = UI.Icon(badge, inside.Icon, inside.Glyph, { TextSize = 18 })
+		icon.Size = UDim2.fromScale(0.74, 0.66)
+		icon.AnchorPoint = Vector2.new(0.5, 0.5)
+		icon.Position = UDim2.fromScale(0.5, 0.45)
 		UI.Label({ Text = reward.Text, TextSize = 12, Font = UI.FontBody, Size = UDim2.new(1, -8, 0, 46), Position = UDim2.fromOffset(4, 86), TextYAlignment = Enum.TextYAlignment.Top }, card)
 		local state = UI.Label({ Text = "", TextSize = 12, TextWrapped = false, Size = UDim2.new(1, 0, 0, 16), Position = UDim2.new(0, 0, 1, -22) }, card)
 		cards[day] = { Card = card, State = state, Pulsing = false }
@@ -137,7 +142,13 @@ function DailyRewardController.Init()
 			UI.Flash(c.Card, UI.Colors.Gold, 0.8)
 		end
 		Controllers.AudioController.Play("UpgradePurchase")
-		Controllers.NotificationController.Show("Success", string.format("Day %d reward: %s%s", payload.Day or 0, payload.Reward or "", payload.Later and " (starts in your next room)" or ""), 5)
+		local reward = ProgressionConfig.LoginRewards[payload.Day or 0]
+		local info = RewardInfo.Of(reward)
+		if payload.Later then
+			info.Explain ..= " It starts in your next room."
+		end
+		menu.Close()
+		Controllers.GiftController.Reveal(string.format("DAY %d REWARD!", payload.Day or 0), payload.Reward or "", UI.Colors[info.Color] or UI.Colors.Gold, nil, info)
 		refresh()
 	end)
 end

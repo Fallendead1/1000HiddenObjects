@@ -251,7 +251,7 @@ local function renderIndex(page: Frame)
 		UI.Stroke(card, has and r.Color or Color3.new(0, 0, 0), 2)
 		local stage = UI.Frame({ BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0.55, 0) }, card)
 		-- Pets not found yet show as a dark silhouette.
-		PetModels.Viewport(stage, PetModels.Build(def.Key), has and nil or { ImageColor3 = Color3.new(0, 0, 0), ImageTransparency = 0.15 })
+		PetModels.Viewport(stage, PetModels.Build(def.Key), if has then nil else { ImageColor3 = Color3.new(0, 0, 0), ImageTransparency = 0.15 }, has)
 		local name = UI.Label({ Text = has and def.Name or "???", TextSize = 13, TextWrapped = false, Size = UDim2.new(1, -6, 0, 16), Position = UDim2.new(0, 3, 0.56, 0) }, card)
 		if has then
 			UI.TextGradient(name, r.Color)

@@ -34,6 +34,7 @@ local Remotes = {
 		"EquipPet", -- C->S (kind, on)
 		"PetWelcome", -- C->S () open the welcome gift (the starter pet)
 		"ClientReady", -- C->S () this player's game finished loading (a match server waits for it)
+		"InputMode", -- C->S (mode) "Touch" | "Gamepad" | "KeyboardMouse": how this player plays
 		"DevCommand", -- C->S (command, ...)
 		"MatchUpdate", -- S->C (eventName, payload)
 		"Notification", -- S->C (kind, text, duration?)

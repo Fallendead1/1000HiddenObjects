@@ -1,7 +1,8 @@
 --[[
-	OrderedDataStore leaderboards: Top Object Finders (ObjectsFound, higher is better)
-	and Fastest Room #001 (seconds, lower is better). Results are published as JSON
-	attributes on ReplicatedStorage.LeaderboardData for lobby boards.
+	OrderedDataStore leaderboards: Top Object Finders (ObjectsFound), Most Cleaned (objects cleaned
+	into bins), Time Played (all-time active seconds) - higher is better - and Fastest Room #001
+	(seconds, lower is better). Results are published as JSON attributes on
+	ReplicatedStorage.LeaderboardData for lobby boards.
 ]]
 
 local DataStoreService = game:GetService("DataStoreService")
@@ -17,12 +18,14 @@ local LeaderboardService = {}
 
 local finderStore: OrderedDataStore? = nil
 local cleanedStore: OrderedDataStore? = nil
+local playedStore: OrderedDataStore? = nil
 local fastestStores: { [number]: OrderedDataStore } = {}
 local available = false
 local dataFolder: Configuration
 
 local memoryFinders: { [number]: number } = {}
 local memoryCleaned: { [number]: number } = {}
+local memoryPlayed: { [number]: number } = {}
 local memoryFastest: { [number]: { [number]: number } } = {}
 
 local function getFastestStore(roomId: number): OrderedDataStore?
@@ -90,6 +93,7 @@ function LeaderboardService.Init()
 	dataFolder:SetAttribute("TopFinders", "[]")
 	dataFolder:SetAttribute("Fastest", "[]")
 	dataFolder:SetAttribute("MostCleaned", "[]")
+	dataFolder:SetAttribute("MostPlayed", "[]")
 	dataFolder:SetAttribute("FastestRoomId", 1)
 	dataFolder.Parent = ReplicatedStorage
 
@@ -104,6 +108,9 @@ function LeaderboardService.Init()
 		available = true
 		pcall(function()
 			cleanedStore = DataStoreService:GetOrderedDataStore(GameConfig.LeaderboardMostCleaned)
+		end)
+		pcall(function()
+			playedStore = DataStoreService:GetOrderedDataStore(GameConfig.LeaderboardMostPlayed)
 		end)
 	else
 		warn("[LeaderboardService] OrderedDataStore unavailable, using memory fallback")
@@ -133,6 +140,8 @@ function LeaderboardService.Refresh()
 	local finders = fetchTop(finderStore, memoryFinders, false, 10)
 	local fastest = fetchTop(getFastestStore(1), memoryFastest[1] or {}, true, 10)
 	local cleaned = fetchTop(cleanedStore, memoryCleaned, false, 10)
+	local played = fetchTop(playedStore, memoryPlayed, false, 10)
+	dataFolder:SetAttribute("MostPlayed", HttpService:JSONEncode(played))
 	dataFolder:SetAttribute("TopFinders", HttpService:JSONEncode(finders))
 	dataFolder:SetAttribute("Fastest", HttpService:JSONEncode(fastest))
 	dataFolder:SetAttribute("MostCleaned", HttpService:JSONEncode(cleaned))
@@ -145,6 +154,18 @@ function LeaderboardService.SubmitMostCleaned(player: Player, total: number)
 		task.spawn(function()
 			pcall(function()
 				cleanedStore:SetAsync(tostring(player.UserId), total)
+			end)
+		end)
+	end
+end
+
+-- All-time active play in seconds (the profile's Stats.PlaySeconds).
+function LeaderboardService.SubmitPlaytime(player: Player, seconds: number)
+	memoryPlayed[player.UserId] = seconds
+	if playedStore then
+		task.spawn(function()
+			pcall(function()
+				playedStore:SetAsync(tostring(player.UserId), math.floor(seconds))
 			end)
 		end)
 	end

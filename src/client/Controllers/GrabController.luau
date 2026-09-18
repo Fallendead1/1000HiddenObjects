@@ -358,6 +358,57 @@ local function tapAction()
 	end
 end
 
+-- ===== Touch: one button does it all =====
+-- Press the GRAB button to pick up what you're aiming at, slide the same finger to aim (the
+-- camera follows it, like dragging anywhere else on the screen), lift it to throw. A quick tap
+-- grabs and throws straight ahead.
+local TOUCH_TURN = Vector2.new(math.rad(0.5), math.rad(0.4)) -- camera turn per pixel of slide
+local aimTouch: InputObject? = nil
+local aimLast: Vector3 = Vector3.zero
+
+local function turnCamera(dx: number, dy: number)
+	local camera = workspace.CurrentCamera
+	local look = camera.CFrame.LookVector
+	local yaw = math.atan2(-look.X, -look.Z) - dx * TOUCH_TURN.X
+	local pitch = math.clamp(math.asin(math.clamp(look.Y, -1, 1)) - dy * TOUCH_TURN.Y, math.rad(-80), math.rad(80))
+	-- The default camera builds its next frame from this look direction, so the turn sticks.
+	camera.CFrame = CFrame.new(camera.CFrame.Position) * CFrame.fromOrientation(pitch, yaw, 0)
+end
+
+local function onActionButtonInput(input: InputObject)
+	if input.UserInputType ~= Enum.UserInputType.Touch or input.UserInputState ~= Enum.UserInputState.Begin or aimTouch then
+		return
+	end
+	aimTouch = input
+	aimLast = input.Position
+	pressAction()
+end
+
+local function onTouchMoved(touch: InputObject)
+	if touch ~= aimTouch then
+		return
+	end
+	local delta = touch.Position - aimLast
+	aimLast = touch.Position
+	if Controllers.CameraController.IsFirstPerson() then
+		turnCamera(delta.X, delta.Y)
+	end
+end
+
+local function onTouchEnded(touch: InputObject)
+	if touch ~= aimTouch then
+		return
+	end
+	aimTouch = nil
+	releaseAction()
+end
+
+-- How this player plays, so the server can make bins easier to hit on touch and controllers.
+local function reportInputMode()
+	local mode = if UI.IsGamepad() then "Gamepad" elseif UI.IsTouch() then "Touch" else "KeyboardMouse"
+	Remotes.Event("InputMode"):FireServer(mode)
+end
+
 local function onInputBegan(input: InputObject, gameProcessed: boolean)
 	if gameProcessed then
 		return
@@ -663,8 +714,12 @@ function GrabController.Init()
 	Remotes.Event("GrabResult").OnClientEvent:Connect(onGrabResult)
 	player:GetAttributeChangedSignal("HeldObjectId"):Connect(onHeldAttribute)
 
-	Controllers.HUDController.GetMobileActionButton().Activated:Connect(tapAction)
+	Controllers.HUDController.GetMobileActionButton().InputBegan:Connect(onActionButtonInput)
+	UserInputService.TouchMoved:Connect(onTouchMoved)
+	UserInputService.TouchEnded:Connect(onTouchEnded)
 	Controllers.HUDController.GetMobileDropButton().Activated:Connect(dropHeld)
+	reportInputMode()
+	UI.OnInputModeChanged(reportInputMode)
 
 	-- Studio-only test hook: drives the exact same press/release/tap paths as real input,
 	-- so the state machine can be tested without touching anyone's mouse.
@@ -699,6 +754,7 @@ function GrabController.Init()
 	player:GetAttributeChangedSignal("InMatch"):Connect(function()
 		if not player:GetAttribute("InMatch") then
 			pressDown = false
+			aimTouch = nil
 			setIdle()
 		end
 	end)

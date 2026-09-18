@@ -714,7 +714,8 @@ function HUDController.SetMobileAction(text: string?)
 	if not touch then
 		return
 	end
-	mobileDropButton.Visible = text == "THROW"
+	-- One button does it all on touch (hold to grab, slide to aim, let go to throw): no DROP.
+	mobileDropButton.Visible = false
 	mobileActionButton.Visible = text ~= nil
 	if text and mobileActionButton.Text ~= text then
 		mobileActionButton.Text = text

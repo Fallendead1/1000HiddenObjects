@@ -43,14 +43,14 @@ local Steps = {
 		Title = "GRAB",
 		Scene = "Grab",
 		Text = function()
-			return platformText("Aim at any object and HOLD LEFT MOUSE to grab it.", "Aim at any object and tap GRAB.", "Aim at any object and HOLD R2 to grab it.")
+			return platformText("Aim at any object and HOLD LEFT MOUSE to grab it.", "Aim at any object and HOLD the GRAB button.", "Aim at any object and HOLD R2 to grab it.")
 		end,
 	},
 	{
 		Title = "AIM & THROW",
 		Scene = "Throw",
 		Text = function()
-			return platformText("Keep holding and aim: the dotted arc shows where it lands. RELEASE to throw!", "Turn the camera to aim: the dotted arc shows where it lands. Tap THROW!", "Keep holding R2 and aim: the arc shows where it lands. RELEASE to throw!")
+			return platformText("Keep holding and aim: the dotted arc shows where it lands. RELEASE to throw!", "Keep holding and SLIDE your finger to aim: the arc shows where it lands. LET GO to throw!", "Keep holding R2 and aim: the arc shows where it lands. RELEASE to throw!")
 		end,
 	},
 	{
@@ -187,7 +187,7 @@ Scenes.Grab = function(stage: Frame, alive)
 		end
 		UI.PopIn(hand, 0.7, 0.2)
 		edge(target, UI.Colors.Green)
-		pop(stage, platformText("HOLD", "TAP GRAB", "HOLD R2"), UI.Colors.Green, UDim2.fromScale(0.5, 0.28))
+		pop(stage, platformText("HOLD", "HOLD GRAB", "HOLD R2"), UI.Colors.Green, UDim2.fromScale(0.5, 0.28))
 		UI.Tween(target, { Position = UDim2.fromScale(0.5, 0.45) }, 0.45, Enum.EasingStyle.Back)
 		UI.Tween(hand, { Position = UDim2.fromScale(0.55, 0.38) }, 0.45)
 		if not sleep(1.6, alive) then
@@ -631,7 +631,7 @@ local function roomView(): View?
 		local object = grabTarget()
 		return { Text = Steps[1].Text(), Tag = "1/4", Gui = action, Part = object, Lift = object and math.max(object.Size.X, object.Size.Y, object.Size.Z) / 2 + 1.5 }
 	elseif roomStep == 2 then
-		return { Text = platformText("Aim at the bin with the gold x2 and RELEASE to throw!", "Aim at the bin with the gold x2 and tap THROW!", "Aim at the bin with the gold x2 and RELEASE R2!"), Tag = "2/4", Gui = action }
+		return { Text = platformText("Aim at the bin with the gold x2 and RELEASE to throw!", "Slide to aim at the bin with the gold x2 and LET GO!", "Aim at the bin with the gold x2 and RELEASE R2!"), Tag = "2/4", Gui = action }
 	elseif roomStep == 4 then
 		local target = matchState:GetAttribute("TargetName") or "Golden Key"
 		if matchState:GetAttribute("Easy") then

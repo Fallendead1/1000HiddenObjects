@@ -112,6 +112,7 @@ return {
 	DataStoreName = "PlayerData_v1",
 	LeaderboardTopFinders = "TopObjectFinders_v1",
 	LeaderboardMostCleaned = "MostCleaned_v1",
+	LeaderboardMostPlayed = "MostPlayed_v1", -- all-time active play, in seconds
 	LeaderboardFastestPrefix = "FastestRoom_v1_",
 	AutosaveInterval = 120,
 	LeaderboardRefreshInterval = 60,

@@ -93,7 +93,7 @@ local function hideChip(reason: string?)
 	if reason and c:GetAttribute("Key") then
 		track(c:GetAttribute("Key"), reason)
 	end
-	UI.Tween(c, { Position = c.Position + UDim2.fromOffset(0, 30) }, 0.2)
+	UI.Tween(c, { Position = c.Position - UDim2.fromOffset(40, 0) }, 0.2)
 	for _, d in ipairs(c:GetDescendants()) do
 		if d:IsA("TextLabel") then
 			UI.Tween(d, { TextTransparency = 1 }, 0.2)
@@ -111,19 +111,23 @@ local function showChip(key: string, title: string, color: Color3, buttonText: s
 	end
 	local def = MonetizationConfig.FindDef(key)
 	local cfg = OFFERS[key] or {}
-	local frame = UI.Panel({ Name = "Offer_" .. key, Size = UDim2.fromOffset(360, 60), AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -186), BackgroundTransparency = 0.05 }, UI.Layers.HUD)
+	-- At the side of the screen, out of the way of the view: on touch at the top of the left
+	-- column (HUDController's side stack, above the streak and boosts), elsewhere mid-left.
+	local stack = Controllers.HUDController.GetSideStack()
+	local frame = UI.Panel({ Name = "Offer_" .. key, Size = UDim2.fromOffset(stack and 246 or 270, 94), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 12, 0.5, 0), BackgroundTransparency = 0.05, LayoutOrder = -1 }, stack or UI.Layers.HUD)
 	frame:SetAttribute("Key", key)
 	UI.Stroke(frame, color, 3)
 	UI.Glow(frame, color, 16, 0.6)
-	local badge = UI.Surface3D({ Size = UDim2.fromOffset(48, 48), Position = UDim2.fromOffset(6, 6) }, frame, color, 12, 0.12)
+	local badge = UI.Surface3D({ Size = UDim2.fromOffset(46, 46), Position = UDim2.fromOffset(6, 6) }, frame, color, 12, 0.12)
 	local icon = UI.Icon(badge, "Icon_Prod_" .. key, def and def.Icon or "!", { TextSize = 18 })
 	icon.Size = UDim2.fromScale(0.78, 0.7)
 	icon.AnchorPoint = Vector2.new(0.5, 0.5)
 	icon.Position = UDim2.fromScale(0.5, 0.45)
-	local text = UI.Label({ Text = title, FitText = 16, TextWrapped = false, Size = UDim2.new(1, -206, 1, -8), Position = UDim2.fromOffset(62, 4), TextXAlignment = Enum.TextXAlignment.Left }, frame)
+	-- Two lines of title next to the icon, the price button under it.
+	local text = UI.Label({ Text = title, TextSize = 15, TextWrapped = true, Size = UDim2.new(1, -94, 0, 46), Position = UDim2.fromOffset(58, 6), TextXAlignment = Enum.TextXAlignment.Left }, frame)
 	UI.TextGradient(text, color)
-	local buy = UI.Button({ Name = "Buy", Text = buttonText or price(key), Color = buttonText and UI.Colors.Green or UI.Colors.Purple, Size = UDim2.fromOffset(104, 44), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -40, 0.5, 0), FitText = 20, Shine = 1.8 }, frame)
-	local close = UI.Button({ Name = "Close", Text = "X", Color = UI.Colors.PanelLight, Size = UDim2.fromOffset(28, 28), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -6, 0.5, 0), FitText = 14 }, frame)
+	local buy = UI.Button({ Name = "Buy", Text = buttonText or price(key), Color = buttonText and UI.Colors.Green or UI.Colors.Purple, Size = UDim2.new(1, -12, 0, 32), AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -6), FitText = 18, Shine = 1.8 }, frame)
+	local close = UI.Button({ Name = "Close", Text = "X", Color = UI.Colors.PanelLight, Size = UDim2.fromOffset(26, 26), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -6, 0, 6), FitText = 13 }, frame)
 	buy.Activated:Connect(function()
 		if chip ~= frame then
 			return

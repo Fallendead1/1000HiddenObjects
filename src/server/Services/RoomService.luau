@@ -271,6 +271,112 @@ local function addFills(model: Model, config, origin: CFrame)
 	end
 end
 
+-- A tall, see-through wall behind every bin (on the side away from the room's middle, the same
+-- side as its sign): a throw that sails long hits it and drops in. Only junk bumps into it
+-- (collision group BinWall), so players walk through it, and aim rays and the camera ignore it
+-- (CanQuery off). Each bin's mouth gets its whole outline as attributes (BodyMin / BodyMax: the
+-- mouth, its walls and its prop; BackMin / BackMax: the back wall) for DepositService.
+local BACKBOARD_HEIGHT = 7 -- studs above the bin's rim
+local BACKBOARD_GAP = 0.3 -- the wall's centre behind the back edge of the bin's opening (0.4 thick)
+
+-- A part's world-aligned bounding box (a turned part: the box around its turned box).
+local function boxOf(part: BasePart): (Vector3, Vector3)
+	local r, u, l = part.CFrame.RightVector * part.Size.X / 2, part.CFrame.UpVector * part.Size.Y / 2, part.CFrame.LookVector * part.Size.Z / 2
+	local h = Vector3.new(math.abs(r.X) + math.abs(u.X) + math.abs(l.X), math.abs(r.Y) + math.abs(u.Y) + math.abs(l.Y), math.abs(r.Z) + math.abs(u.Z) + math.abs(l.Z))
+	return part.Position - h, part.Position + h
+end
+
+local function addBackboards(model: Model, centre: Vector3): { BasePart }
+	local folder = Instance.new("Folder")
+	folder.Name = "BinWalls"
+	folder.Parent = model
+	local structure = model:FindFirstChild("Structure")
+	local props = model:FindFirstChild("Props")
+	local walls = {}
+	for _, mouth in ipairs(model:GetDescendants()) do
+		if mouth:IsA("BasePart") and CollectionService:HasTag(mouth, "DepositBin") then
+			local def = DepositConfig.Types[mouth:GetAttribute("BinType") or ""]
+			local reach = math.max(mouth.Size.X, mouth.Size.Z) / 2 + 1.5
+			local mn, mx = boxOf(mouth)
+			local function grow(part: BasePart)
+				local a, b = boxOf(part)
+				mn = Vector3.new(math.min(mn.X, a.X), math.min(mn.Y, a.Y), math.min(mn.Z, a.Z))
+				mx = Vector3.new(math.max(mx.X, b.X), math.max(mx.Y, b.Y), math.max(mx.Z, b.Z))
+			end
+			for _, part in ipairs(structure and structure:GetDescendants() or {}) do
+				if part:IsA("BasePart") and string.sub(part.Name, 1, 3) == "Bin" and ((part.Position - mouth.Position) * Vector3.new(1, 0, 1)).Magnitude < reach then
+					grow(part)
+				end
+			end
+			for _, prop in ipairs(props and props:GetChildren() or {}) do
+				if def and prop.Name == def.PropKey and ((prop:GetPivot().Position - mouth.Position) * Vector3.new(1, 0, 1)).Magnitude < 3 then
+					for _, p in ipairs(prop:GetDescendants()) do
+						if p:IsA("BasePart") then
+							grow(p)
+						end
+					end
+				end
+			end
+			mouth:SetAttribute("BodyMin", mn)
+			mouth:SetAttribute("BodyMax", mx)
+			-- Square to the nearest wall, like the bin's sign (BinController).
+			local toCentre = Vector3.new(centre.X - mouth.Position.X, 0, centre.Z - mouth.Position.Z)
+			local facing = if math.abs(toCentre.X) > math.abs(toCentre.Z) then Vector3.new(math.sign(toCentre.X), 0, 0) else Vector3.new(0, 0, math.sign(toCentre.Z))
+			if facing.Magnitude < 0.5 then
+				facing = Vector3.new(0, 0, -1)
+			end
+			local width = (if facing.X ~= 0 then mx.Z - mn.Z else mx.X - mn.X) + 1
+			local rim = mx.Y
+			local bottom, top = rim - 1.2, rim + BACKBOARD_HEIGHT
+			-- The wall's face sits on the back edge of the bin's opening, so whatever hits it
+			-- drops straight into the bin (not down behind it).
+			local mouthMin, mouthMax = boxOf(mouth)
+			local mouthHalfDepth = if facing.X ~= 0 then (mouthMax.X - mouthMin.X) / 2 else (mouthMax.Z - mouthMin.Z) / 2
+			local mouthMid = (mouthMin + mouthMax) / 2
+			local at = Vector3.new(mouthMid.X, (bottom + top) / 2, mouthMid.Z) - facing * (mouthHalfDepth + BACKBOARD_GAP)
+			local color = def and def.Color or Color3.new(1, 1, 1)
+			local wall = Instance.new("Part")
+			wall.Name = "Backboard_" .. (mouth:GetAttribute("BinType") or "Bin")
+			wall.Anchored = true
+			wall.CanCollide = true
+			wall.CanQuery = false
+			wall.CanTouch = false
+			wall.CastShadow = false
+			wall.Material = Enum.Material.SmoothPlastic
+			wall.Color = color
+			wall.Transparency = 0.72
+			wall.Size = Vector3.new(width, top - bottom, 0.4)
+			wall.CFrame = CFrame.lookAt(at, at + facing)
+			wall.CollisionGroup = "BinWall"
+			wall.Parent = folder
+			-- A solid top edge and side posts in the bin's colour, so it reads as part of the bin.
+			local function trim(size: Vector3, offset: CFrame)
+				local t = Instance.new("Part")
+				t.Name = "BackboardTrim"
+				t.Anchored = true
+				t.CanCollide = false
+				t.CanQuery = false
+				t.CanTouch = false
+				t.CastShadow = false
+				t.Material = Enum.Material.SmoothPlastic
+				t.Color = color:Lerp(Color3.new(1, 1, 1), 0.15)
+				t.Size = size
+				t.CFrame = wall.CFrame * offset
+				t.Parent = folder
+			end
+			trim(Vector3.new(width + 0.3, 0.35, 0.55), CFrame.new(0, wall.Size.Y / 2, 0))
+			for _, side in ipairs({ -1, 1 }) do
+				trim(Vector3.new(0.35, wall.Size.Y, 0.55), CFrame.new(side * width / 2, 0, 0))
+			end
+			local bmn, bmx = boxOf(wall)
+			mouth:SetAttribute("BackMin", bmn)
+			mouth:SetAttribute("BackMax", bmx)
+			table.insert(walls, wall)
+		end
+	end
+	return walls
+end
+
 -- Shell parts whose faces sit exactly on top of each other flicker (z-fighting): a baseboard
 -- flush with the wainscot, layers of a poster, a cap on a headboard... For every such pair with
 -- different looks, the smaller part moves out through the shared face, a hair toward the room,
@@ -377,6 +483,7 @@ function RoomService.Build(config, origin: CFrame): RoomRuntime
 	-- The shell must be in Workspace first: clutter placement queries it to avoid clipping.
 	model.Parent = workspace
 	addWayfinding(model, config, origin)
+	local backboards = addBackboards(model, origin.Position)
 
 	-- Final room shells may ship without clutter: generate it from the room config.
 	local clutterFolder = model:FindFirstChild("Clutter")
@@ -392,6 +499,9 @@ function RoomService.Build(config, origin: CFrame): RoomRuntime
 			if part:IsA("BasePart") and not SURFACE_NAMES[part.Name] then
 				table.insert(solids, part)
 			end
+		end
+		for _, wall in ipairs(backboards) do
+			table.insert(solids, wall)
 		end
 		ClutterBuilder.Build(config, origin, clutterFolder, config.LayoutVariants and config.LayoutVariants[1] or 1, solids)
 	end

@@ -81,7 +81,7 @@ local losParams = RaycastParams.new()
 losParams.FilterType = Enum.RaycastFilterType.Include
 
 local function setupCollisionGroups()
-	for _, name in ipairs({ "Players", "Clutter", "ClutterHeavy", "ClutterFlying" }) do
+	for _, name in ipairs({ "Players", "Clutter", "ClutterHeavy", "ClutterFlying", "BinWall" }) do
 		pcall(function()
 			PhysicsService:RegisterCollisionGroup(name)
 		end)
@@ -92,6 +92,8 @@ local function setupCollisionGroups()
 	-- Thrown objects pass through players until they land, so a throw never bumps the thrower
 	-- or clobbers a teammate.
 	PhysicsService:CollisionGroupSetCollidable("Players", "ClutterFlying", false)
+	-- The walls behind the bins (RoomService) stop junk only; players walk through them.
+	PhysicsService:CollisionGroupSetCollidable("Players", "BinWall", false)
 end
 
 local function restingGroup(root: BasePart): string

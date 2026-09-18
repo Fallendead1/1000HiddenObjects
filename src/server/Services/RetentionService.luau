@@ -513,6 +513,11 @@ function RetentionService.Start()
 					end
 					if clock - st.LastActive <= RetentionConfig.ActiveWindow then
 						data.Playtime.Seconds += 1
+						-- All-time active play, for the TIME PLAYED board (sent every 5 minutes).
+						data.Stats.PlaySeconds = (data.Stats.PlaySeconds or 0) + 1
+						if data.Stats.PlaySeconds % 300 == 0 then
+							Services.LeaderboardService.SubmitPlaytime(player, data.Stats.PlaySeconds)
+						end
 						Services.DataService.MarkDirty(player)
 						player:SetAttribute("PlaytimeSeconds", data.Playtime.Seconds)
 					end

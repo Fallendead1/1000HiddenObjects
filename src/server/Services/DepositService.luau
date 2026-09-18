@@ -10,6 +10,10 @@
 
 	A swish is a throw from SwishMinDistance+ studs that drops in before its first impact.
 	Objects whose flight failed the anti-cheat check (or nobody ever held) are cleaned for free.
+
+	Phones and controllers aim less precisely, so a throw from a player using touch or a gamepad
+	(the client reports it: InputMode) counts as soon as it touches any part of a bin: its sides,
+	its rim or the wall behind it (the outline RoomService stores on each mouth).
 ]]
 
 local CollectionService = game:GetService("CollectionService")
@@ -26,7 +30,11 @@ local Services = require(script.Parent)
 
 local DepositService = {}
 
-type Bin = { Part: BasePart, Type: string, Name: string }
+type Box = { Min: Vector3, Max: Vector3 }
+type Bin = { Part: BasePart, Type: string, Name: string, Touch: { Box } }
+
+local LENIENT_MODES = { Touch = true, Gamepad = true }
+local TOUCH_MARGIN = 0.6 -- studs around a bin that still count as touching it
 
 local bins: { Bin } = {}
 local binsRuntime = nil
@@ -56,7 +64,17 @@ local function refreshBins(runtime)
 	end
 	for _, part in ipairs(CollectionService:GetTagged("DepositBin")) do
 		if part:IsA("BasePart") and part:IsDescendantOf(runtime.Model) then
-			table.insert(bins, { Part = part, Type = part:GetAttribute("BinType") or "", Name = part:GetAttribute("BinName") or "BIN" })
+			local touch = {}
+			local bodyMin, bodyMax = part:GetAttribute("BodyMin"), part:GetAttribute("BodyMax")
+			if typeof(bodyMin) == "Vector3" and typeof(bodyMax) == "Vector3" then
+				-- The bin itself, up to a little above its rim.
+				table.insert(touch, { Min = bodyMin, Max = bodyMax + Vector3.new(0, 1, 0) })
+			end
+			local backMin, backMax = part:GetAttribute("BackMin"), part:GetAttribute("BackMax")
+			if typeof(backMin) == "Vector3" and typeof(backMax) == "Vector3" then
+				table.insert(touch, { Min = backMin, Max = backMax })
+			end
+			table.insert(bins, { Part = part, Type = part:GetAttribute("BinType") or "", Name = part:GetAttribute("BinName") or "BIN", Touch = touch })
 		end
 	end
 end
@@ -211,6 +229,24 @@ local function crossesMouth(mouth: BasePart, a: Vector3, b: Vector3): boolean
 	return false
 end
 
+-- Is a thrown object (by its centre plus a bit of its size) touching this bin anywhere?
+local function touchesBin(bin: Bin, root: BasePart): boolean
+	local pad = Vector3.one * (TOUCH_MARGIN + math.min(1.5, root.Size.Magnitude / 2))
+	local p = root.Position
+	for _, box in ipairs(bin.Touch) do
+		local mn, mx = box.Min - pad, box.Max + pad
+		if p.X >= mn.X and p.X <= mx.X and p.Y >= mn.Y and p.Y <= mx.Y and p.Z >= mn.Z and p.Z <= mx.Z then
+			return true
+		end
+	end
+	return false
+end
+
+local function lenientThrower(root: BasePart): boolean
+	local thrower = Players:GetPlayerByUserId(root:GetAttribute("LastHolderUserId") or 0)
+	return thrower ~= nil and LENIENT_MODES[thrower:GetAttribute("InputMode") or ""] == true
+end
+
 local function sweptCheck()
 	local match = Services.MatchService.GetMatch()
 	if not match or match.State ~= "Searching" or #bins == 0 then
@@ -221,12 +257,11 @@ local function sweptCheck()
 			local p = root.Position
 			local prev = lastPos[root]
 			lastPos[root] = p
-			if prev then
-				for _, bin in ipairs(bins) do
-					if crossesMouth(bin.Part, prev, p) then
-						DepositService.Deposit(root, bin)
-						break
-					end
+			local lenient = lenientThrower(root)
+			for _, bin in ipairs(bins) do
+				if (prev and crossesMouth(bin.Part, prev, p)) or (lenient and touchesBin(bin, root)) then
+					DepositService.Deposit(root, bin)
+					break
 				end
 			end
 		end
@@ -260,6 +295,12 @@ function DepositService.Start()
 	end)
 	Players.PlayerRemoving:Connect(function(player)
 		limiter:Clear(player)
+	end)
+	-- The client says how it's being played (touch, controller or mouse and keyboard).
+	Remotes.Event("InputMode").OnServerEvent:Connect(function(player, mode)
+		if mode == "Touch" or mode == "Gamepad" or mode == "KeyboardMouse" then
+			player:SetAttribute("InputMode", mode)
+		end
 	end)
 end
 

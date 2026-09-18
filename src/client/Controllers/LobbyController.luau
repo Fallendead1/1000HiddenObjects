@@ -378,7 +378,17 @@ local BoardKinds = {
 	TopFinders = { Title = '<font color="#FFFFFF">TOP</font> <font color="#FFD200">FINDERS</font>', Attr = "TopFinders" },
 	Fastest = { Title = '<font color="#FFFFFF">FASTEST</font> <font color="#3CD2FF">ROOM #001</font>', Attr = "Fastest", Time = true },
 	MostCleaned = { Title = '<font color="#FFFFFF">MOST</font> <font color="#7DFF28">CLEANED</font>', Attr = "MostCleaned" },
+	MostPlayed = { Title = '<font color="#FFFFFF">TIME</font> <font color="#FF8C3C">PLAYED</font>', Attr = "MostPlayed", Duration = true },
 }
+
+-- "3h 25m" / "42m": how long someone has played, for the TIME PLAYED board.
+local function playedText(seconds: number): string
+	local minutes = math.floor(seconds / 60)
+	if minutes < 60 then
+		return string.format("%dm", minutes)
+	end
+	return string.format("%dh %02dm", minutes // 60, minutes % 60)
+end
 local BOARD_ROWS = 10
 
 local function attachCollectionBoard(part: BasePart)
@@ -472,7 +482,7 @@ local function boardRow(style: Frame, rank: number, entry, def): Frame
 	end
 	local amount = row:FindFirstChild("Amount")
 	if amount and amount:IsA("TextLabel") then
-		amount.Text = def.Time and FormatUtil.Time(entry.Value or 0) or FormatUtil.Compact(entry.Value or 0)
+		amount.Text = if def.Time then FormatUtil.Time(entry.Value or 0) elseif def.Duration then playedText(entry.Value or 0) else FormatUtil.Compact(entry.Value or 0)
 	end
 	if entry.UserId == player.UserId then
 		local stroke = row:FindFirstChildOfClass("UIStroke")
