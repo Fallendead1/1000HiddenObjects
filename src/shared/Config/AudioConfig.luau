@@ -53,6 +53,8 @@ return {
 		Streak = { Id = STREAK, Volume = 0.5, Pitch = 1 },
 		Treasure = { Id = "rbxasset://sounds/action_get_up.mp3", Volume = 0.8, Pitch = 2.2 },
 		ChunkBurst = { Id = "rbxasset://sounds/action_jump_land.mp3", Volume = 0.6, Pitch = { 0.55, 0.7 } },
+		EggTap = { Id = "rbxasset://sounds/snap.mp3", Volume = 0.7, Pitch = 1 }, -- each tap on a hatching egg (pitch climbs per tap)
+		EggBreak = { Id = "rbxasset://sounds/action_jump_land.mp3", Volume = 0.9, Pitch = 0.45 },
 		KeyRattle = { Id = "rbxasset://sounds/volume_slider.ogg", Volume = 0.35, Pitch = { 2.6, 3.0 } },
 		BinHover = { Id = "rbxasset://sounds/volume_slider.ogg", Volume = 0.2, Pitch = 1.9 },
 		TooHeavy = { Id = DENIED, Volume = 0.5, Pitch = 1, MinInterval = 1 }, -- repeated tries on a heavy object buzz once a second at most

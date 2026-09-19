@@ -14,8 +14,9 @@
 	by code (PetModels.Animate) around its own pivot (PivotOffset = the hinge, e.g. the shoulder).
 	Roles: WingL / WingR (flap), LegFL / LegFR / LegBL / LegBR (walk), Tail (wag), EarL / EarR
 	(flop), Head (looks around), Squash (a whole soft body that squashes and stretches, hinged at
-	its bottom). Joint parts stay anchored; anything welded to them rides along. In a viewport
-	they simply rest as built.
+	its bottom). The STRING attribute JointParent names another joint part it rides on (ears on a
+	head). Joint parts stay anchored; anything welded to them rides along. In a viewport they
+	simply rest as built.
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -278,7 +279,7 @@ end
 
 -- ===== Moving parts (Joint attributes) =====
 
-type JointInfo = { Part: BasePart, Role: string, Rest: CFrame, Size: Vector3, Phase: number }
+type JointInfo = { Part: BasePart, Role: string, Rest: CFrame, Size: Vector3, Phase: number, Parent: JointInfo?, Posed: CFrame? }
 local joints: { [Model]: { Scale: number, List: { JointInfo } } } = setmetatable({}, { __mode = "k" }) :: any
 
 local LEG_PHASE = { LegFL = 0, LegBR = 0, LegFR = math.pi, LegBL = math.pi, LegL = 0, LegR = math.pi }
@@ -310,6 +311,25 @@ local function jointsOf(model: Model)
 			table.insert(list, { Part = d, Role = role, Rest = root.CFrame:ToObjectSpace((d :: BasePart):GetPivot()), Size = (d :: BasePart).Size, Phase = i * 1.7 })
 		end
 	end
+	-- Parts that ride on another joint (JointParent) rest relative to it, and are posed after it.
+	local byName = {}
+	for _, j in ipairs(list) do
+		byName[j.Part.Name] = j
+	end
+	for _, j in ipairs(list) do
+		local parent = byName[j.Part:GetAttribute("JointParent") or ""]
+		if parent and parent ~= j then
+			j.Parent = parent
+		end
+	end
+	for _, j in ipairs(list) do
+		if j.Parent then
+			j.Rest = (root.CFrame * j.Parent.Rest):ToObjectSpace(j.Part:GetPivot())
+		end
+	end
+	table.sort(list, function(a, b)
+		return (a.Parent and 1 or 0) < (b.Parent and 1 or 0)
+	end)
 	cache = { Scale = scale, List = list }
 	joints[model] = cache
 	return cache
@@ -352,11 +372,14 @@ function PetModels.Animate(model: Model, clock: number, moving: boolean, flies: 
 			local size = Vector3.new(j.Size.X * (1 - s * 0.6), j.Size.Y * (1 + s), j.Size.Z * (1 - s * 0.6))
 			j.Part.Size = size
 			local hinge = base * j.Rest
+			j.Posed = hinge
 			local offset = j.Part.PivotOffset
 			j.Part.CFrame = hinge * CFrame.new(-offset.Position.X, -offset.Position.Y * (1 + s), -offset.Position.Z)
 			continue
 		end
-		j.Part:PivotTo(base * CFrame.new(j.Rest.Position) * turn * j.Rest.Rotation)
+		local posed = ((j.Parent and j.Parent.Posed) or base) * CFrame.new(j.Rest.Position) * turn * j.Rest.Rotation
+		j.Posed = posed
+		j.Part:PivotTo(posed)
 	end
 end
 
@@ -384,7 +407,7 @@ function PetModels.Viewport(parent: Instance, model: Model, props: { [string]: a
 	model:PivotTo(CFrame.new())
 	model.Parent = vp
 	local r = PetModels.Radius(model)
-	local distance = r / math.tan(math.rad(camera.FieldOfView / 2)) * 1.05
+	local distance = r / math.tan(math.rad(camera.FieldOfView / 2)) * 0.92
 	camera.CFrame = CFrame.lookAt(Vector3.new(0, r * 0.35, -distance), Vector3.zero)
 	if spin then
 		local angle = 0

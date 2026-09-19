@@ -8,14 +8,16 @@
 	             (payload.Pet) tosses it in. Then it pokes around there until its next trip, and
 	             walks back to its owner when no more work comes. PetBurst: the dragon flies to a
 	             packed junk just before it bursts.
-	  Hatching   Hatch plays the egg (or gift) opening: shakes, a flash, then the pet with its
-	             rarity. Tap to skip.
+	  Hatching   Hatch plays the egg (or gift) opening: the player taps it five times, it cracks
+	             a little more each time, then the top pops off and the pet comes out in front
+	             of a burst of light in its rarity's colour.
 	  Welcome    a player who hasn't had their welcome pet yet gets a gift to open.
 ]]
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 
 local Shared = ReplicatedStorage.Shared
 local PetConfig = require(Shared.Config.PetConfig)
@@ -408,55 +410,161 @@ local function rarityOf(kind: string)
 	return def and PetConfig.Rarities[def.Rarity] or PetConfig.Rarities.Common
 end
 
+local TAPS_TO_HATCH = 5
+local AUTO_TAP_SECONDS = 3.5 -- nobody gets stuck: the egg gets a tap by itself after this long
+
+-- A burst of light rays behind the pet, in its rarity's colour (every colour for the rarest).
+local function sunburst(parent: Instance, color: Color3, rainbow: boolean): Frame
+	local holder = UI.Frame({ Name = "Sunburst", BackgroundTransparency = 1, Size = UDim2.fromOffset(760, 760), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), ZIndex = 101 }, parent)
+	local count = 20
+	for i = 1, count do
+		local ray = UI.Frame({ BackgroundColor3 = rainbow and Color3.fromHSV((i - 1) / count, 0.75, 1) or color, Size = UDim2.new(0, 30, 0.5, 0), AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.fromScale(0.5, 0.5), Rotation = (i - 1) * 360 / count, ZIndex = 101 }, holder)
+		UI.New("UIGradient", { Rotation = 90, Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.75, 0.55), NumberSequenceKeypoint.new(1, 0.2) }) }, ray)
+	end
+	return holder
+end
+
+-- Bits of shell fly off with every tap.
+local function shards(parent: Instance, color: Color3, count: number)
+	for _ = 1, count do
+		local size = math.random(8, 16)
+		local bit = UI.Frame({ BackgroundColor3 = color, Size = UDim2.fromOffset(size, size), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Rotation = math.random(0, 90), ZIndex = 103 }, parent)
+		UI.New("UICorner", { CornerRadius = UDim.new(0, 3) }, bit)
+		local angle = math.random() * math.pi * 2
+		local reach = math.random(140, 260)
+		local goal = UDim2.new(0.5, math.cos(angle) * reach, 0.5, math.sin(angle) * reach + 90)
+		UI.Tween(bit, { Position = goal, Rotation = bit.Rotation + math.random(-260, 260), BackgroundTransparency = 1 }, 0.55 + math.random() * 0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out).Completed:Once(function()
+			bit:Destroy()
+		end)
+	end
+end
+
+--[[
+	The player cracks the egg open: five taps (a click, a touch, Space / E or the A button), each
+	one a harder shake, a new crack and bits of shell; then the top pops off in a flash and the
+	pet comes out in front of a burst of light in its rarity's colour. Egg models name their
+	moving pieces ShellTop / ShellBottom and number their cracks with a Crack attribute (1-4).
+]]
 local function playHatch(payload)
 	local def = PetConfig.Get(payload.Kind or "")
 	if not def then
 		return
 	end
 	local rarity = rarityOf(def.Key)
-	local isEgg = PetConfig.Eggs[payload.Egg or ""] ~= nil
+	local eggDef = PetConfig.Eggs[payload.Egg or ""]
+	local isEgg = eggDef ~= nil
 	local overlay = UI.New("TextButton", { Name = "Hatch", Text = "", AutoButtonColor = false, BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 100 }, UI.Layers.Top) :: TextButton
 	UI.Tween(overlay, { BackgroundTransparency = 0.25 }, 0.25)
-	local skip = false
+	local tapped = false
 	overlay.Activated:Connect(function()
-		skip = true
+		tapped = true
 	end)
+	local keys = UserInputService.InputBegan:Connect(function(input)
+		local k = input.KeyCode
+		if k == Enum.KeyCode.Space or k == Enum.KeyCode.E or k == Enum.KeyCode.Return or k == Enum.KeyCode.ButtonA or k == Enum.KeyCode.ButtonX then
+			tapped = true
+		end
+	end)
+	local wash = UI.Frame({ Name = "RarityWash", BackgroundColor3 = rarity.Color, BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 100 }, overlay)
+	UI.New("UIGradient", { Rotation = 90, Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.85), NumberSequenceKeypoint.new(0.45, 0.1), NumberSequenceKeypoint.new(1, 0.9) }) }, wash)
 	local stage = UI.Frame({ BackgroundTransparency = 1, Size = UDim2.fromOffset(360, 360), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.42), ZIndex = 101 }, overlay)
-	local rays = UI.Image({ Image = UI.Asset("Rays") or "", Size = UDim2.fromOffset(520, 520), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), ImageColor3 = rarity.Color, ImageTransparency = 1, ZIndex = 101 }, stage)
-	local top = UI.Label({ Text = isEgg and "HATCHING..." or "OPENING...", TextSize = 40, TextWrapped = false, Size = UDim2.new(1, 0, 0, 50), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0.08, 0), ZIndex = 103 }, overlay)
+	local top = UI.Label({ Text = isEgg and "TAP THE EGG!" or "TAP TO OPEN!", TextSize = 40, TextWrapped = false, Size = UDim2.new(1, 0, 0, 50), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0.08, 0), ZIndex = 103 }, overlay)
 	UI.Stroke(top, Color3.new(0, 0, 0), 4, 0)
 	UI.TextGradient(top, UI.Colors.Gold)
-	local hint = UI.Label({ Text = "TAP TO SKIP", TextSize = 16, TextColor3 = UI.Colors.TextDim, TextWrapped = false, Size = UDim2.new(1, 0, 0, 20), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0.42, 318), ZIndex = 103 }, overlay)
+	UI.Pulse(top, 0.05, 3)
+	local hint = UI.Label({ Text = "", TextSize = 16, TextColor3 = UI.Colors.TextDim, TextWrapped = false, Size = UDim2.new(1, 0, 0, 20), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0.42, 318), ZIndex = 103 }, overlay)
+	-- Five pips fill up as the shell gives way.
+	local pips = UI.Frame({ BackgroundTransparency = 1, Size = UDim2.fromOffset(TAPS_TO_HATCH * 34, 26), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0.42, 200), ZIndex = 103 }, overlay)
+	UI.ListLayout(pips, Enum.FillDirection.Horizontal, 8, Enum.HorizontalAlignment.Center)
+	local pipList = {}
+	for i = 1, TAPS_TO_HATCH do
+		local pip = UI.Frame({ BackgroundColor3 = Color3.fromRGB(60, 64, 84), Size = UDim2.fromOffset(26, 26), LayoutOrder = i, ZIndex = 103 }, pips)
+		UI.New("UICorner", { CornerRadius = UDim.new(1, 0) }, pip)
+		UI.New("UIStroke", { Color = Color3.new(1, 1, 1), Thickness = 2 }, pip)
+		pipList[i] = pip
+	end
 
 	local eggModel = PetModels.BuildEgg(payload.Egg or "Gift")
 	local vp = PetModels.Viewport(stage, eggModel, { ZIndex = 102 })
+	local shellTop = eggModel:FindFirstChild("ShellTop") :: BasePart?
+	local cracks: { [number]: BasePart } = {}
+	for _, d in ipairs(eggModel:GetDescendants()) do
+		if d:IsA("BasePart") and d:GetAttribute("Crack") then
+			cracks[d:GetAttribute("Crack")] = d
+		end
+	end
+	local shellColor = eggDef and eggDef.Color or Color3.fromRGB(255, 120, 170)
 	Controllers.AudioController.Play("ChunkBurst")
-	-- Three shakes, each harder.
+
 	local t0 = os.clock()
-	local egg = eggModel
-	for i = 1, 3 do
-		local shakeEnd = os.clock() + 0.45
-		while os.clock() < shakeEnd and not skip do
-			local t = os.clock() - t0
-			egg:PivotTo(CFrame.Angles(0, t * 0.6, math.sin(t * 40) * 0.08 * i))
+	local function pose(shake: number)
+		local t = os.clock() - t0
+		eggModel:PivotTo(CFrame.Angles(0, math.rad(-25) + math.sin(t * 0.9) * 0.25, math.sin(t * 2.2) * 0.04 + math.sin(t * 46) * shake))
+	end
+	local taps = 0
+	local lastTap = os.clock()
+	while taps < TAPS_TO_HATCH do
+		pose(0)
+		RunService.RenderStepped:Wait()
+		if tapped or os.clock() - lastTap > AUTO_TAP_SECONDS then
+			tapped = false
+			taps += 1
+			lastTap = os.clock()
+			local crack = cracks[math.min(taps, 4)]
+			if crack then
+				crack.Transparency = 0
+			end
+			pipList[taps].BackgroundColor3 = UI.Colors.Gold
+			UI.PopIn(pipList[taps], 0.4, 0.25)
+			Controllers.AudioController.Play("EggTap", 0.85 + taps * 0.13)
+			shards(stage, shellColor, 3 + taps * 2)
+			top.Text = taps < TAPS_TO_HATCH and ({ "IT MOVED!", "IT'S CRACKING!", "KEEP GOING!", "ALMOST THERE!" })[taps] or "HERE IT COMES!"
+			-- The whole stage jolts with the egg, and always ends back at its centre.
+			local punchEnd = os.clock() + 0.3 + taps * 0.04
+			local jolt = 4 + taps * 3
+			while os.clock() < punchEnd do
+				pose(0.035 + taps * 0.03)
+				stage.Position = UDim2.new(0.5, math.random(-jolt, jolt), 0.42, math.random(-jolt, jolt))
+				RunService.RenderStepped:Wait()
+			end
+			stage.Position = UDim2.fromScale(0.5, 0.42)
+		end
+	end
+	-- The last shake, then the top pops off.
+	local burstEnd = os.clock() + 0.45
+	while os.clock() < burstEnd do
+		pose(0.22)
+		stage.Position = UDim2.new(0.5, math.random(-16, 16), 0.42, math.random(-16, 16))
+		RunService.RenderStepped:Wait()
+	end
+	stage.Position = UDim2.fromScale(0.5, 0.42)
+	Controllers.AudioController.Play("EggBreak")
+	shards(stage, shellColor, 18)
+	if shellTop then
+		for _, c in pairs(cracks) do
+			c.Transparency = 1
+		end
+		local from = shellTop.CFrame
+		local popEnd = os.clock() + 0.32
+		while os.clock() < popEnd do
+			local u = 1 - (popEnd - os.clock()) / 0.32
+			shellTop.CFrame = from * CFrame.new(0, u * 3.2, u * -0.8) * CFrame.Angles(u * 1.6, 0, u * 0.9)
 			RunService.RenderStepped:Wait()
 		end
-		if skip then
-			break
-		end
-		Controllers.AudioController.Play("KeyRattle")
-		task.wait(0.15)
 	end
-	skip = false
+	tapped = false
+	local skip = false
 	-- The reveal.
 	Controllers.FXController.ScreenFlash(Color3.new(1, 1, 1), 0.5)
 	Controllers.AudioController.Play(rarity.Order >= 4 and "LevelUp" or "CashAward")
 	vp:Destroy()
+	pips:Destroy()
+	UI.Tween(wash, { BackgroundTransparency = 0.35 }, 0.4)
+	local rays = sunburst(stage, rarity.Color, rarity.Order >= 4)
 	local petModel = PetModels.Build(def.Key)
 	PetModels.Viewport(stage, petModel, { ZIndex = 102 }, true)
 	PetModels.Play(petModel, "Celebrate")
 	UI.PopIn(stage, 0.5, 0.35)
-	rays.ImageTransparency = 0.25
 	top.Text = payload.New and "NEW PET!" or string.format("LEVEL UP!  LV %d", payload.Level or 1)
 	UI.TextGradient(top, payload.New and UI.Colors.Gold or UI.Colors.Cyan)
 	local name = UI.Label({ Text = string.upper(def.Name), TextSize = 36, TextWrapped = false, Size = UDim2.new(1, 0, 0, 44), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0.42, 190), ZIndex = 103 }, overlay)
@@ -470,12 +578,19 @@ local function playHatch(payload)
 	if root then
 		Controllers.FXController.Confetti(root.Position)
 	end
-	local close = os.clock() + 4.5
+	local opened = os.clock()
+	local close = opened + 6
 	local spin = 0
 	while os.clock() < close and not skip do
-		spin += RunService.RenderStepped:Wait() * 30
+		spin += RunService.RenderStepped:Wait() * (rarity.Order >= 4 and 45 or 28)
 		rays.Rotation = spin
+		-- A tap closes it, once the pet has had its moment.
+		if tapped and os.clock() - opened > 0.8 then
+			skip = true
+		end
+		tapped = false
 	end
+	keys:Disconnect()
 	UI.Tween(overlay, { BackgroundTransparency = 1 }, 0.25)
 	for _, d in ipairs(overlay:GetDescendants()) do
 		if d:IsA("TextLabel") then
@@ -484,6 +599,8 @@ local function playHatch(payload)
 			UI.Tween(d, { ImageTransparency = 1 }, 0.2)
 		elseif d:IsA("ViewportFrame") then
 			UI.Tween(d, { ImageTransparency = 1 }, 0.2)
+		elseif d:IsA("Frame") and d.BackgroundTransparency < 1 then
+			UI.Tween(d, { BackgroundTransparency = 1 }, 0.2)
 		end
 	end
 	task.wait(0.3)

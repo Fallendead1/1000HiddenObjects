@@ -9,6 +9,7 @@
 ]]
 
 local CollectionService = game:GetService("CollectionService")
+local RunService = game:GetService("RunService")
 local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -277,6 +278,106 @@ local function render()
 	renderers[current](pages[current])
 end
 
+-- Each egg on show in the lobby floats, turns slowly and burns with an aura in its own colour:
+-- a flame of light around it, sparkles, a glowing ring on its pedestal and a light. The rarer
+-- the egg, the stronger all of it. The egg itself is the model "<Egg>Display" next to the
+-- pedestal (the pedestal is the part tagged EggPedestal).
+local AURAS = {
+	Dusty = { Color = Color3.fromRGB(255, 214, 150), Second = Color3.fromRGB(255, 240, 210), Power = 1 },
+	Shiny = { Color = Color3.fromRGB(90, 210, 255), Second = Color3.fromRGB(255, 255, 255), Power = 1.6 },
+	Royal = { Color = Color3.fromRGB(200, 90, 255), Second = Color3.fromRGB(255, 210, 60), Power = 2.4 },
+}
+
+local function eggAura(pedestal: BasePart, eggKey: string)
+	local aura = AURAS[eggKey]
+	local display = pedestal.Parent and pedestal.Parent:WaitForChild(eggKey .. "Display", 10)
+	if not aura or not (display and display:IsA("Model")) or display:GetAttribute("HasAura") then
+		return
+	end
+	display:SetAttribute("HasAura", true)
+	local home = display:GetPivot()
+	local power = aura.Power
+
+	local core = Instance.new("Part")
+	core.Name = "EggAura"
+	core.Anchored = true
+	core.CanCollide = false
+	core.CanQuery = false
+	core.CanTouch = false
+	core.Transparency = 1
+	core.Size = Vector3.new(2.2, 3, 2.2)
+	core.CFrame = CFrame.new(home.Position)
+	core.Parent = workspace.CurrentCamera
+
+	local flame = Instance.new("ParticleEmitter")
+	flame.Name = "Flame"
+	flame.Texture = "rbxasset://textures/particles/fire_main.dds"
+	flame.Color = ColorSequence.new(aura.Color, aura.Second)
+	flame.LightEmission = 1
+	flame.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 2.4 + power * 0.5), NumberSequenceKeypoint.new(1, 0.6) })
+	flame.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.2, 0.72 - power * 0.06), NumberSequenceKeypoint.new(1, 1) })
+	flame.Lifetime = NumberRange.new(0.9, 1.4)
+	flame.Speed = NumberRange.new(2.2, 3.4 + power)
+	flame.Rate = 7 * power
+	flame.Rotation = NumberRange.new(-20, 20)
+	flame.EmissionDirection = Enum.NormalId.Top
+	flame.LockedToPart = true
+	flame.Parent = core
+
+	local sparkles = Instance.new("ParticleEmitter")
+	sparkles.Name = "Sparkles"
+	sparkles.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+	sparkles.Color = ColorSequence.new(aura.Second, aura.Color)
+	sparkles.LightEmission = 1
+	sparkles.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(0.3, 0.35 + power * 0.1), NumberSequenceKeypoint.new(1, 0) })
+	sparkles.Lifetime = NumberRange.new(1.2, 2.2)
+	sparkles.Speed = NumberRange.new(0.6, 1.8)
+	sparkles.SpreadAngle = Vector2.new(180, 180)
+	sparkles.Rate = 5 * power
+	sparkles.RotSpeed = NumberRange.new(-90, 90)
+	sparkles.Shape = Enum.ParticleEmitterShape.Sphere
+	sparkles.ShapeStyle = Enum.ParticleEmitterShapeStyle.Surface
+	sparkles.Parent = core
+
+	local light = Instance.new("PointLight")
+	light.Color = aura.Color
+	light.Range = 9 + power * 3
+	light.Brightness = 0.8 * power
+	light.Shadows = false
+	light.Parent = core
+
+	-- A ring of light lying on the pedestal under the egg.
+	local ring = Instance.new("Part")
+	ring.Name = "EggAuraRing"
+	ring.Shape = Enum.PartType.Cylinder
+	ring.Anchored = true
+	ring.CanCollide = false
+	ring.CanQuery = false
+	ring.CanTouch = false
+	ring.CastShadow = false
+	ring.Material = Enum.Material.Neon
+	ring.Color = aura.Color
+	ring.Size = Vector3.new(0.12, 3.1, 3.1)
+	ring.CFrame = CFrame.new(pedestal.Position + Vector3.new(0, pedestal.Size.Y / 2 + 0.05, 0)) * CFrame.Angles(0, 0, math.rad(90))
+	ring.Parent = workspace.CurrentCamera
+
+	local seed = pedestal.Position.Z
+	local conn
+	conn = RunService.RenderStepped:Connect(function()
+		if not display.Parent or not pedestal.Parent then
+			conn:Disconnect()
+			core:Destroy()
+			ring:Destroy()
+			return
+		end
+		local t = os.clock() + seed
+		display:PivotTo(home * CFrame.new(0, 0.25 + math.sin(t * 1.6) * 0.18, 0) * CFrame.Angles(0, t * 0.7, math.sin(t * 1.1) * 0.05))
+		ring.Transparency = 0.35 + math.sin(t * 2.4) * 0.2
+		local wide = 3.1 + math.sin(t * 2.4) * 0.25
+		ring.Size = Vector3.new(0.12, wide, wide)
+	end)
+end
+
 function PetShopController.Init()
 	menu = UI.Menu("Pets", "PETS", UDim2.fromOffset(860, 560), UI.Colors.Pink)
 	local tabs = UI.Frame({ BackgroundTransparency = 1, Size = UDim2.new(1, -240, 0, 44) }, menu.Content)
@@ -312,6 +413,9 @@ function PetShopController.Init()
 	local function attach(part: Instance, eggKey: string?)
 		if not part:IsA("BasePart") or part:FindFirstChild("PetShopPrompt") then
 			return
+		end
+		if eggKey then
+			task.spawn(eggAura, part, eggKey)
 		end
 		local egg = eggKey and PetConfig.Eggs[eggKey]
 		local prompt = Instance.new("ProximityPrompt")
