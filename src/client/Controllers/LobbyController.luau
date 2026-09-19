@@ -389,7 +389,7 @@ local function playedText(seconds: number): string
 	end
 	return string.format("%dh %02dm", minutes // 60, minutes % 60)
 end
-local BOARD_ROWS = 10
+local BOARD_ROWS = 100 -- GameConfig.LeaderboardSize: the list scrolls
 
 local function attachCollectionBoard(part: BasePart)
 	local sg = UI.Surface(part, (part:GetAttribute("Face") and Enum.NormalId[part:GetAttribute("Face")]) or Enum.NormalId.Front, 30)
@@ -421,8 +421,28 @@ local function signPill(part: BasePart, text: string, color: Color3, size: UDim2
 	UI.New("UITextSizeConstraint", { MaxTextSize = 48 }, label)
 end
 
+-- The shop's sign floats over the stand's roof, big and solid so it never blends into the stand:
+-- bright purple with white letters, seen from across the lobby.
+local function shopSign(part: BasePart)
+	local stand = part:FindFirstAncestorOfClass("Model")
+	local top = part.Position.Y + part.Size.Y / 2
+	if stand then
+		local cf, size = stand:GetBoundingBox()
+		top = cf.Position.Y + size.Y / 2
+	end
+	local offset = Vector3.new(0, top - part.Position.Y + 3, 0)
+	local bb = UI.Billboard(part, UDim2.fromScale(9, 3), offset, 140)
+	local group = fadeWithDistance(bb, part.Position + offset, 90, 140)
+	local pill = UI.Frame({ Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(1, 1, 1) }, group)
+	UI.New("UICorner", { CornerRadius = UDim.new(0.5, 0) }, pill)
+	UI.New("UIGradient", { Rotation = 90, Color = ColorSequence.new(Color3.fromRGB(240, 70, 255), Color3.fromRGB(150, 0, 235)) }, pill)
+	UI.Stroke(pill, Color3.new(1, 1, 1), 4, 0)
+	local label = UI.Label({ Text = "SHOP", TextScaled = true, TextColor3 = Color3.new(1, 1, 1), Size = UDim2.new(0.8, 0, 0.74, 0), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5) }, pill)
+	UI.Stroke(label, Color3.fromRGB(60, 0, 100), 3, 0)
+end
+
 local function attachShopStand(part: BasePart)
-	signPill(part, "SHOP", UI.Colors.Purple, UDim2.fromScale(4.5, 1.6), 3, 22, 34)
+	shopSign(part)
 	local prompt = Instance.new("ProximityPrompt")
 	prompt.ActionText = "Open Shop"
 	prompt.ObjectText = "Shop"
@@ -533,6 +553,13 @@ local function attachLeaderboard(part: BasePart)
 	local layout = list:FindFirstChildOfClass("UIListLayout")
 	if layout then
 		layout.SortOrder = Enum.SortOrder.LayoutOrder
+	end
+	-- The top 100 scroll (mouse wheel, or a drag on touch).
+	if list:IsA("ScrollingFrame") then
+		list.CanvasSize = UDim2.new(0, 0, 0, 0)
+		list.AutomaticCanvasSize = Enum.AutomaticSize.Y
+		list.ScrollingEnabled = true
+		list.ScrollingDirection = Enum.ScrollingDirection.Y
 	end
 	local spacer = list:FindFirstChild("Empty")
 	if spacer and spacer:IsA("GuiObject") then

@@ -382,17 +382,33 @@ local function stepBills()
 	end
 end
 
+-- An armful thrown together (Armful): what has gone in so far, celebrated once as one total.
+local armfuls: { [number]: { Payload: { [string]: any }, Count: number, Done: boolean } } = {}
+local celebrateDeposit: (payload: { [string]: any }) -> ()
+
+local function flushArmful(id: number)
+	local a = armfuls[id]
+	if not a or a.Done then
+		return
+	end
+	a.Done = true
+	a.Payload.Multi = a.Count >= 2 and a.Count or nil
+	celebrateDeposit(a.Payload)
+	task.delay(5, function()
+		armfuls[id] = nil
+	end)
+end
+
 local function onDeposit(payload)
 	if not payload.BinPosition then
 		return
 	end
-	-- A helper pet's deposit: the pet carries it in (PetController); a quiet pop for the owner.
+	-- A helper pet's deposit: the pet has just reached the bin with it (PetController tosses it
+	-- in); a quiet pop for the owner.
 	if payload.Pet then
 		Controllers.AudioController.PlayAt("Deposit", payload.BinPosition)
 		if payload.Mine then
-			task.delay(1, function()
-				worldCashPopup(payload.BinPosition + Vector3.new(0, 2, 0), payload.Amount or 0, payload.Match and "PET  MATCH x2" or "PET")
-			end)
+			worldCashPopup(payload.BinPosition + Vector3.new(0, 2, 0), payload.Amount or 0, payload.Match and "PET  MATCH x2" or "PET")
 		end
 		return
 	end
@@ -401,6 +417,37 @@ local function onDeposit(payload)
 		Controllers.AudioController.PlayAt("Deposit", payload.BinPosition)
 		return
 	end
+	local id = payload.Group
+	if id and (payload.GroupSize or 1) > 1 then
+		local a = armfuls[id]
+		if a and a.Done then
+			-- A straggler that dropped in after the total was shown: its own small popup.
+			payload.Multi = nil
+			celebrateDeposit(payload)
+			return
+		end
+		if not a then
+			a = { Payload = table.clone(payload), Count = 0, Done = false }
+			a.Payload.Amount = 0
+			armfuls[id] = a
+			task.delay(0.55, flushArmful, id)
+		end
+		local total = a.Payload
+		a.Count += 1
+		total.Amount += payload.Amount or 0
+		total.Streak = math.max(total.Streak or 0, payload.Streak or 0)
+		for _, flag in ipairs({ "Match", "Swish", "Bank", "Long", "Fever", "Treasure" }) do
+			total[flag] = total[flag] or payload[flag]
+		end
+		if a.Count >= payload.GroupSize then
+			flushArmful(id)
+		end
+		return
+	end
+	celebrateDeposit(payload)
+end
+
+function celebrateDeposit(payload)
 	-- The deposit sound always plays; treasure / swish ring on top of it, and a streak climbs a
 	-- semitone with every deposit it lasts (up to an octave).
 	Controllers.AudioController.Play(payload.Match and "DepositMatch" or "Deposit")

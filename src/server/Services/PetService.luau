@@ -5,9 +5,14 @@
 
 	Attributes: PetData (JSON: Owned + Equipped), PetsEquipped (comma list, read by every client to
 	draw followers), PetSlots, PetWelcomed, PetCleaned (this room), PetSnackExpires.
-	FX events: Hatch { Egg, Kind, New, Level } to the player; PetTrip { Owner, Kind, Object,
-	From, To } and PetBurst { Owner, Kind, Position } to everyone in the room. Pet deposits come
-	through DepositService as a normal Deposit event with Pet set.
+	FX events: Hatch { Egg, Kind, New, Level } to the player; to everyone in the room: PetTrip
+	{ Owner, Kind, From, To, T1, T2 } (it sets off for the junk: T1 seconds there, T2 on to the
+	bin), PetPickup { Owner, Kind, Size, Color, Index } (it has it), PetIdle (nothing to pick up
+	after all) and PetBurst { Owner, Kind, Position, T }. The pay comes through DepositService as
+	a normal Deposit event with Pet set, when the pet reaches the bin.
+
+	Pets work on their own: the server keeps where each one stands (Work.Pos), picks its next
+	junk from there and times the walk by distance; the clients draw the walking.
 
 	The helper rules are in PetConfig's header: pets never touch the hidden object, the junk over
 	it or anything near its spot, only take the top of a pile, stay under a hard rate cap, and
@@ -31,7 +36,8 @@ local Services = require(script.Parent)
 
 local PetService = {}
 
-type Work = { Next: { [string]: number }, BurstAt: { [string]: number }, Tokens: number, TokenAt: number, MatchId: string? }
+-- Pos: where each pet stands in the room (nil: by its owner).
+type Work = { Next: { [string]: number }, BurstAt: { [string]: number }, Pos: { [string]: Vector3 }, Tokens: number, TokenAt: number, MatchId: string? }
 
 local work: { [Player]: Work } = {}
 local limiter = RateLimiter.new(3, 4)
@@ -39,7 +45,6 @@ local rng = Random.new()
 local overlap = OverlapParams.new()
 overlap.FilterType = Enum.RaycastFilterType.Include
 
-local TRIP_SECONDS = 0.75 -- the pet flies to the junk before it is picked up
 
 local function now(): number
 	return workspace:GetServerTimeNow()
@@ -312,13 +317,16 @@ local function pickJunk(player: Player, match, def, here: Vector3, count: number
 	end
 	local blocked, spot = forbidden(match)
 	local candidates = {}
+	-- Now and then a pet fancies something on the far side of the room.
+	local farTrip = rng:NextNumber() < 0.3
 	for _, obj in ipairs(match.Runtime.Objects) do
 		if obj.Parent and obj.Anchored and not taken[obj] and not blocked[obj]
 			and not obj:GetAttribute("IsChunk") and not obj:GetAttribute("Deposited") and not obj:GetAttribute("PetClaimed")
 			and (obj:GetAttribute("Weight") or 1) <= def.MaxWeight and not Services.ObjectService.IsBusy(obj) then
 			local d = (obj.Position - here).Magnitude
-			if d <= PetConfig.Reach and (not spot or xz(obj.Position, spot) >= PetConfig.SafeRadius) then
-				local score = d + rng:NextNumber() * 6
+			if d <= PetConfig.RoamReach and (not spot or xz(obj.Position, spot) >= PetConfig.SafeRadius) then
+				-- Mostly something close by, now and then a walk across the room.
+				local score = if farTrip then rng:NextNumber() * PetConfig.RoamReach else d + rng:NextNumber() * 16
 				local category = obj:GetAttribute("Category")
 				if def.TreasureFirst and category == "Treasure" then
 					score -= 200
@@ -329,25 +337,29 @@ local function pickJunk(player: Player, match, def, here: Vector3, count: number
 			end
 		end
 	end
-	table.sort(candidates, function(a, b)
-		return a.Score < b.Score
+	table.sort(candidates, function(x, y)
+		return x.Score < y.Score
 	end)
-	local picked = {}
+	local picked: { BasePart } = {}
+	local checked = 0
 	for _, c in ipairs(candidates) do
-		if #picked >= count then
+		if #picked >= count or checked >= 40 then
 			break
 		end
 		local limit = #picked == 0 and def.MaxWeight or (def.CarryWeight or def.MaxWeight)
-		if (c.Obj:GetAttribute("Weight") or 1) <= limit and not covered(c.Obj, folder) then
-			table.insert(picked, c.Obj)
-		end
-		if #picked == 0 and c.Score > PetConfig.Reach * 2 then
-			break
+		-- A second object has to lie right by the first: it's one stop.
+		local near = #picked == 0 or (c.Obj.Position - picked[1].Position).Magnitude <= 7
+		if near and (c.Obj:GetAttribute("Weight") or 1) <= limit then
+			checked += 1
+			if not covered(c.Obj, folder) then
+				table.insert(picked, c.Obj)
+			end
 		end
 	end
 	return picked
 end
 
+-- The matching bin (x2) when the pet knows it, else simply the nearest one.
 local function binFor(def, root: BasePart)
 	local bins = Services.DepositService.GetBins()
 	if #bins == 0 then
@@ -363,69 +375,118 @@ local function binFor(def, root: BasePart)
 			end
 		end
 	end
-	return bins[rng:NextInteger(1, #bins)]
+	local best, bestD = nil, math.huge
+	for _, bin in ipairs(bins) do
+		local d = xz(bin.Part.Position, root.Position)
+		if d < bestD then
+			best, bestD = bin, d
+		end
+	end
+	return best
 end
 
-local function trip(player: Player, match, def, here: Vector3, st: Work): boolean
+-- How long a pet takes to get from a to b.
+local function travel(def, a: Vector3, b: Vector3, speed: number): number
+	local pace = (def.Flies and PetConfig.FlySpeed or PetConfig.WalkSpeed) * speed
+	return math.clamp(xz(a, b) / pace, 0.7, 10)
+end
+
+local function fire(match, name: string, payload)
+	for _, p in ipairs(match.Players) do
+		Remotes.Event("FXEvent"):FireClient(p, name, payload)
+	end
+end
+
+local function petXP(player: Player, def)
+	Services.DataService.Update(player, function(d)
+		local owned = d.Pets.Owned[def.Key]
+		if owned and owned.Level < PetConfig.MaxLevel then
+			owned.XP += 1
+			if owned.XP >= PetConfig.XPToNext(owned.Level) then
+				owned.XP = 0
+				owned.Level += 1
+				Services.NotificationService.Send(player, "Success", string.format("%s reached level %d!", def.Name, owned.Level))
+			end
+		end
+	end)
+end
+
+-- One trip: the pet sets off from where it stands to the junk, picks it up, and carries it to a
+-- bin. Returns how long the whole trip takes (nil: nothing to fetch).
+local function trip(player: Player, match, def, here: Vector3, st: Work, speed: number): number?
 	local count = def.Carry or 1
 	local junk = pickJunk(player, match, def, here, math.min(count, math.floor(st.Tokens)), {})
-	if #junk == 0 then
-		return false
+	local first = junk[1]
+	local bin = first and binFor(def, first)
+	if not first or not bin then
+		return nil
 	end
 	st.Tokens -= #junk
-	for i, root in ipairs(junk) do
-		local bin = binFor(def, root)
-		if bin then
-			root:SetAttribute("PetClaimed", true)
-			for _, p in ipairs(match.Players) do
-				Remotes.Event("FXEvent"):FireClient(p, "PetTrip", { Owner = player.UserId, Kind = def.Key, Object = root, From = root.Position, To = bin.Part.Position, Index = i })
-			end
-			task.delay(TRIP_SECONDS + (i - 1) * 0.25, function()
-				if root.Parent and not Services.ObjectService.IsBusy(root) and Services.MatchService.GetMatch() == match then
-					if Services.DepositService.PetDeposit(player, root, bin, def) then
-						Services.DataService.Update(player, function(d)
-							local owned = d.Pets.Owned[def.Key]
-							if owned and owned.Level < PetConfig.MaxLevel then
-								owned.XP += 1
-								if owned.XP >= PetConfig.XPToNext(owned.Level) then
-									owned.XP = 0
-									owned.Level += 1
-									Services.NotificationService.Send(player, "Success", string.format("%s reached level %d!", def.Name, owned.Level))
-								end
-							end
-						end)
-					end
+	local at = first.Position
+	local binPos = bin.Part.Position
+	local t1 = travel(def, here, at, speed)
+	local t2 = travel(def, at, binPos, speed)
+	for _, root in ipairs(junk) do
+		root:SetAttribute("PetClaimed", true)
+	end
+	fire(match, "PetTrip", { Owner = player.UserId, Kind = def.Key, From = at, To = binPos, T1 = t1, T2 = t2 })
+	st.Pos[def.Key] = binPos
+	task.delay(t1, function()
+		local tickets = {}
+		if Services.MatchService.GetMatch() == match then
+			for i, root in ipairs(junk) do
+				local ticket = root.Parent and Services.DepositService.PetPickup(player, root, bin, def)
+				if ticket then
+					table.insert(tickets, ticket)
+					fire(match, "PetPickup", { Owner = player.UserId, Kind = def.Key, Size = ticket.Info.Size, Color = ticket.Info.Color, Index = i, T2 = t2 })
 				elseif root.Parent then
 					root:SetAttribute("PetClaimed", nil)
 				end
-			end)
+			end
 		end
-	end
-	return true
+		if #tickets == 0 then
+			-- Someone else got to it first: the pet stays where it is.
+			st.Pos[def.Key] = at
+			st.Next[def.Key] = os.clock() + 1
+			if Services.MatchService.GetMatch() == match then
+				fire(match, "PetIdle", { Owner = player.UserId, Kind = def.Key })
+			end
+			return
+		end
+		task.delay(PetConfig.PickupSeconds + t2, function()
+			for _, ticket in ipairs(tickets) do
+				if Services.DepositService.PetPay(ticket) then
+					petXP(player, def)
+				end
+			end
+		end)
+	end)
+	return t1 + PetConfig.PickupSeconds + t2
 end
 
--- The dragon bursts packed junk near its owner, never near the hidden object.
-local function burst(player: Player, match, def, here: Vector3)
+-- The dragon flies to a packed junk near its owner and bursts it, never near the hidden object.
+local function burst(player: Player, match, def, here: Vector3, ownerAt: Vector3, speed: number): number?
 	local blocked, spot = forbidden(match)
 	local best, bestD = nil, math.huge
 	for _, obj in ipairs(match.Runtime.Objects) do
 		if obj.Parent and obj:GetAttribute("IsChunk") and not blocked[obj] and not Services.ObjectService.IsBusy(obj) then
-			local d = (obj.Position - here).Magnitude
+			local d = (obj.Position - ownerAt).Magnitude
 			if d < bestD and d <= PetConfig.Reach and (not spot or xz(obj.Position, spot) >= PetConfig.PetBurstSafeRadius) then
 				best, bestD = obj, d
 			end
 		end
 	end
-	if best then
-		for _, p in ipairs(match.Players) do
-			Remotes.Event("FXEvent"):FireClient(p, "PetBurst", { Owner = player.UserId, Kind = def.Key, Position = best.Position })
-		end
-		task.delay(0.6, function()
-			if best.Parent and not Services.ObjectService.IsBusy(best) and Services.MatchService.GetMatch() == match then
-				Services.ChunkService.Burst(best, player)
-			end
-		end)
+	if not best then
+		return nil
 	end
+	local t = travel(def, here, best.Position, speed)
+	fire(match, "PetBurst", { Owner = player.UserId, Kind = def.Key, Position = best.Position, T = t })
+	task.delay(t, function()
+		if best.Parent and not Services.ObjectService.IsBusy(best) and Services.MatchService.GetMatch() == match then
+			Services.ChunkService.Burst(best, player)
+		end
+	end)
+	return t + 0.6, best.Position
 end
 
 local function step(dt: number)
@@ -438,7 +499,13 @@ local function step(dt: number)
 			continue
 		end
 		local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
-		if not root or not Services.RetentionService.IsActive(player, PetConfig.ActiveWindow) then
+		if not root then
+			continue
+		end
+		if not Services.RetentionService.IsActive(player, PetConfig.ActiveWindow) then
+			-- Their owner stopped playing: the pets walk back to them (the clients do that on
+			-- their own once no trips come) and start from there again.
+			st.Pos = {}
 			continue
 		end
 		local speed = speedFor(player)
@@ -447,6 +514,7 @@ local function step(dt: number)
 			st.MatchId = match.Id
 			st.Tokens = 1
 			st.TokenAt = clock
+			st.Pos = {}
 			for i, kind in ipairs(PetService.Active(player)) do
 				st.Next[kind] = clock + 4 + i * 1.5
 				st.BurstAt[kind] = clock + 12
@@ -458,14 +526,26 @@ local function step(dt: number)
 		for _, kind in ipairs(PetService.Active(player)) do
 			local def = PetConfig.Get(kind)
 			local owned = data.Pets.Owned[kind]
-			if def and owned then
+			if def and owned and clock >= (st.Next[kind] or 0) then
+				local here = st.Pos[kind] or root.Position
 				if def.BurstEvery and clock >= (st.BurstAt[kind] or 0) then
 					st.BurstAt[kind] = clock + def.BurstEvery / speed
-					burst(player, match, def, root.Position)
+					local took, at = burst(player, match, def, here, root.Position, speed)
+					if took then
+						st.Pos[kind] = at
+						st.Next[kind] = clock + took
+						continue
+					end
 				end
-				if clock >= (st.Next[kind] or 0) and st.Tokens >= 1 then
-					local ok = trip(player, match, def, root.Position, st)
-					st.Next[kind] = clock + (ok and (PetConfig.Interval(kind, owned.Level) / speed + rng:NextNumber() * 0.8) or 2)
+				if st.Tokens >= 1 then
+					local took = trip(player, match, def, here, st, speed)
+					if took then
+						-- A rest between trips (shorter for faster, higher-level pets).
+						local rest = math.max(1.2, PetConfig.Interval(kind, owned.Level) / speed - took)
+						st.Next[kind] = clock + took + rest + rng:NextNumber() * 0.8
+					else
+						st.Next[kind] = clock + 2
+					end
 				end
 			end
 		end
@@ -493,7 +573,7 @@ function PetService.Init()
 	end)
 
 	local function onPlayer(player: Player)
-		work[player] = { Next = {}, BurstAt = {}, Tokens = 1, TokenAt = os.clock() }
+		work[player] = { Next = {}, BurstAt = {}, Pos = {}, Tokens = 1, TokenAt = os.clock() }
 		for _, name in ipairs({ "CleanerLevel", "Pass_PetSlot", "Pass_FasterPets" }) do
 			player:GetAttributeChangedSignal(name):Connect(function()
 				PetService.Publish(player)

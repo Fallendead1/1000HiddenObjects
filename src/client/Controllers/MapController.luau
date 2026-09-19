@@ -55,7 +55,8 @@ local pileMarks: { [string]: TextLabel } = {}
 
 local worldGlow: { Instance } = {}
 local glowZone = ""
-local pillar: BasePart? = nil
+local pillar: Model? = nil
+local pillarKey = ""
 
 -- A Super Hint's zone and ring (for its buyer only).
 local superZone: string? = nil
@@ -214,7 +215,29 @@ local function flashSign(zoneId: string)
 	end
 end
 
--- See-through boxes over the clue zone's areas (the room config's regions).
+-- A thin rod of steady light between two points (no fill, nothing that can flicker against the
+-- floor or the junk).
+local function lightRod(a: Vector3, b: Vector3, thickness: number, color: Color3, transparency: number, parent: Instance): BasePart
+	local rod = Instance.new("Part")
+	rod.Name = "LightRod"
+	rod.Anchored = true
+	rod.CanCollide = false
+	rod.CanQuery = false
+	rod.CanTouch = false
+	rod.CastShadow = false
+	rod.Material = Enum.Material.Neon
+	rod.Color = color
+	rod.Transparency = transparency
+	rod.Size = Vector3.new(thickness, thickness, (b - a).Magnitude + thickness)
+	rod.CFrame = CFrame.lookAt((a + b) / 2, b)
+	rod.Parent = parent
+	return rod
+end
+
+local RAIL_HEIGHT = 7 -- studs over the floor: above the junk, below the hanging signs
+
+-- A glowing rail around each of the clue zone's areas, on four corner posts (the room config's
+-- regions). Steady light, in the zone's colour.
 local function glowZoneInRoom(zoneId: string)
 	if glowZone == zoneId then
 		return
@@ -228,53 +251,57 @@ local function glowZoneInRoom(zoneId: string)
 	local color = Zones.ColorOf(zone)
 	for _, region in ipairs(config.Regions or {}) do
 		if table.find(zone.Regions, region.Id) then
-			local box = Instance.new("Part")
-			box.Name = "ZoneGlow"
-			box.Anchored = true
-			box.CanCollide = false
-			box.CanQuery = false
-			box.CanTouch = false
-			box.CastShadow = false
-			box.Material = Enum.Material.ForceField
-			box.Color = color
-			box.Transparency = 0.35
-			box.Size = region.Size + Vector3.new(0, 4, 0)
-			box.CFrame = origin * CFrame.new(region.Center + Vector3.new(0, 2, 0))
-			box.Parent = workspace.CurrentCamera
-			table.insert(worldGlow, box)
+			local holder = Instance.new("Model")
+			holder.Name = "ZoneGlow"
+			holder.Parent = workspace.CurrentCamera
+			table.insert(worldGlow, holder)
+			local hx, hz = region.Size.X / 2 - 0.3, region.Size.Z / 2 - 0.3
+			local base = region.Center.Y - region.Size.Y / 2
+			local corners = {}
+			for i, c in ipairs({ Vector3.new(-hx, 0, -hz), Vector3.new(hx, 0, -hz), Vector3.new(hx, 0, hz), Vector3.new(-hx, 0, hz) }) do
+				corners[i] = Vector3.new(region.Center.X + c.X, base, region.Center.Z + c.Z)
+			end
+			local up = Vector3.new(0, RAIL_HEIGHT, 0)
+			for i = 1, 4 do
+				local a, b = origin * corners[i], origin * corners[i % 4 + 1]
+				lightRod(a + up, b + up, 0.35, color, 0.1, holder)
+				lightRod(a, a + up, 0.2, color, 0.45, holder)
+			end
 		end
 	end
 	flashSign(zoneId)
 end
 
--- A column of gold light standing on the floor around the object.
+-- A hoop of gold light hanging over the junk around the object, on thin posts (steady, no fill).
 local function showPillar(spot: Vector3?, radius: number)
-	if not spot then
-		if pillar then
-			pillar:Destroy()
-			pillar = nil
-		end
+	local key = if spot then string.format("%.1f,%.1f,%.1f", spot.X, spot.Z, radius) else ""
+	if key == pillarKey then
 		return
 	end
-	if not pillar then
-		local p = Instance.new("Part")
-		p.Name = "ClueRing"
-		p.Shape = Enum.PartType.Cylinder
-		p.Anchored = true
-		p.CanCollide = false
-		p.CanQuery = false
-		p.CanTouch = false
-		p.CastShadow = false
-		p.Material = Enum.Material.ForceField
-		p.Color = GOLD
-		p.Transparency = 0.2
-		p.Parent = workspace.CurrentCamera
-		pillar = p
+	pillarKey = key
+	if pillar then
+		pillar:Destroy()
+		pillar = nil
 	end
-	local height = 12
+	if not spot then
+		return
+	end
+	local holder = Instance.new("Model")
+	holder.Name = "ClueRing"
+	holder.Parent = workspace.CurrentCamera
+	pillar = holder
 	local floorY = origin.Position.Y
-	;(pillar :: BasePart).Size = Vector3.new(height, radius * 2, radius * 2)
-	;(pillar :: BasePart).CFrame = CFrame.new(spot.X, floorY + height / 2, spot.Z) * CFrame.Angles(0, 0, math.rad(90))
+	local segments = 28
+	local function at(i: number, y: number): Vector3
+		local a = i / segments * math.pi * 2
+		return Vector3.new(spot.X + math.cos(a) * radius, floorY + y, spot.Z + math.sin(a) * radius)
+	end
+	for i = 1, segments do
+		lightRod(at(i, RAIL_HEIGHT - 1), at(i + 1, RAIL_HEIGHT - 1), 0.4, GOLD, 0, holder)
+		if i % 4 == 0 then
+			lightRod(at(i, 0), at(i, RAIL_HEIGHT - 1), 0.2, GOLD, 0.4, holder)
+		end
+	end
 end
 
 local function refreshClues()

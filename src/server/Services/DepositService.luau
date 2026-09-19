@@ -189,6 +189,9 @@ function DepositService.Deposit(root: BasePart, bin: Bin)
 			payload.Long = long
 			payload.Fever = fever
 			payload.Multi = multi >= 2 and multi or nil
+			-- One armful thrown together: the client adds these up into one popup and one sound.
+			payload.Group = flight and flight.ThrowGroup or nil
+			payload.GroupSize = flight and flight.GroupSize or nil
 			payload.Streak = streak
 			payload.Mine = true
 		end
@@ -200,50 +203,68 @@ end
 
 -- A helper pet cleaned this (PetService already checked the rules): it pays its owner like a
 -- plain deposit (no swish or streak) with the pet's Cash bonus, and counts toward ROOM CLEANED.
-function DepositService.PetDeposit(player: Player, root: BasePart, bin: Bin, pet): boolean
+-- It happens in two steps, because the pet really walks it over: PetPickup takes the object out
+-- of the room (it counts as cleaned) and returns a ticket; PetPay pays that ticket when the pet
+-- reaches the bin.
+export type PetTicket = { Player: Player, Match: any, Bin: Bin, Pet: any, Base: number, IsMatch: boolean, Treasure: boolean, Info: { [string]: any } }
+
+function DepositService.PetPickup(player: Player, root: BasePart, bin: Bin, pet): PetTicket?
 	local match = Services.MatchService.GetMatch()
 	if not match or match.State ~= "Searching" or not root.Parent or not player.Parent then
-		return false
+		return nil
 	end
 	if root:GetAttribute("Deposited") or root:GetAttribute("IsChunk") or Services.ObjectService.IsBusy(root) then
-		return false
+		return nil
 	end
 	local category = root:GetAttribute("Category")
 	local isMatch = DepositConfig.MatchingType(category, root:GetAttribute("Weight")) == bin.Type
-	local base = (root:GetAttribute("CashValue") or 1)
-		* (isMatch and DepositConfig.MatchMultiplier or 1)
-		* (1 + (pet.CashBonus or 0))
-		* Services.RetentionService.CashMultiplier(player)
+	local ticket: PetTicket = {
+		Player = player,
+		Match = match,
+		Bin = bin,
+		Pet = pet,
+		IsMatch = isMatch,
+		Treasure = category == "Treasure",
+		Base = (root:GetAttribute("CashValue") or 1) * (isMatch and DepositConfig.MatchMultiplier or 1) * (1 + (pet.CashBonus or 0)),
+		Info = {
+			Position = root.Position,
+			BinPosition = bin.Part.Position,
+			BinType = bin.Type,
+			Color = root.Color,
+			Size = root.Size,
+			Name = root:GetAttribute("DisplayName"),
+			Treasure = category == "Treasure",
+			Pet = pet.Key,
+			Owner = player.UserId,
+		},
+	}
+	root:SetAttribute("Deposited", true)
+	Services.ObjectService.Forget(root)
+	root:Destroy()
+	Services.MatchService.OnObjectDeposited(player, category == "Treasure")
+	return ticket
+end
+
+function DepositService.PetPay(ticket: PetTicket): boolean
+	local player, match, pet = ticket.Player, ticket.Match, ticket.Pet
+	if not player.Parent or Services.MatchService.GetMatch() ~= match or match.State ~= "Searching" then
+		return false
+	end
+	local base = ticket.Base * Services.RetentionService.CashMultiplier(player)
 	local amount = math.max(1, math.floor(base * Services.PlayerSessionService.GetCashMultiplier(player) + 0.5))
 	Services.EconomyService.AddCash(player, amount)
 	Services.WalletService.OnDeposit(player, base, "Pet_" .. pet.Key)
 	player:SetAttribute("PetCleaned", (player:GetAttribute("PetCleaned") or 0) + 1)
-	Services.AnalyticsService.Economy(player, "Source", "Cash", amount, player:GetAttribute("RoomCash") or 0, "Gameplay", "Pet_" .. pet.Key, isMatch and "right bin (x2)" or "other bin (x1)")
-
-	root:SetAttribute("Deposited", true)
-	Services.ObjectService.Forget(root)
-	local base2 = {
-		Position = root.Position,
-		BinPosition = bin.Part.Position,
-		BinType = bin.Type,
-		Color = root.Color,
-		Size = root.Size,
-		Name = root:GetAttribute("DisplayName"),
-		Treasure = category == "Treasure",
-		Pet = pet.Key,
-		Owner = player.UserId,
-	}
+	Services.AnalyticsService.Economy(player, "Source", "Cash", amount, player:GetAttribute("RoomCash") or 0, "Gameplay", "Pet_" .. pet.Key, ticket.IsMatch and "right bin (x2)" or "other bin (x1)")
 	for _, p in ipairs(match.Players) do
-		local payload = table.clone(base2)
+		local payload = table.clone(ticket.Info)
 		if p == player then
 			payload.Amount = amount
-			payload.Match = isMatch
+			payload.Match = ticket.IsMatch
 			payload.Mine = true
 		end
 		Remotes.Event("FXEvent"):FireClient(p, "Deposit", payload)
 	end
-	root:Destroy()
-	Services.MatchService.OnObjectDeposited(player, category == "Treasure")
 	return true
 end
 
@@ -269,8 +290,8 @@ local function crossesMouth(mouth: BasePart, a: Vector3, b: Vector3): boolean
 	return false
 end
 
-local function inBox(box: Box, root: BasePart): boolean
-	local pad = Vector3.one * (TOUCH_MARGIN + math.min(1.5, root.Size.Magnitude / 2))
+local function inBox(box: Box, root: BasePart, margin: number?): boolean
+	local pad = Vector3.one * ((margin or TOUCH_MARGIN) + math.min(1.5, root.Size.Magnitude / 2))
 	local p = root.Position
 	local mn, mx = box.Min - pad, box.Max + pad
 	return p.X >= mn.X and p.X <= mx.X and p.Y >= mn.Y and p.Y <= mx.Y and p.Z >= mn.Z and p.Z <= mx.Z
@@ -303,11 +324,15 @@ local function sweptCheck()
 			lastPos[root] = p
 			local lenient = lenientThrower(root)
 			for _, bin in ipairs(bins) do
-				-- Touching the wall behind a bin: a BANK SHOT if it drops in next.
-				if bin.Back and inBox(bin.Back, root) then
+				-- Hitting the wall behind a bin is a BANK SHOT for everyone: it drops straight in
+				-- instead of bouncing off somewhere else (the client shows it sliding down). A
+				-- throw that goes cleanly into the mouth is not a bank shot.
+				local entered = prev ~= nil and crossesMouth(bin.Part, prev, p)
+				local banked = not entered and bin.Back ~= nil and inBox(bin.Back, root, 0.15)
+				if banked then
 					flight.BankedAt = os.clock()
 				end
-				if (prev and crossesMouth(bin.Part, prev, p)) or (lenient and touchesBin(bin, root)) then
+				if entered or banked or (lenient and touchesBin(bin, root)) then
 					DepositService.Deposit(root, bin)
 					break
 				end

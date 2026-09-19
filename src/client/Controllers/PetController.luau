@@ -2,9 +2,12 @@
 	Helper pets on screen (PetService does the work):
 	  Followers  every player's equipped pets (attribute PetsEquipped) follow them around, drawn
 	             only on this client. Walkers hop along the ground, fliers hover.
-	  Trips      PetTrip sends the owner's pet to the junk; the Deposit that follows (payload.Pet)
-	             has it carry the junk into the bin, then it comes back. PetBurst: the dragon
-	             swoops at a packed junk just before it bursts.
+	  Trips      in rooms pets work on their own. PetTrip: the pet walks (or flies) to a piece of
+	             junk in the time the server gives; PetPickup: it has it (a small copy rides on
+	             its back, or under a flier) and heads for the bin; the Deposit that follows
+	             (payload.Pet) tosses it in. Then it pokes around there until its next trip, and
+	             walks back to its owner when no more work comes. PetBurst: the dragon flies to a
+	             packed junk just before it bursts.
 	  Hatching   Hatch plays the egg (or gift) opening: shakes, a flash, then the pet with its
 	             rarity. Tap to skip.
 	  Welcome    a player who hasn't had their welcome pet yet gets a gift to open.
@@ -33,11 +36,14 @@ type Follower = {
 	Index: number,
 	Pos: Vector3,
 	Look: Vector3,
-	Mode: string, -- Follow | Trip | Carry | Burst
-	ModeUntil: number,
+	Mode: string, -- Follow | Trip | Carry | Burst | Work (idling in the room) | Return (to its owner)
+	ArriveAt: number,
 	Target: Vector3?,
 	To: Vector3?,
-	Carry: BasePart?,
+	Home: Vector3?,
+	IdleSince: number,
+	WanderAt: number,
+	Carried: { BasePart },
 	GroundY: number?,
 	GroundAt: number,
 	Half: number,
@@ -55,10 +61,10 @@ local CULL_DISTANCE = 170
 -- ===== Followers =====
 
 local function removeFollower(f: Follower)
-	if f.Carry then
-		f.Carry:Destroy()
-		f.Carry = nil
+	for _, ghost in ipairs(f.Carried) do
+		ghost:Destroy()
 	end
+	f.Carried = {}
 	f.Model:Destroy()
 end
 
@@ -97,7 +103,10 @@ local function sync(owner: Player)
 				Pos = start,
 				Look = Vector3.zAxis,
 				Mode = "Follow",
-				ModeUntil = 0,
+				ArriveAt = 0,
+				IdleSince = 0,
+				WanderAt = 0,
+				Carried = {},
 				GroundAt = 0,
 				Half = (model.PrimaryPart :: BasePart).Size.Y / 2,
 				Flies = def ~= nil and def.Flies == true,
@@ -136,70 +145,152 @@ local function groundBelow(f: Follower, at: Vector3, clock: number): number?
 	return f.GroundY
 end
 
+local function reduceMotion(): boolean
+	return player:GetAttribute("Setting_ReduceVFX") == true
+end
+
+local function dropCarry(f: Follower, into: Vector3?)
+	for _, ghost in ipairs(f.Carried) do
+		local goal: { [string]: any } = { Size = ghost.Size * 0.2, Transparency = 1 }
+		if into then
+			goal.CFrame = CFrame.new(into)
+		end
+		UI.Tween(ghost, goal, 0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In).Completed:Once(function()
+			ghost:Destroy()
+		end)
+	end
+	f.Carried = {}
+end
+
+-- The pet stays where it is in the room and pokes around until its next trip.
+local function settleIn(f: Follower, clock: number)
+	f.Mode = "Work"
+	f.Home = f.Pos
+	f.Target = nil
+	f.IdleSince = clock
+	f.WanderAt = clock + 1 + math.random() * 2
+end
+
+-- Walks (or flies) toward a point so as to get there at arriveAt; never faster than a sprint.
+local function travelTo(f: Follower, target: Vector3, arriveAt: number, clock: number, dt: number, floorY: number): boolean
+	local flat = Vector3.new(target.X - f.Pos.X, 0, target.Z - f.Pos.Z)
+	local dist = flat.Magnitude
+	local pace = f.Flies and PetConfig.FlySpeed or PetConfig.WalkSpeed
+	local speed = math.clamp(dist / math.max(arriveAt - clock, 0.05), pace * 0.5, pace * 2.6)
+	local stepLength = math.min(dist, speed * dt)
+	local nextXZ = dist > 0.01 and (f.Pos + flat.Unit * stepLength) or f.Pos
+	local y: number
+	if f.Flies then
+		-- Cruises over the piles and swoops down at the end.
+		local cruise = floorY + 7 + math.sin(clock * 2 + f.Index) * 0.4
+		y = target.Y + (cruise - target.Y) * math.clamp((dist - 1) / 7, 0, 1)
+	else
+		local ground = groundBelow(f, nextXZ, clock)
+		y = (ground or (target.Y - f.Half)) + f.Half
+	end
+	local rise = 1 - math.exp(-dt * (f.Flies and 5 or 14))
+	f.Pos = Vector3.new(nextXZ.X, f.Pos.Y + (y - f.Pos.Y) * rise, nextXZ.Z)
+	if dist > 0.15 then
+		f.Look = f.Look:Lerp(flat.Unit, 1 - math.exp(-dt * 10))
+	end
+	return dist <= 0.6
+end
+
 local function step(dt: number)
 	local clock = os.clock()
 	local camera = workspace.CurrentCamera
 	local eye = camera and camera.CFrame.Position or Vector3.zero
 	for owner, list in pairs(followers) do
 		local root = owner.Character and owner.Character:FindFirstChild("HumanoidRootPart") :: BasePart?
+		local inRoom = owner:GetAttribute("InMatch") == true
 		for _, f in pairs(list) do
 			local model = f.Model
 			if not root then
 				model.Parent = nil
 				continue
 			end
-			if (root.Position - eye).Magnitude > CULL_DISTANCE then
+			if (f.Pos - eye).Magnitude > CULL_DISTANCE and (root.Position - eye).Magnitude > CULL_DISTANCE then
 				model.Parent = nil
 				continue
 			end
 			if model.Parent ~= folder then
 				model.Parent = folder
 			end
-			if f.Mode ~= "Follow" and clock >= f.ModeUntil then
-				if f.Carry then
-					local ghost = f.Carry
-					f.Carry = nil
-					UI.Tween(ghost, { Size = ghost.Size * 0.2, Transparency = 1 }, 0.2).Completed:Once(function()
-						ghost:Destroy()
-					end)
-				end
+			-- Out of the room (or far from a teleported owner): back to following.
+			if f.Mode ~= "Follow" and (not inRoom or (f.Pos - root.Position).Magnitude > 220) then
+				dropCarry(f)
 				f.Mode = "Follow"
+				f.Pos = root.Position + Vector3.new(0, 1, 3)
 			end
-			local target: Vector3
-			local rate = 8
-			if f.Mode == "Follow" then
+			local floorY = root.Position.Y - 3
+			local moving = false
+			if f.Mode == "Follow" or f.Mode == "Return" then
 				local slot = SLOTS[f.Index] or SLOTS[#SLOTS]
 				local flat = Vector3.new(root.CFrame.LookVector.X, 0, root.CFrame.LookVector.Z)
 				local basis = flat.Magnitude > 0.1 and CFrame.lookAt(root.Position, root.Position + flat) or root.CFrame
 				local spot = (basis * CFrame.new(slot)).Position
+				local target: Vector3
 				if f.Flies then
 					target = Vector3.new(spot.X, root.Position.Y + 1.6 + math.sin(clock * 2 + f.Index) * 0.35, spot.Z)
 				else
-					local ground = groundBelow(f, spot, clock) or (root.Position.Y - 3)
+					local ground = groundBelow(f, spot, clock) or floorY
 					target = Vector3.new(spot.X, ground + f.Half, spot.Z)
 				end
-			else
-				target = (f.Mode == "Carry" and f.To or f.Target) or f.Pos
-				rate = 10
-			end
-			local delta = target - f.Pos
-			if delta.Magnitude > 45 then
-				f.Pos = target
-			else
-				f.Pos = f.Pos:Lerp(target, 1 - math.exp(-dt * rate))
-			end
-			local moving = delta.Magnitude > 0.6
-			local flat = Vector3.new(delta.X, 0, delta.Z)
-			if moving and flat.Magnitude > 0.3 then
-				f.Look = f.Look:Lerp(flat.Unit, 1 - math.exp(-dt * 10))
-			elseif f.Mode == "Follow" then
-				local ownerLook = Vector3.new(root.CFrame.LookVector.X, 0, root.CFrame.LookVector.Z)
-				if ownerLook.Magnitude > 0.1 then
-					f.Look = f.Look:Lerp(ownerLook.Unit, 1 - math.exp(-dt * 4))
+				local delta = target - f.Pos
+				if f.Mode == "Return" then
+					-- Walking back to its owner across the room.
+					moving = true
+					local pace = (f.Flies and PetConfig.FlySpeed or PetConfig.WalkSpeed) * 1.4
+					if travelTo(f, target, clock + delta.Magnitude / pace, clock, dt, floorY) or delta.Magnitude < 3 then
+						f.Mode = "Follow"
+					end
+				else
+					if delta.Magnitude > 45 then
+						f.Pos = target
+					else
+						f.Pos = f.Pos:Lerp(target, 1 - math.exp(-dt * 8))
+					end
+					moving = delta.Magnitude > 0.6
+					local flatDelta = Vector3.new(delta.X, 0, delta.Z)
+					if moving and flatDelta.Magnitude > 0.3 then
+						f.Look = f.Look:Lerp(flatDelta.Unit, 1 - math.exp(-dt * 10))
+					else
+						local ownerLook = Vector3.new(root.CFrame.LookVector.X, 0, root.CFrame.LookVector.Z)
+						if ownerLook.Magnitude > 0.1 then
+							f.Look = f.Look:Lerp(ownerLook.Unit, 1 - math.exp(-dt * 4))
+						end
+					end
+				end
+			elseif f.Mode == "Trip" or f.Mode == "Carry" or f.Mode == "Burst" then
+				local target = f.Target or f.Pos
+				local arrived = travelTo(f, target, f.ArriveAt, clock, dt, floorY)
+				moving = not arrived
+				if clock > f.ArriveAt + (f.Mode == "Carry" and 4 or 2.5) then
+					-- The pick-up or the pay never came (the room ended, someone else took it).
+					dropCarry(f)
+					settleIn(f, clock)
+				end
+			elseif f.Mode == "Work" then
+				-- Pokes around near where it finished; heads back to its owner when no work comes.
+				if clock - f.IdleSince > 14 then
+					f.Mode = "Return"
+				elseif f.Target then
+					moving = not travelTo(f, f.Target, clock + 1.2, clock, dt, floorY)
+					if not moving then
+						f.Target = nil
+						f.WanderAt = clock + 1.5 + math.random() * 2.5
+					end
+				elseif clock >= f.WanderAt and f.Home then
+					local angle = math.random() * math.pi * 2
+					local reach = 1.5 + math.random() * 2.5
+					f.Target = f.Home + Vector3.new(math.cos(angle) * reach, 0, math.sin(angle) * reach)
+				elseif f.Flies then
+					f.Pos = Vector3.new(f.Pos.X, f.Pos.Y + ((floorY + 5.5 + math.sin(clock * 2 + f.Index) * 0.4) - f.Pos.Y) * (1 - math.exp(-dt * 3)), f.Pos.Z)
 				end
 			end
 			-- Placeholder motion when the art has no animations: walkers hop, everyone breathes.
-			local animated = PetModels.Play(model, f.Mode == "Carry" and "Carry" or (moving and "Walk" or "Idle"))
+			local carrying = #f.Carried > 0
+			local animated = PetModels.Play(model, carrying and "Carry" or (moving and "Walk" or "Idle"))
 			local bob = 0
 			if not animated then
 				bob = (moving and not f.Flies) and math.abs(math.sin(clock * 12)) * 0.35 or math.sin(clock * 3) * 0.06
@@ -207,8 +298,12 @@ local function step(dt: number)
 			local look = f.Look.Magnitude > 0.01 and f.Look.Unit or Vector3.zAxis
 			-- Models face -Z, which lookAt points along the direction of travel.
 			model:PivotTo(CFrame.lookAt(f.Pos, f.Pos + look) * CFrame.new(0, bob, 0))
-			if f.Carry then
-				f.Carry.CFrame = CFrame.new(f.Pos - Vector3.new(0, f.Half + f.Carry.Size.Y / 2 + 0.1, 0))
+			PetModels.Animate(model, clock, moving, f.Flies, carrying)
+			-- Walkers carry it on their back, fliers hold it underneath.
+			for i, ghost in ipairs(f.Carried) do
+				local lift = f.Flies and -(f.Half + ghost.Size.Y / 2 + 0.1) or (f.Half + ghost.Size.Y / 2 + 0.05)
+				local stack = (i - 1) * (f.Flies and -0.7 or 0.7)
+				ghost.CFrame = CFrame.lookAt(f.Pos, f.Pos + look) * CFrame.new(0, lift + stack + bob, 0)
 			end
 		end
 	end
@@ -216,54 +311,90 @@ end
 
 -- ===== Trips =====
 
-local function reduceMotion(): boolean
-	return player:GetAttribute("Setting_ReduceVFX") == true
-end
-
+-- The pet sets off for a piece of junk (T1 seconds away), then carries it to the bin (T2).
 local function onTrip(payload)
 	local f = followerOf(payload.Owner or 0, payload.Kind or "")
 	if not f or typeof(payload.From) ~= "Vector3" then
 		return
 	end
+	local clock = os.clock()
+	dropCarry(f)
 	f.Mode = "Trip"
-	f.Target = payload.From + Vector3.new(0, f.Half + 0.8 + (payload.Index or 1) * 0.3, 0)
-	f.To = typeof(payload.To) == "Vector3" and payload.To + Vector3.new(0, 4, 0) or nil
-	f.ModeUntil = os.clock() + 2.2
+	f.Target = payload.From + Vector3.new(0, f.Half + 0.3, 0)
+	f.ArriveAt = clock + (tonumber(payload.T1) or 1)
+	f.To = typeof(payload.To) == "Vector3" and payload.To or nil
 end
 
-local function onPetDeposit(payload)
-	local f = followerOf(payload.Owner or 0, payload.Pet or "")
-	if not f or reduceMotion() then
+-- It has the junk: a small copy rides along to the bin.
+local function onPickup(payload)
+	local f = followerOf(payload.Owner or 0, payload.Kind or "")
+	if not f then
 		return
 	end
-	local size = typeof(payload.Size) == "Vector3" and payload.Size or Vector3.one
-	local scale = math.min(1, 1.4 / math.max(size.X, size.Y, size.Z))
-	local ghost = Instance.new("Part")
-	ghost.Anchored = true
-	ghost.CanCollide = false
-	ghost.CanQuery = false
-	ghost.CanTouch = false
-	ghost.CastShadow = false
-	ghost.Size = size * scale
-	ghost.Color = typeof(payload.Color) == "Color3" and payload.Color or Color3.new(1, 1, 1)
-	ghost.Material = Enum.Material.SmoothPlastic
-	ghost.CFrame = CFrame.new(f.Pos)
-	ghost.Parent = folder
-	if f.Carry then
-		f.Carry:Destroy()
+	local clock = os.clock()
+	if not reduceMotion() then
+		local size = typeof(payload.Size) == "Vector3" and payload.Size or Vector3.one
+		local scale = math.min(1, 1.4 / math.max(size.X, size.Y, size.Z))
+		local ghost = Instance.new("Part")
+		ghost.Anchored = true
+		ghost.CanCollide = false
+		ghost.CanQuery = false
+		ghost.CanTouch = false
+		ghost.CastShadow = false
+		ghost.Size = size * scale
+		ghost.Color = typeof(payload.Color) == "Color3" and payload.Color or Color3.new(1, 1, 1)
+		ghost.Material = Enum.Material.SmoothPlastic
+		ghost.CFrame = CFrame.new(f.Pos)
+		ghost.Parent = folder
+		table.insert(f.Carried, ghost)
 	end
-	f.Carry = ghost
-	f.Mode = "Carry"
-	f.To = typeof(payload.BinPosition) == "Vector3" and payload.BinPosition + Vector3.new(0, 3.5, 0) or f.To
-	f.ModeUntil = os.clock() + 1.1
+	if f.Mode ~= "Carry" then
+		f.Mode = "Carry"
+		local bin = f.To or f.Pos
+		if f.Flies then
+			f.Target = bin + Vector3.new(0, 4.5, 0)
+		else
+			-- Walkers stop in front of the bin and toss it in.
+			local away = Vector3.new(f.Pos.X - bin.X, 0, f.Pos.Z - bin.Z)
+			local stand = away.Magnitude > 0.5 and away.Unit * 4.2 or Vector3.new(0, 0, 4.2)
+			f.Target = Vector3.new(bin.X + stand.X, f.Pos.Y, bin.Z + stand.Z)
+		end
+		f.ArriveAt = clock + PetConfig.PickupSeconds + (tonumber(payload.T2) or 1)
+	end
+end
+
+-- It reached the bin: the junk goes in and the pet stays around there.
+local function onPetDeposit(payload)
+	local f = followerOf(payload.Owner or 0, payload.Pet or "")
+	if not f then
+		return
+	end
+	local ghost = table.remove(f.Carried, 1)
+	if ghost then
+		local keep = f.Carried
+		f.Carried = { ghost }
+		dropCarry(f, typeof(payload.BinPosition) == "Vector3" and payload.BinPosition or nil)
+		f.Carried = keep
+	end
+	if #f.Carried == 0 and f.Mode == "Carry" then
+		settleIn(f, os.clock())
+	end
+end
+
+local function onIdle(payload)
+	local f = followerOf(payload.Owner or 0, payload.Kind or "")
+	if f and f.Mode == "Trip" then
+		settleIn(f, os.clock())
+	end
 end
 
 local function onBurst(payload)
 	local f = followerOf(payload.Owner or 0, payload.Kind or "")
 	if f and typeof(payload.Position) == "Vector3" then
+		dropCarry(f)
 		f.Mode = "Burst"
 		f.Target = payload.Position + Vector3.new(0, 2, 0)
-		f.ModeUntil = os.clock() + 1
+		f.ArriveAt = os.clock() + (tonumber(payload.T) or 0.6)
 	end
 end
 
@@ -421,6 +552,10 @@ function PetController.Init()
 		end
 		if name == "PetTrip" then
 			onTrip(payload)
+		elseif name == "PetPickup" then
+			onPickup(payload)
+		elseif name == "PetIdle" then
+			onIdle(payload)
 		elseif name == "Deposit" and payload.Pet then
 			onPetDeposit(payload)
 		elseif name == "PetBurst" then

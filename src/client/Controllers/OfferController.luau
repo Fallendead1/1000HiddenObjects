@@ -113,8 +113,9 @@ local function showChip(key: string, title: string, color: Color3, buttonText: s
 	local cfg = OFFERS[key] or {}
 	-- At the side of the screen, out of the way of the view: on touch at the top of the left
 	-- column (HUDController's side stack, above the streak and boosts), elsewhere mid-left.
-	local stack = Controllers.HUDController.GetSideStack()
-	local frame = UI.Panel({ Name = "Offer_" .. key, Size = UDim2.fromOffset(stack and 246 or 270, 94), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 12, 0.5, 0), BackgroundTransparency = 0.05, LayoutOrder = -1 }, stack or UI.Layers.HUD)
+	local stack = Controllers.HUDController.GetOfferStack()
+	local inLobby = stack ~= nil and stack.Name == "LobbyLeft"
+	local frame = UI.Panel({ Name = "Offer_" .. key, Size = UDim2.fromOffset(stack and 246 or 270, 94), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 12, 0.5, 0), BackgroundTransparency = 0.05, LayoutOrder = inLobby and 5 or -1 }, stack or UI.Layers.HUD)
 	frame:SetAttribute("Key", key)
 	UI.Stroke(frame, color, 3)
 	UI.Glow(frame, color, 16, 0.6)

@@ -22,6 +22,7 @@ local CameraController = {}
 
 local firstPerson = false
 local altHeld = false
+local shiftFree = false -- SHIFT toggles the mouse free / locked in first person
 local modal: TextButton
 local crosshair: Frame
 local crossRing: UIStroke
@@ -66,11 +67,17 @@ local function apply()
 	-- mouse to free and that full-screen button would swallow the thumbstick, jump and camera
 	-- drags, so on-screen prompts (freeReasons) never raise it there: their buttons are tappable.
 	local prompt = next(freeReasons) ~= nil and not UI.IsTouch()
-	local cursorFree = fp and (altHeld or UI.GetOpenMenu() ~= nil or prompt)
+	if not fp then
+		shiftFree = false
+	end
+	local cursorFree = fp and (altHeld or shiftFree or UI.GetOpenMenu() ~= nil or prompt)
 	modal.Visible = cursorFree
 	crosshair.Visible = fp and not cursorFree
-	hint.Visible = fp and not cursorFree and not UI.IsTouch()
-	hint.Text = if UI.IsGamepad() then "[R2] grab / throw   [B] drop   [Y] shop   D-pad left: upgrades   right: hints" else "[ALT] mouse   [Q] drop   [U] upgrades   [B] shop   [H] hints"
+	hint.Visible = fp and not UI.IsTouch() and (not cursorFree or shiftFree)
+	hint.Text = if UI.IsGamepad()
+		then "[R2] grab / throw   [B] drop   [Y] shop   D-pad left: upgrades   right: hints"
+		elseif shiftFree then "MOUSE FREE - press [SHIFT] to aim again"
+		else "[SHIFT] free the mouse   [Q] drop   [U] upgrades   [B] shop   [H] hints"
 end
 
 function CameraController.IsFirstPerson(): boolean
@@ -144,11 +151,11 @@ function CameraController.Init()
 	round(crossDot)
 
 	hint = UI.Label({
-		Text = "[ALT] mouse   [Q] drop   [U] upgrades   [B] shop   [H] hints",
+		Text = "[SHIFT] free the mouse   [Q] drop   [U] upgrades   [B] shop   [H] hints",
 		TextSize = 14,
 		Font = UI.FontBody,
 		TextColor3 = UI.Colors.TextDim,
-		Size = UDim2.fromOffset(460, 20),
+		Size = UDim2.fromOffset(540, 20),
 		AnchorPoint = Vector2.new(1, 1),
 		Position = UDim2.new(1, -14, 1, -10),
 		TextXAlignment = Enum.TextXAlignment.Right,
@@ -159,6 +166,11 @@ function CameraController.Init()
 	UserInputService.InputBegan:Connect(function(input, gameProcessed)
 		if input.KeyCode == Enum.KeyCode.LeftAlt or input.KeyCode == Enum.KeyCode.RightAlt then
 			altHeld = true
+			apply()
+			return
+		end
+		if (input.KeyCode == Enum.KeyCode.LeftShift or input.KeyCode == Enum.KeyCode.RightShift) and firstPerson and not UserInputService:GetFocusedTextBox() then
+			shiftFree = not shiftFree
 			apply()
 			return
 		end

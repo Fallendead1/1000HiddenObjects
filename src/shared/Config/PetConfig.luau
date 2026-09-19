@@ -1,9 +1,11 @@
 --[[
 	Helper pets (PetService, PetController, PetShopController).
 
-	Pets follow their owner everywhere. In a room, each equipped pet picks up loose junk near its
-	owner, carries it to a bin and pays the owner (room Cash, and the usual wallet share). The rules
-	that keep pets helpers, never finders:
+	Pets follow their owner around the lobby. In a room they work on their own: each equipped pet
+	roams the room, walks (or flies) to loose junk, picks it up, carries it to a bin at its own
+	pace and pays the owner when it gets there (room Cash, and the usual wallet share). Between
+	trips it pokes around where it is; when its owner stops playing it comes back to them. The
+	rules that keep pets helpers, never finders:
 	  - never the hidden object, the junk covering it, or anything near its hiding spot
 	  - only the top of a pile (nothing resting on it), so pets never dig or cause avalanches
 	  - only what the pet can lift (MaxWeight)
@@ -99,7 +101,11 @@ local PetConfig = {
 	SnackMultiplier = 2, -- Pet Snack: twice as fast (and twice the cap) for SnackSeconds
 	SnackSeconds = 300,
 	ActiveWindow = 60, -- pets rest after this long without the player playing
-	Reach = 26, -- studs from the owner a pet looks for junk
+	Reach = 26, -- studs from its owner the dragon looks for packed junk
+	RoamReach = 48, -- studs from where a pet stands that it looks for its next piece of junk
+	WalkSpeed = 12, -- studs per second on the ground (the owner walks at 16)
+	FlySpeed = 16,
+	PickupSeconds = 0.4, -- the pause at the junk while it picks it up
 	SafeRadius = 7, -- never this close (XZ) to the hidden object's spot
 	RightBinChance = 0.5, -- other pets find the right bin this often
 	PetBurstSafeRadius = 8,

@@ -18,6 +18,7 @@ return {
 	LobbyPlaceId = 117675182630398,
 	MatchPlaceId = 122762042441174,
 	MatchInLobbyPlace = true,
+	ShowPlayNow = false, -- the lobby's one-tap PLAY NOW button (off: rooms start from the circles)
 
 	-- Queue / matchmaking
 	MaxPartySize = 4,
@@ -115,6 +116,7 @@ return {
 	LeaderboardFastestPrefix = "FastestRoom_v1_",
 	AutosaveInterval = 120,
 	LeaderboardRefreshInterval = 60,
+	LeaderboardSize = 100, -- rows on every lobby board (an OrderedDataStore page holds up to 100)
 	MinimumLegitimateRoomTime = 60, -- seconds; faster results are treated as invalid
 
 	TotalObjects = 1000,

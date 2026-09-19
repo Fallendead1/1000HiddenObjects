@@ -45,14 +45,23 @@ local function getFastestStore(roomId: number): OrderedDataStore?
 	return nil
 end
 
+-- Names are looked up once per server (100 rows on four boards would be a lot of lookups).
+local names: { [number]: string } = {}
 local function resolveName(userId: number): string
 	local player = Players:GetPlayerByUserId(userId)
 	if player then
+		names[userId] = player.Name
 		return player.Name
+	end
+	if names[userId] then
+		return names[userId]
 	end
 	local ok, name = pcall(function()
 		return Players:GetNameFromUserIdAsync(userId)
 	end)
+	if ok then
+		names[userId] = name
+	end
 	return ok and name or ("User" .. userId)
 end
 
@@ -137,10 +146,11 @@ function LeaderboardService.Start(role: string)
 end
 
 function LeaderboardService.Refresh()
-	local finders = fetchTop(finderStore, memoryFinders, false, 10)
-	local fastest = fetchTop(getFastestStore(1), memoryFastest[1] or {}, true, 10)
-	local cleaned = fetchTop(cleanedStore, memoryCleaned, false, 10)
-	local played = fetchTop(playedStore, memoryPlayed, false, 10)
+	local size = GameConfig.LeaderboardSize
+	local finders = fetchTop(finderStore, memoryFinders, false, size)
+	local fastest = fetchTop(getFastestStore(1), memoryFastest[1] or {}, true, size)
+	local cleaned = fetchTop(cleanedStore, memoryCleaned, false, size)
+	local played = fetchTop(playedStore, memoryPlayed, false, size)
 	dataFolder:SetAttribute("MostPlayed", HttpService:JSONEncode(played))
 	dataFolder:SetAttribute("TopFinders", HttpService:JSONEncode(finders))
 	dataFolder:SetAttribute("Fastest", HttpService:JSONEncode(fastest))

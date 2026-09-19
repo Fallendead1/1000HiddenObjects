@@ -9,6 +9,13 @@
 	  Eggs.<Egg>   a Model with PrimaryPart "Root" (Dusty, Shiny, Royal, Attic), plus Eggs.GiftBox for
 	               pets that come as a gift (welcome pet, Starter Pack, pet passes).
 	Until then each pet is a small placeholder built from shapes in its PetConfig colours.
+
+	Moving parts without uploaded animations: a MeshPart with the STRING attribute Joint is moved
+	by code (PetModels.Animate) around its own pivot (PivotOffset = the hinge, e.g. the shoulder).
+	Roles: WingL / WingR (flap), LegFL / LegFR / LegBL / LegBR (walk), Tail (wag), EarL / EarR
+	(flop), Head (looks around), Squash (a whole soft body that squashes and stretches, hinged at
+	its bottom). Joint parts stay anchored; anything welded to them rides along. In a viewport
+	they simply rest as built.
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -33,7 +40,7 @@ local function prepare(model: Model)
 			d.CanQuery = false
 			d.CanTouch = false
 			d.Massless = true
-			d.Anchored = d == model.PrimaryPart
+			d.Anchored = d == model.PrimaryPart or d:GetAttribute("Joint") ~= nil
 		elseif d:IsA("Script") then
 			d:Destroy()
 		end
@@ -267,6 +274,90 @@ function PetModels.Play(model: Model, name: string, looped: boolean?): boolean
 	;(track :: AnimationTrack):Play(0.2)
 	cache._playing = name :: any
 	return true
+end
+
+-- ===== Moving parts (Joint attributes) =====
+
+type JointInfo = { Part: BasePart, Role: string, Rest: CFrame, Size: Vector3, Phase: number }
+local joints: { [Model]: { Scale: number, List: { JointInfo } } } = setmetatable({}, { __mode = "k" }) :: any
+
+local LEG_PHASE = { LegFL = 0, LegBR = 0, LegFR = math.pi, LegBL = math.pi, LegL = 0, LegR = math.pi }
+
+local function jointsOf(model: Model)
+	local cache = joints[model]
+	local root = model.PrimaryPart
+	if not root then
+		return nil
+	end
+	local scale = model:GetScale()
+	if cache and math.abs(cache.Scale - scale) < 1e-4 then
+		return cache
+	end
+	if cache then
+		-- Rescaled (the hatch scene grows the pet): the hinges move out with it.
+		local k = scale / cache.Scale
+		for _, j in ipairs(cache.List) do
+			j.Rest = j.Rest.Rotation + j.Rest.Position * k
+			j.Size *= k
+		end
+		cache.Scale = scale
+		return cache
+	end
+	local list = {}
+	for i, d in ipairs(model:GetDescendants()) do
+		local role = d:IsA("BasePart") and d:GetAttribute("Joint")
+		if type(role) == "string" then
+			table.insert(list, { Part = d, Role = role, Rest = root.CFrame:ToObjectSpace((d :: BasePart):GetPivot()), Size = (d :: BasePart).Size, Phase = i * 1.7 })
+		end
+	end
+	cache = { Scale = scale, List = list }
+	joints[model] = cache
+	return cache
+end
+
+-- Poses the model's moving parts for this moment. Call after the model has been moved.
+function PetModels.Animate(model: Model, clock: number, moving: boolean, flies: boolean, carrying: boolean)
+	local cache = jointsOf(model)
+	local root = model.PrimaryPart
+	if not cache or not root or #cache.List == 0 then
+		return
+	end
+	local base = root.CFrame
+	for _, j in ipairs(cache.List) do
+		local role = j.Role
+		local turn = CFrame.identity
+		if role == "WingL" or role == "WingR" then
+			local a = 0.15 + math.sin(clock * (moving and 17 or 10)) * (flies and 0.8 or 0.12)
+			turn = CFrame.Angles(0, 0, role == "WingL" and a or -a)
+		elseif LEG_PHASE[role] then
+			if moving and not flies then
+				turn = CFrame.Angles(math.sin(clock * 14 + LEG_PHASE[role]) * 0.75, 0, 0)
+			elseif flies then
+				turn = CFrame.Angles(0.5 + (carrying and 0.35 or 0), 0, 0) -- tucked up (reaching down while carrying)
+			end
+		elseif role == "Tail" then
+			turn = CFrame.Angles(0, math.sin(clock * (moving and 11 or 4) + j.Phase) * 0.45, 0)
+		elseif role == "EarL" or role == "EarR" then
+			local a = moving and (0.28 + math.sin(clock * 14 + j.Phase) * 0.14) or math.sin(clock * 2 + j.Phase) * 0.07
+			turn = CFrame.Angles(a, 0, 0)
+		elseif role == "Head" then
+			if moving then
+				turn = CFrame.Angles(math.sin(clock * 14) * 0.06, 0, 0)
+			else
+				turn = CFrame.Angles(math.sin(clock * 1.7 + j.Phase) * 0.06, math.sin(clock * 0.9 + j.Phase) * 0.3, 0)
+			end
+		elseif role == "Squash" then
+			-- Hinged at its bottom: taller and thinner, then shorter and wider.
+			local s = math.sin(clock * (moving and 12 or 3)) * (moving and 0.13 or 0.05)
+			local size = Vector3.new(j.Size.X * (1 - s * 0.6), j.Size.Y * (1 + s), j.Size.Z * (1 - s * 0.6))
+			j.Part.Size = size
+			local hinge = base * j.Rest
+			local offset = j.Part.PivotOffset
+			j.Part.CFrame = hinge * CFrame.new(-offset.Position.X, -offset.Position.Y * (1 + s), -offset.Position.Z)
+			continue
+		end
+		j.Part:PivotTo(base * CFrame.new(j.Rest.Position) * turn * j.Rest.Rotation)
+	end
 end
 
 -- The model's bounding radius (for framing it in a viewport).

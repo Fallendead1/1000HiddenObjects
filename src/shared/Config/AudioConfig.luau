@@ -13,7 +13,8 @@
 ]]
 
 -- The game's own sounds.
-local MUSIC = 132601187837139 -- lobby and rooms (one continuous loop)
+local MUSIC = 132601187837139 -- the lobby
+local ROOM_MUSIC = 87146428630879 -- inside rooms (the lobby keeps its own track)
 local CLICK = 75757588904639 -- buttons, closing menus, grabbing an object
 local DENIED = 133211074702094 -- refused actions: too heavy, can't afford, warnings
 local LEVEL_UP = 122945832445028
@@ -27,7 +28,7 @@ local COUNTDOWN = 117751546358455 -- the 3, 2, 1 before a room starts (1 s tick)
 return {
 	Music = {
 		LobbyAmbience = { Id = MUSIC, Volume = 0.35, Looped = true },
-		RoomAmbience = { Id = MUSIC, Volume = 0.35, Looped = true },
+		RoomAmbience = { Id = ROOM_MUSIC, Volume = 0.35, Looped = true },
 	},
 
 	SFX = {

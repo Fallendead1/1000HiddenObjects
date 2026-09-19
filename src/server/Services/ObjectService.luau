@@ -60,6 +60,7 @@ export type Flight = {
 	CheckPos: Vector3?,
 	CheckAt: number?,
 	ThrowGroup: number?,
+	GroupSize: number?,
 	BankedAt: number?,
 }
 
@@ -354,6 +355,7 @@ local function releasePassengers(player: Player, h: Held, velocity: Vector3): nu
 					info.MaxSpeed = v.Magnitude
 					info.Owned = true
 					info.ThrowGroup = group
+					info.GroupSize = #passengers + 1
 				else
 					p.AssemblyLinearVelocity = Vector3.zero
 				end
@@ -369,6 +371,7 @@ local function release(player: Player, velocity: Vector3)
 		return
 	end
 	held[player] = nil
+	local groupSize = #h.Passengers + 1
 	local group = releasePassengers(player, h, velocity)
 	local root = h.Root
 	heldBy[root] = nil
@@ -402,6 +405,7 @@ local function release(player: Player, velocity: Vector3)
 		info.MaxSpeed = velocity.Magnitude
 		info.Owned = true
 		info.ThrowGroup = group
+		info.GroupSize = group and groupSize or nil
 	else
 		root.AssemblyLinearVelocity = velocity
 	end

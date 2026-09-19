@@ -18,6 +18,7 @@ local Shared = ReplicatedStorage.Shared
 local FormatUtil = require(Shared.Utility.FormatUtil)
 local RoomRegistry = require(Shared.Config.RoomConfigs)
 local Remotes = require(Shared.Utility.Remotes)
+local GameConfig = require(Shared.Config.GameConfig)
 
 local UI = require(script.Parent.Parent.UI.UI)
 local Controllers = require(script.Parent)
@@ -40,6 +41,7 @@ local timerLabel: TextLabel
 local boostsFrame: Frame
 local teamFrame: Frame
 local sideStack: Frame? = nil
+local lobbyStack: Frame? = nil -- lobby, left: the everyday tiles, then an offer chip under them
 local rightStack: Frame? = nil -- desktop: boosts, then the challenge tracker, under the tiles
 local cashLabel: TextLabel
 local cashGlow: Instance
@@ -112,14 +114,14 @@ local function padShortcut(button: TextButton, key: Enum.KeyCode, frame: Frame, 
 	table.insert(padShortcuts, { Key = key, Button = button, Frame = frame, Open = open })
 end
 
-local function tileGrid(parent: Instance, columns: number, rows: number, props: { [string]: any }): Frame
+local function tileGrid(parent: Instance, columns: number, rows: number, props: { [string]: any }, alignLeft: boolean?): Frame
 	local p = { BackgroundTransparency = 1, Size = UDim2.fromOffset(columns * (TILE + 10) + (columns - 1) * 6, rows * (TILE + 24) + (rows - 1) * 6) }
 	for k, v in pairs(props) do
 		p[k] = v
 	end
 	local frame = UI.Frame(p, parent)
 	local grid = UI.GridLayout(frame, UDim2.fromOffset(TILE + 10, TILE + 24), 6)
-	grid.HorizontalAlignment = Enum.HorizontalAlignment.Right
+	grid.HorizontalAlignment = alignLeft and Enum.HorizontalAlignment.Left or Enum.HorizontalAlignment.Right
 	return frame
 end
 
@@ -129,17 +131,22 @@ local function buildLobbyHUD()
 	-- Objects found and Finder Wins ride on every player's overhead tag in the lobby
 	-- (ProgressionService.RefreshTag), where everyone can see them.
 
-	-- Phones: hung from the top so the bottom row clears the jump button.
-	local buttons = tileGrid(lobbyFrame, 3, 3, touch and { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -10, 0, 8) } or { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -10, 0.46, 0) })
-	HUDController.Buttons.Collection = menuTile(buttons, "COLLECTION", UI.Colors.Gold, 1, "1K", "Icon_Collection")
-	HUDController.Buttons.Challenges = menuTile(buttons, "CHALLENGES", UI.Colors.Cyan, 2, "!", "Icon_Challenges")
-	HUDController.Buttons.LobbyShop = menuTile(buttons, "SHOP", UI.Colors.Purple, 3, "$", "Icon_Shop")
-	HUDController.Buttons.Invite = menuTile(buttons, "INVITE", UI.Colors.Green, 4, "+", "Icon_Invite")
-	HUDController.Buttons.LobbySettings = menuTile(buttons, "SETTINGS", UI.Colors.Locked, 5, "*", "Icon_Settings")
-	HUDController.Buttons.Daily = menuTile(buttons, "DAILY", UI.Colors.Orange, 6, "7", "Icon_Streak")
-	HUDController.Buttons.Spin = menuTile(buttons, "SPIN", UI.Colors.Pink, 7, "@", "Icon_Spin")
-	HUDController.Buttons.LobbyGifts = menuTile(buttons, "GIFTS", UI.Colors.Gold, 8, "G", "Icon_Gift")
-	HUDController.Buttons.Pets = menuTile(buttons, "PETS", UI.Colors.Pink, 9, "P", "Icon_Pets")
+	-- Right: what brings rewards (shop, pets, the free spin, gifts, the daily reward). Left: the
+	-- everyday tiles. Phones: both hung from the top so they clear the thumbstick and jump button.
+	local buttons = tileGrid(lobbyFrame, 2, 3, touch and { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -10, 0, 8) } or { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -10, 0.46, 0) })
+	HUDController.Buttons.LobbyShop = menuTile(buttons, "SHOP", UI.Colors.Purple, 1, "$", "Icon_Shop")
+	HUDController.Buttons.Pets = menuTile(buttons, "PETS", UI.Colors.Pink, 2, "P", "Icon_Pets")
+	HUDController.Buttons.Spin = menuTile(buttons, "SPIN", UI.Colors.Pink, 3, "@", "Icon_Spin")
+	HUDController.Buttons.LobbyGifts = menuTile(buttons, "GIFTS", UI.Colors.Gold, 4, "G", "Icon_Gift")
+	HUDController.Buttons.Daily = menuTile(buttons, "DAILY", UI.Colors.Orange, 5, "7", "Icon_Streak")
+
+	lobbyStack = UI.Frame({ Name = "LobbyLeft", BackgroundTransparency = 1, Size = UDim2.fromOffset(270, 0), AutomaticSize = Enum.AutomaticSize.Y, AnchorPoint = touch and Vector2.new(0, 0) or Vector2.new(0, 0.5), Position = touch and UDim2.fromOffset(12, 116) or UDim2.new(0, 12, 0.46, 0) }, lobbyFrame)
+	UI.ListLayout(lobbyStack :: Frame, Enum.FillDirection.Vertical, 8, Enum.HorizontalAlignment.Left)
+	local everyday = tileGrid(lobbyStack :: Frame, 2, 2, { LayoutOrder = 1 }, true)
+	HUDController.Buttons.Collection = menuTile(everyday, "COLLECTION", UI.Colors.Gold, 1, "1K", "Icon_Collection")
+	HUDController.Buttons.Challenges = menuTile(everyday, "CHALLENGES", UI.Colors.Cyan, 2, "!", "Icon_Challenges")
+	HUDController.Buttons.Invite = menuTile(everyday, "INVITE", UI.Colors.Green, 3, "+", "Icon_Invite")
+	HUDController.Buttons.LobbySettings = menuTile(everyday, "SETTINGS", UI.Colors.Locked, 4, "*", "Icon_Settings")
 	tileDot(HUDController.Buttons.Pets, { "PetWelcomed" }, function()
 		return player:GetAttribute("PetWelcomed") == false
 	end)
@@ -208,8 +215,9 @@ local function buildLobbyHUD()
 	UI.Glow(playButton, UI.Colors.Green, 18, 0.55)
 	UI.PadBadge(playButton, Enum.KeyCode.ButtonX)
 	playButton.Activated:Connect(HUDController.PlayNow)
+	playButton.Visible = GameConfig.ShowPlayNow == true
 
-	resumeFrame = UI.Panel({ Size = UDim2.fromOffset(380, 44), AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -88), Visible = false, BackgroundTransparency = 0.06 }, playFrame)
+	resumeFrame = UI.Panel({ Size = UDim2.fromOffset(380, 44), AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, GameConfig.ShowPlayNow and -88 or 0), Visible = false, BackgroundTransparency = 0.06 }, playFrame)
 	UI.Stroke(resumeFrame, UI.Colors.Cyan, 2.5)
 	resumeLabel = UI.Label({ Text = "", FitText = 16, TextWrapped = false, Size = UDim2.new(1, -140, 1, 0), Position = UDim2.fromOffset(12, 0), TextXAlignment = Enum.TextXAlignment.Left }, resumeFrame)
 	UI.TextGradient(resumeLabel, UI.Colors.Cyan)
@@ -244,6 +252,9 @@ local function refreshPlay()
 end
 
 function HUDController.PlayNow()
+	if not GameConfig.ShowPlayNow then
+		return
+	end
 	if os.clock() < playBusyUntil or attr("InMatch", false) or attr("QueueId", "") ~= "" then
 		return
 	end
@@ -344,7 +355,10 @@ local function buildMatchHUD()
 	HUDController.Buttons.Shop = menuTile(buttons, "SHOP", UI.Colors.Purple, 2, "$", "Icon_Shop")
 	HUDController.Buttons.Hint = menuTile(buttons, "HINT", UI.Colors.Cyan, 3, "?", "Icon_Hint")
 	HUDController.Buttons.Settings = menuTile(buttons, "SETTINGS", UI.Colors.Locked, 4, "*", "Icon_Settings")
+	-- Gifts are opened in the lobby only: the room tile stays hidden (GiftController still keeps
+	-- its countdown text up to date).
 	HUDController.Buttons.Gifts = menuTile(buttons, "GIFTS", UI.Colors.Gold, 5, "G", "Icon_Gift")
+	;(HUDController.Buttons.Gifts.Parent :: Frame).Visible = false
 	HUDController.Buttons.Gifts.Activated:Connect(function()
 		Controllers.GiftController.Open()
 	end)
@@ -456,10 +470,16 @@ local function refreshCash()
 	weightLabel.Text = string.format("MAX WEIGHT: %d", attr("MaxWeight", 2))
 end
 
+local wasInMatch: boolean? = nil
 local function refreshVisibility()
 	local inMatch = attr("InMatch", false)
 	lobbyFrame.Visible = not inMatch
 	matchFrame.Visible = inMatch
+	-- A lobby menu left open (the daily reward...) never follows you into a room.
+	if inMatch and wasInMatch == false then
+		UI.CloseAllMenus()
+	end
+	wasInMatch = inMatch
 	if inMatch then
 		refreshMatchStatic()
 		refreshProgress(true)
@@ -748,6 +768,15 @@ end
 
 -- Touch only: the left-side column for match info (nil on desktop). See buildMatchHUD.
 function HUDController.GetSideStack(): Frame?
+	return sideStack
+end
+
+-- Where a side offer chip goes: the lobby's left column (under its tiles), or in rooms the touch
+-- side stack (nil on desktop: the chip floats mid-left).
+function HUDController.GetOfferStack(): Frame?
+	if lobbyFrame and lobbyFrame.Visible then
+		return lobbyStack
+	end
 	return sideStack
 end
 
