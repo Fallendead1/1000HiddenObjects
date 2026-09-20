@@ -301,7 +301,7 @@ local function scaleBins(model: Model)
 				end
 			end
 			for _, prop in ipairs(props and props:GetChildren() or {}) do
-				if def and prop.Name == def.PropKey and ((prop:GetPivot().Position - mouth.Position) * Vector3.new(1, 0, 1)).Magnitude < 3 then
+				if def and prop.Name == (mouth:GetAttribute("PropKey") or def.PropKey) and ((prop:GetPivot().Position - mouth.Position) * Vector3.new(1, 0, 1)).Magnitude < 3 then
 					for _, p in ipairs(prop:GetDescendants()) do
 						if p:IsA("BasePart") then
 							table.insert(parts, p)
@@ -362,6 +362,20 @@ local function boxOf(part: BasePart): (Vector3, Vector3)
 	return part.Position - h, part.Position + h
 end
 
+-- A room of "anything goes" bins (config AnyBin): every bin keeps its own look (PropKey) but
+-- becomes the Any type, so whatever goes in is paid as a match.
+local function anyBins(model: Model)
+	local any = DepositConfig.Types.Any
+	for _, mouth in ipairs(CollectionService:GetTagged("DepositBin")) do
+		if mouth:IsDescendantOf(model) then
+			local def = DepositConfig.Types[mouth:GetAttribute("BinType") or ""]
+			mouth:SetAttribute("PropKey", def and def.PropKey or any.PropKey)
+			mouth:SetAttribute("BinType", any.Type)
+			mouth:SetAttribute("BinName", any.Name)
+		end
+	end
+end
+
 local function addBackboards(model: Model, centre: Vector3): { BasePart }
 	local folder = Instance.new("Folder")
 	folder.Name = "BinWalls"
@@ -385,7 +399,7 @@ local function addBackboards(model: Model, centre: Vector3): { BasePart }
 				end
 			end
 			for _, prop in ipairs(props and props:GetChildren() or {}) do
-				if def and prop.Name == def.PropKey and ((prop:GetPivot().Position - mouth.Position) * Vector3.new(1, 0, 1)).Magnitude < 3 then
+				if def and prop.Name == (mouth:GetAttribute("PropKey") or def.PropKey) and ((prop:GetPivot().Position - mouth.Position) * Vector3.new(1, 0, 1)).Magnitude < 3 then
 					for _, p in ipairs(prop:GetDescendants()) do
 						if p:IsA("BasePart") then
 							grow(p)
@@ -558,6 +572,9 @@ function RoomService.Build(config, origin: CFrame): RoomRuntime
 
 	-- The shell must be in Workspace first: clutter placement queries it to avoid clipping.
 	model.Parent = workspace
+	if config.AnyBin then
+		anyBins(model) -- (tags are only found once the room is in the world)
+	end
 	addWayfinding(model, config, origin)
 	local backboards = addBackboards(model, origin.Position)
 

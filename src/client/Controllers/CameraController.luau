@@ -12,6 +12,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
 
+local GameConfig = require(ReplicatedStorage.Shared.Config.GameConfig)
 local UI = require(script.Parent.Parent.UI.UI)
 local Controllers = require(script.Parent)
 
@@ -43,8 +44,18 @@ local function wantFirstPerson(): boolean
 	return player:GetAttribute("InMatch") == true and (s == "Countdown" or s == "Searching")
 end
 
+-- Rooms: the eye a little over the head and a wider view (GameConfig). Lobby: Roblox's own.
+local function applyView(inRoom: boolean)
+	local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+	if humanoid then
+		humanoid.CameraOffset = Vector3.new(0, inRoom and GameConfig.RoomCameraLift or 0, 0)
+	end
+	Controllers.FXController.SetBaseFov(inRoom and GameConfig.RoomFieldOfView or 70)
+end
+
 local function apply()
 	local fp = wantFirstPerson()
+	applyView(fp)
 	if fp ~= firstPerson then
 		firstPerson = fp
 		if fp then
@@ -200,6 +211,11 @@ function CameraController.Init()
 		apply()
 	end)
 	UI.OnInputModeChanged(apply)
+	-- A new character (respawn) gets the room's eye height again.
+	player.CharacterAdded:Connect(function(character)
+		character:WaitForChild("Humanoid", 10)
+		apply()
+	end)
 	apply()
 end
 

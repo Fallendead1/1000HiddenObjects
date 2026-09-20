@@ -2,8 +2,9 @@
 	Room upgrade definitions. Levels are 1-indexed; level 1 is the free starting value.
 	Order defines the order cards appear in the Upgrades menu.
 
-	Strength   -> maximum object Weight the player can grab (each level also makes held
-	              objects snappier: +20% hold responsiveness per level).
+	Strength   -> the heaviest object Weight the player handles easily. Anything can be lifted;
+	              above this it is slow to carry and short to throw (Shared/Utility/Heavy). Each
+	              level also makes held objects snappier: +20% hold responsiveness per level.
 	ThrowPower -> launch speed (studs/second) of a thrown object before weight falloff.
 	MoveSpeed  -> WalkSpeed.
 	Armful     -> how many things one grab carries: the object plus small (Weight 1) ones right
@@ -25,7 +26,7 @@ local Upgrades: { UpgradeDef } = {
 	{
 		Key = "Strength",
 		Name = "STRENGTH",
-		Description = "Lift heavier objects.",
+		Description = "Carry and throw heavier objects at full speed.",
 		Icon = "ST",
 		Attribute = "StrengthLevel",
 		Format = function(v) return "Weight " .. tostring(math.floor(v)) end,

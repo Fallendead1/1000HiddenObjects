@@ -18,6 +18,10 @@ return {
 	LobbyPlaceId = 117675182630398,
 	MatchPlaceId = 122762042441174,
 	MatchInLobbyPlace = true,
+	-- In rooms the first-person camera sits a little over the character's head and sees wider,
+	-- so players look over the mess and down into the bins.
+	RoomCameraLift = 1.5, -- studs over the normal eye height
+	RoomFieldOfView = 80, -- degrees (the lobby keeps Roblox's 70)
 	ShowPlayNow = false, -- the lobby's one-tap PLAY NOW button (off: rooms start from the circles)
 
 	-- Queue / matchmaking
@@ -50,6 +54,11 @@ return {
 	HoldWeightFalloff = 0.18, -- responsiveness /= 1 + weight * falloff
 	ThrowUpwardBias = 0.25, -- extra lift so throws arc
 	ThrowGravityScale = 0.45, -- gravity felt by a thrown object until its first impact (floaty arcs)
+	-- Heavy objects (Shared/Utility/Heavy): per weight class over what your Strength handles.
+	HeavyCarrySlow = 0.15, -- walk speed lost per class while carrying it...
+	HeavyCarryMin = 0.4, -- ...down to this share of your speed
+	HeavyThrowLoss = 0.2, -- throw speed lost per class...
+	HeavyThrowMin = 0.3, -- ...down to this share (a heave of a few studs)
 	ThrowWeightFalloff = 0.08, -- speed *= clamp(1.3 - weight * falloff, 0.55, 1.2)
 	SettleSpeed = 1.2, -- studs/second below which a thrown object counts as still
 	SettleTime = 1.2, -- seconds it must stay still before it counts as landed

@@ -32,6 +32,7 @@ local UserInputService = game:GetService("UserInputService")
 local Shared = ReplicatedStorage.Shared
 local GameConfig = require(Shared.Config.GameConfig)
 local UpgradeConfig = require(Shared.Config.UpgradeConfig)
+local Heavy = require(Shared.Utility.Heavy)
 local DepositConfig = require(Shared.Config.DepositConfig)
 local Remotes = require(Shared.Utility.Remotes)
 
@@ -205,13 +206,6 @@ local function requestGrab(fromToggle: boolean)
 	if not root then
 		return
 	end
-	local weight = root:GetAttribute("Weight") or 1
-	if weight > maxWeight() then
-		tooHeavyUntil = os.clock() + 1.5
-		UI.Shake(card, 5, 0.3)
-		Controllers.AudioController.Play("TooHeavy")
-		return
-	end
 	requestId += 1
 	local myRequest = requestId
 	state = "Requesting"
@@ -234,6 +228,7 @@ end
 local function predictedVelocity(root: BasePart, direction: Vector3): Vector3
 	local weight = root:GetAttribute("Weight") or 1
 	local speed = (player:GetAttribute("ThrowSpeed") or 50) * math.clamp(1.3 - weight * GameConfig.ThrowWeightFalloff, 0.55, 1.2)
+		* Heavy.ThrowFactor(weight, maxWeight())
 	return (direction + Vector3.new(0, GameConfig.ThrowUpwardBias, 0)).Unit * speed
 end
 
@@ -571,6 +566,9 @@ local function valueText(root: BasePart): string
 	local value = root:GetAttribute("CashValue") or 0
 	local matchType = DepositConfig.MatchingType(root:GetAttribute("Category"), root:GetAttribute("Weight"))
 	local bin = matchType and DepositConfig.Types[matchType]
+	if matchType == "Any" then
+		return string.format("$%d in any bin", value * DepositConfig.MatchMultiplier)
+	end
 	if bin then
 		return string.format("$%d   •   $%d in the %s", value, value * DepositConfig.MatchMultiplier, bin.Name)
 	end
@@ -604,10 +602,11 @@ local function updateVisuals()
 		card.Visible = false
 	elseif hovered then
 		local weight = hovered:GetAttribute("Weight") or 1
-		local tooHeavy = weight > maxWeight()
 		local chunk = hovered:GetAttribute("IsChunk") == true
-		highlight.OutlineColor = tooHeavy and UI.Colors.Red or Color3.new(1, 1, 1)
-		crosshair = tooHeavy and "heavy" or "hover"
+		-- Heavier than your Strength handles: you can still take it, slowly (Shared/Utility/Heavy).
+		local heavy = weight > maxWeight() and not chunk
+		highlight.OutlineColor = heavy and UI.Colors.Orange or Color3.new(1, 1, 1)
+		crosshair = "hover"
 		card.Visible = true
 		cardName.Text = hovered:GetAttribute("DisplayName") or "OBJECT"
 		cardStats.TextColor3 = UI.Colors.TextDim
@@ -616,15 +615,16 @@ local function updateVisuals()
 		else
 			cardStats.Text = string.format("Weight: %d   •   %s", weight, valueText(hovered))
 		end
-		if tooHeavy then
-			cardAction.Text = string.format("TOO HEAVY - Requires Strength Lv. %d", strengthLevelFor(weight) or UpgradeConfig.GetMaxLevel("Strength"))
-			cardAction.TextColor3 = UI.Colors.Red
+		if heavy then
+			local level = strengthLevelFor(weight)
+			cardAction.Text = actionText(chunk) .. (level and string.format("   •   HEAVY: slow to carry (easy at Strength Lv. %d)", level) or "   •   HEAVY: slow to carry")
+			cardAction.TextColor3 = UI.Colors.Orange
 		else
 			cardAction.Text = actionText(chunk)
 			cardAction.TextColor3 = UI.Colors.Gold
 		end
 	else
-		card.Visible = os.clock() < tooHeavyUntil
+		card.Visible = false
 	end
 	if card.Visible then
 		fitCard()
@@ -845,8 +845,12 @@ function GrabController.Init()
 
 	Remotes.Event("FXEvent").OnClientEvent:Connect(function(name, payload)
 		if name == "TooHeavy" then
-			tooHeavyUntil = os.clock() + 1.5
-			Controllers.NotificationController.Show("Warning", string.format("%s is too heavy! Requires Strength Lv. %d", payload.Name or "That", payload.RequiredLevel or 0), 2.5)
+			-- You picked up something heavier than your Strength handles: say what that means,
+			-- now and then.
+			if os.clock() >= tooHeavyUntil then
+				tooHeavyUntil = os.clock() + 25
+				Controllers.NotificationController.Show("Info", string.format("HEAVY! You carry it slowly and can't throw it far. STRENGTH Lv. %d makes it easy.", payload.RequiredLevel or 0), 3.5)
+			end
 		end
 	end)
 
@@ -886,8 +890,7 @@ function GrabController.Start()
 		Controllers.BinController.SetHeld(heldRoot)
 		hovered = (state == "Idle") and findAimed() or nil
 		updateVisuals()
-		-- Touch: the button says HEAVY (red) while aiming at something you can't lift yet.
-		local hoverAction = hovered and ((hovered:GetAttribute("Weight") or 1) > maxWeight() and "HEAVY" or "GRAB") or nil
+		local hoverAction = hovered and "GRAB" or nil
 		Controllers.HUDController.SetMobileAction(state == "Holding" and "THROW" or hoverAction)
 	end)
 end

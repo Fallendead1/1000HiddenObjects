@@ -53,30 +53,32 @@ def bristles(part, base, direction, length, spread, color, band, count=9, seed=2
 
 # ------------------------------------------------------------------ Dust Bunny (1.6)
 def DustBunny():
-    fur = rgb(222, 216, 236); fur_dark = rgb(178, 168, 205); inner = rgb(255, 170, 195)
-    ball("Body", (0, 0.18, 0.5), (0.52, 0.58, 0.44), fur, detail=3, tint=fur_dark)
-    fluff("Body", (0, 0.18, 0.5), (0.5, 0.56, 0.42), fur, count=26, size=0.16, seed=3, tint=fur_dark, keep=lambda p: p[2] > 0.22)
-    ball("Body", (0, -0.12, 0.42), (0.3, 0.26, 0.26), WHITE, detail=2, shade=0.1)
+    fur = rgb(226, 220, 240); fur_dark = rgb(184, 174, 212); inner = rgb(255, 170, 195)
+    ball("Body", (0, 0.18, 0.5), (0.54, 0.6, 0.46), fur, detail=3, tint=fur_dark)
+    for (x, y, z, s) in ((0, -0.2, 0.5, 0.2), (-0.16, -0.14, 0.4, 0.16), (0.16, -0.14, 0.4, 0.16)):      # a soft white chest tuft
+        ball("Body", (x, y - 0.12, z), (s, s * 0.8, s), WHITE, detail=2, shade=0.1)
     head = "Head@Head"
-    ball(head, (0, -0.22, 1.06), (0.56, 0.5, 0.48), fur, detail=3, tint=fur_dark)
-    fluff(head, (0, -0.2, 1.06), (0.54, 0.48, 0.46), fur, count=20, size=0.14, seed=5, tint=fur_dark, keep=lambda p: p[1] > -0.35 or abs(p[0]) > 0.4)
-    for side in (-1, 1):
+    ball(head, (0, -0.22, 1.06), (0.58, 0.52, 0.5), fur, detail=4, tint=fur_dark)
+    for side in (-1, 1):                                                                                  # cheek fluff
         ball(head, (side * 0.43, -0.42, 0.9), (0.2, 0.18, 0.17), WHITE, detail=2, shade=0.1)
+    for (x, z, s) in ((0, 1.56, 0.13), (-0.12, 1.52, 0.1), (0.12, 1.52, 0.1)):                              # a little tuft between the ears
+        ball(head, (x, -0.2, z), (s, s, s), fur, detail=2, tint=fur_dark)
     hinge(head, (0, -0.05, 0.8))
     face = "Head@Head/Face"
-    eyes(face, -0.63, 1.1, 0.23, 0.155)
-    ball(face, (0, -0.735, 0.975), (0.05, 0.035, 0.035), PINK, detail=1, shade=0)
-    smile(face, -0.735, 0.945, 0.05)
-    blush(face, -0.63, 0.93, 0.37, 0.085)
-    look(face, reflectance=0.12)
+    eyes(face, -0.65, 1.1, 0.23, 0.155)
+    ball(face, (0, -0.755, 0.975), (0.05, 0.035, 0.035), PINK, detail=1, shade=0)
+    smile(face, -0.755, 0.945, 0.05)
+    blush(face, -0.65, 0.93, 0.37, 0.085)
     for side, name in ((-1, "EarL"), (1, "EarR")):
         part = name + "@" + name + "^Head"
         ball(part, (side * 0.24, -0.12, 1.86), (0.13, 0.085, 0.46), fur, rot=(-6, side * 10, 0), detail=2, tint=fur_dark)
         ball(part, (side * 0.245, -0.175, 1.86), (0.075, 0.04, 0.36), inner, rot=(-6, side * 10, 0), detail=2, shade=0.05)
         hinge(part, (side * 0.2, -0.12, 1.45))
-    ball("Tail@Tail", (0, 0.78, 0.55), (0.2, 0.2, 0.2), WHITE, detail=2)
-    fluff("Tail@Tail", (0, 0.78, 0.55), (0.18, 0.18, 0.18), WHITE, count=8, size=0.1, seed=9)
-    hinge("Tail@Tail", (0, 0.62, 0.5))
+    tail = "Tail@Tail"
+    ball(tail, (0, 0.8, 0.55), (0.2, 0.2, 0.2), WHITE, detail=2)
+    for (x, y, z) in ((0.1, 0.9, 0.62), (-0.1, 0.9, 0.62), (0, 0.92, 0.46)):
+        ball(tail, (x, y, z), (0.11, 0.11, 0.11), WHITE, detail=1)
+    hinge(tail, (0, 0.62, 0.5))
     feet(fur, -0.18, 0.42, 0.28, size=(0.15, 0.21, 0.12), tint=fur_dark)
 
 

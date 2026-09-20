@@ -368,7 +368,7 @@ local function binFor(def, root: BasePart)
 	local category = root:GetAttribute("Category")
 	local want = DepositConfig.MatchingType(category, root:GetAttribute("Weight"))
 	local useRight = def.RightBin or (def.Loves ~= nil and category == def.Loves) or rng:NextNumber() < PetConfig.RightBinChance
-	if want and useRight then
+	if want and want ~= "Any" and useRight then
 		for _, bin in ipairs(bins) do
 			if bin.Type == want then
 				return bin

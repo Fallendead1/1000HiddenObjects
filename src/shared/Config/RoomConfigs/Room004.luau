@@ -31,10 +31,13 @@ local Room = {
 	LayoutVariants = { 1 },
 
 	CountMultiplier = 2.4,
+	-- How full of junk the room is (1 = the full mess). The first rooms are much emptier so a new
+	-- player finishes them in one sitting: 35%, 50%, 65%, 80%, then everything. Hard Mode is always full.
+	Fill = 0.8,
 	ChunkFraction = 0.35,
 	ChunkContents = { 5, 8 },
 	FloorHeapHeightBonus = 4,
-	HardMode = { ChunkFraction = 0.55, ChunkContents = { 12, 16 } },
+	HardMode = { Fill = 1, ChunkFraction = 0.55, ChunkContents = { 12, 16 } },
 	TreasureKeys = { "Treasure_ToyCarGold", "Treasure_Watch", "Treasure_Coin", "Treasure_Trophy" },
 
 	Size = V(90, 30, 70),

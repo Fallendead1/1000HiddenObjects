@@ -39,6 +39,11 @@ local Room = {
 	-- Every object is loose physics; ~1,800 loose bodies settle at 60 Hz, so depth comes from
 	-- packed junk chunks (below) rather than thousands more bodies.
 	CountMultiplier = 2.4, -- more candidate objects per heap
+	-- How full of junk the room is (1 = the full mess). The first rooms are much emptier so a new
+	-- player finishes them in one sitting: 35%, 50%, 65%, 80%, then everything. Hard Mode is always full.
+	Fill = 0.35,
+	-- Every bin here takes anything (DepositConfig.Types.Any): sorting starts in room two.
+	AnyBin = true,
 	-- Share of every floor heap built from packed junk chunks (bottom layers). Each chunk bursts
 	-- into ChunkContents real objects when grabbed: depth without thousands of live bodies.
 	ChunkFraction = 0.28,
@@ -48,7 +53,7 @@ local Room = {
 	-- same number of physics bodies (bigger, more common chunks), so the room stays smooth.
 	-- (Measured with { 8, 12 }: 3,875 real objects vs 3,178 at the same ~1,760 bodies; the builder
 	-- fits about the same number of chunks, so fuller chunks are the lever.)
-	HardMode = { ChunkFraction = 0.5, ChunkContents = { 12, 16 } },
+	HardMode = { Fill = 1, ChunkFraction = 0.5, ChunkContents = { 12, 16 } },
 
 	Size = Vector3.new(90, 26, 70),
 	SpawnPosition = Vector3.new(0, 3, 29),

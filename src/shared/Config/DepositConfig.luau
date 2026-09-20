@@ -38,6 +38,9 @@ local Types: { [string]: BinType } = {
 	Keepsakes = { Type = "Keepsakes", Name = "OLD TRUNK", Short = "KEEPSAKES", PropKey = "Bin_Keepsakes", Color = C(190, 130, 70), Categories = { "Keepsake" }, IconKey = "Bin_Keepsakes" },
 	SportsBin = { Type = "SportsBin", Name = "SPORTS BIN", Short = "SPORTS", PropKey = "Bin_SportsBin", Color = C(255, 140, 40), Categories = { "Sports", "Toy", "Shoes" }, IconKey = "Bin_SportsBin" },
 	Trash = { Type = "Trash", Name = "TRASH CAN", Short = "TRASH", PropKey = "Bin_Trash", Color = C(110, 210, 120), Categories = { "Junk", "Electronics", "Recyclable", "Dishes", "Food", "Game", "Tools", "Sports" }, IconKey = "Bin_Trash" },
+	-- The first room's bins take anything at the matching-bin price (Room config AnyBin): a new
+	-- player only has to learn "junk goes in a bin". Sorted bins start in room two.
+	Any = { Type = "Any", Name = "JUNK BIN", Short = "ANYTHING", PropKey = "Bin_Trash", Color = C(90, 225, 120), Categories = {}, IconKey = "Bin_Trash" },
 	Donation = { Type = "Donation", Name = "DONATION BOX", Short = "DONATE", PropKey = "Bin_Donation", Color = C(200, 150, 100), Categories = { "Box", "Container", "Appliance", "Decor", "Tire" }, HeavyWeight = 4, IconKey = "Bin_Donation" },
 }
 
@@ -91,6 +94,10 @@ function DepositConfig.MatchingType(category: string?, weight: number?, present:
 	local here = present or DepositConfig.PresentTypes()
 	-- With no bins around (menus, tests) every type counts.
 	local any = next(here) == nil
+	-- A room of "anything goes" bins: everything matches them.
+	if here.Any then
+		return "Any"
+	end
 	for _, key in ipairs(DepositConfig.Order) do
 		local t = Types[key]
 		if t.HeavyWeight and (weight or 0) >= t.HeavyWeight and (any or here[key]) then
@@ -103,6 +110,21 @@ function DepositConfig.MatchingType(category: string?, weight: number?, present:
 		end
 	end
 	return nil
+end
+
+-- The sorted bin an object would go to in a room that had every kind (daily challenges count
+-- "books into the right bin" by this in a room of "anything goes" bins).
+local everyType: { [string]: boolean }? = nil
+function DepositConfig.NaturalType(category: string?, weight: number?): string?
+	if not everyType then
+		everyType = {}
+		for key in pairs(Types) do
+			if key ~= "Any" then
+				(everyType :: any)[key] = true
+			end
+		end
+	end
+	return DepositConfig.MatchingType(category, weight, everyType)
 end
 
 function DepositConfig.StreakMultiplier(streak: number): number

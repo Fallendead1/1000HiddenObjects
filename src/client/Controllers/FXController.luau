@@ -525,6 +525,15 @@ function FXController.CameraShake(amount: number)
 	end
 end
 
+-- The resting field of view (CameraController widens it in rooms); punches return to it.
+function FXController.SetBaseFov(fov: number)
+	baseFov = fov
+	local camera = workspace.CurrentCamera
+	if camera and fovPunch <= 0.01 then
+		camera.FieldOfView = fov
+	end
+end
+
 function FXController.FovPunch(amount: number)
 	if not reduceVFX() then
 		fovPunch = math.max(fovPunch, amount)

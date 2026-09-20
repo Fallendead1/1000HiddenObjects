@@ -151,7 +151,7 @@ function MonetizationService.Bank(player: Player, key: string)
 		data.Banked[key] = (data.Banked[key] or 0) + 1
 	end)
 	Services.DataService.Save(player)
-	local helpers = { LiftItNow = "LIFT IT NOW saved - it turns on the next time something is too heavy.", JunkBlaster = "JUNK BLASTER saved - use it near packed junk in your next room.", TreasureRadar = "TREASURE RADAR saved - it turns on in your next room." }
+	local helpers = { LiftItNow = "LIFT IT NOW saved - it turns on the next time you pick up something heavy.", JunkBlaster = "JUNK BLASTER saved - use it near packed junk in your next room.", TreasureRadar = "TREASURE RADAR saved - it turns on in your next room." }
 	if helpers[key] then
 		Services.RetentionService.Publish(player)
 		Services.NotificationService.Send(player, "Premium", helpers[key], 5)

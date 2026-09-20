@@ -163,7 +163,9 @@ function DepositService.Deposit(root: BasePart, bin: Bin)
 		Services.EconomyService.AddCash(player, amount)
 		Services.WalletService.OnDeposit(player, base, category == "Treasure" and "Treasure" or ("Bin_" .. bin.Type))
 		player:SetAttribute("ObjectsCleaned", (player:GetAttribute("ObjectsCleaned") or 0) + 1)
-		Services.ProgressionService.OnDeposit(player, { Match = isMatch, BinType = bin.Type, Swish = swish, Streak = streak, Treasure = category == "Treasure" })
+		-- An "anything goes" bin counts for challenges as the sorted bin the object belongs in.
+		local challengeType = if bin.Type == "Any" then (DepositConfig.NaturalType(category, root:GetAttribute("Weight")) or "Trash") else bin.Type
+		Services.ProgressionService.OnDeposit(player, { Match = isMatch, BinType = challengeType, Swish = swish, Streak = streak, Treasure = category == "Treasure" })
 		Services.RetentionService.OnDeposit(player, { Swish = swish, Streak = streak, Treasure = category == "Treasure" })
 		Services.AnalyticsService.Deposited(player, { Amount = amount, BinType = bin.Type, Match = isMatch, Swish = swish, Streak = streak, Treasure = category == "Treasure", Balance = player:GetAttribute("RoomCash") or 0 })
 	end
@@ -183,7 +185,7 @@ function DepositService.Deposit(root: BasePart, bin: Bin)
 		local payload = table.clone(base)
 		if p == player then
 			payload.Amount = amount
-			payload.Match = isMatch
+			payload.Match = isMatch and bin.Type ~= "Any" -- no "MATCH x2" callout where everything matches
 			payload.Swish = swish
 			payload.Bank = bank
 			payload.Long = long

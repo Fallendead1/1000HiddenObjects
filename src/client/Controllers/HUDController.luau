@@ -330,7 +330,7 @@ local function buildMatchHUD()
 	UI.TextGradient(cashLabel, UI.Colors.Cash)
 	local weightIcon = UI.Frame({ Size = UDim2.fromOffset(20, 20), Position = UDim2.fromOffset(14, 56), BackgroundTransparency = 1 }, left)
 	UI.Icon(weightIcon, "Icon_Weight", "", {})
-	weightLabel = UI.Label({ Text = "MAX WEIGHT: 2", TextSize = 14, Font = UI.FontBody, TextColor3 = UI.Colors.TextDim, Size = UDim2.new(1, -44, 0, 22), Position = UDim2.fromOffset(UI.Asset("Icon_Weight") and 40 or 14, 55), TextXAlignment = Enum.TextXAlignment.Left }, left)
+	weightLabel = UI.Label({ Text = "EASY WEIGHT: 2", TextSize = 14, Font = UI.FontBody, TextColor3 = UI.Colors.TextDim, Size = UDim2.new(1, -44, 0, 22), Position = UDim2.fromOffset(UI.Asset("Icon_Weight") and 40 or 14, 55), TextXAlignment = Enum.TextXAlignment.Left }, left)
 
 	-- Touch: the right side belongs to the GRAB button, so the streak, boosts, challenge tracker
 	-- and team stack down the left under the cash panel (empty ones take no room).
@@ -467,7 +467,7 @@ local function refreshCash()
 			UI.Tween(cashGlow, { [prop] = 0.9 }, 0.7)
 		end
 	end
-	weightLabel.Text = string.format("MAX WEIGHT: %d", attr("MaxWeight", 2))
+	weightLabel.Text = string.format("EASY WEIGHT: %d", attr("MaxWeight", 2))
 end
 
 local wasInMatch: boolean? = nil

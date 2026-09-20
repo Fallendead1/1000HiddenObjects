@@ -278,9 +278,10 @@ local function render()
 	renderers[current](pages[current])
 end
 
--- Each egg on show in the lobby floats, turns slowly and burns with an aura in its own colour:
--- a flame of light around it, sparkles, a glowing ring on its pedestal and a light. The rarer
--- the egg, the stronger all of it. The egg itself is the model "<Egg>Display" next to the
+-- Each egg on show in the lobby floats, turns slowly and has a soft aura in its own colour: a
+-- faint flame around it, a few sparkles and a dim ring on its pedestal. The rarer the egg, the
+-- stronger all of it. Kept gentle on purpose: the lobby's bloom turns anything bright and
+-- additive into a white blob (no light source, low LightEmission). The egg itself is the model "<Egg>Display" next to the
 -- pedestal (the pedestal is the part tagged EggPedestal).
 local AURAS = {
 	Dusty = { Color = Color3.fromRGB(255, 214, 150), Second = Color3.fromRGB(255, 240, 210), Power = 1 },
@@ -313,12 +314,13 @@ local function eggAura(pedestal: BasePart, eggKey: string)
 	flame.Name = "Flame"
 	flame.Texture = "rbxasset://textures/particles/fire_main.dds"
 	flame.Color = ColorSequence.new(aura.Color, aura.Second)
-	flame.LightEmission = 1
-	flame.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 2.4 + power * 0.5), NumberSequenceKeypoint.new(1, 0.6) })
-	flame.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.2, 0.72 - power * 0.06), NumberSequenceKeypoint.new(1, 1) })
-	flame.Lifetime = NumberRange.new(0.9, 1.4)
-	flame.Speed = NumberRange.new(2.2, 3.4 + power)
-	flame.Rate = 7 * power
+	flame.LightEmission = 0.25
+	flame.Brightness = 1
+	flame.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1.5 + power * 0.25), NumberSequenceKeypoint.new(1, 0.4) })
+	flame.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.25, 0.9 - power * 0.03), NumberSequenceKeypoint.new(1, 1) })
+	flame.Lifetime = NumberRange.new(0.8, 1.2)
+	flame.Speed = NumberRange.new(1.6, 2.4 + power * 0.5)
+	flame.Rate = 3 * power
 	flame.Rotation = NumberRange.new(-20, 20)
 	flame.EmissionDirection = Enum.NormalId.Top
 	flame.LockedToPart = true
@@ -328,23 +330,16 @@ local function eggAura(pedestal: BasePart, eggKey: string)
 	sparkles.Name = "Sparkles"
 	sparkles.Texture = "rbxasset://textures/particles/sparkles_main.dds"
 	sparkles.Color = ColorSequence.new(aura.Second, aura.Color)
-	sparkles.LightEmission = 1
-	sparkles.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(0.3, 0.35 + power * 0.1), NumberSequenceKeypoint.new(1, 0) })
+	sparkles.LightEmission = 0.4
+	sparkles.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(0.3, 0.22 + power * 0.05), NumberSequenceKeypoint.new(1, 0) })
 	sparkles.Lifetime = NumberRange.new(1.2, 2.2)
 	sparkles.Speed = NumberRange.new(0.6, 1.8)
 	sparkles.SpreadAngle = Vector2.new(180, 180)
-	sparkles.Rate = 5 * power
+	sparkles.Rate = 2.5 * power
 	sparkles.RotSpeed = NumberRange.new(-90, 90)
 	sparkles.Shape = Enum.ParticleEmitterShape.Sphere
 	sparkles.ShapeStyle = Enum.ParticleEmitterShapeStyle.Surface
 	sparkles.Parent = core
-
-	local light = Instance.new("PointLight")
-	light.Color = aura.Color
-	light.Range = 9 + power * 3
-	light.Brightness = 0.8 * power
-	light.Shadows = false
-	light.Parent = core
 
 	-- A ring of light lying on the pedestal under the egg.
 	local ring = Instance.new("Part")
@@ -355,7 +350,7 @@ local function eggAura(pedestal: BasePart, eggKey: string)
 	ring.CanQuery = false
 	ring.CanTouch = false
 	ring.CastShadow = false
-	ring.Material = Enum.Material.Neon
+	ring.Material = Enum.Material.SmoothPlastic
 	ring.Color = aura.Color
 	ring.Size = Vector3.new(0.12, 3.1, 3.1)
 	ring.CFrame = CFrame.new(pedestal.Position + Vector3.new(0, pedestal.Size.Y / 2 + 0.05, 0)) * CFrame.Angles(0, 0, math.rad(90))
@@ -372,7 +367,7 @@ local function eggAura(pedestal: BasePart, eggKey: string)
 		end
 		local t = os.clock() + seed
 		display:PivotTo(home * CFrame.new(0, 0.25 + math.sin(t * 1.6) * 0.18, 0) * CFrame.Angles(0, t * 0.7, math.sin(t * 1.1) * 0.05))
-		ring.Transparency = 0.35 + math.sin(t * 2.4) * 0.2
+		ring.Transparency = 0.55 + math.sin(t * 2.4) * 0.15
 		local wide = 3.1 + math.sin(t * 2.4) * 0.25
 		ring.Size = Vector3.new(0.12, wide, wide)
 	end)

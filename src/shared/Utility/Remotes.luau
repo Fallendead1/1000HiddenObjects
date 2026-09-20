@@ -33,6 +33,8 @@ local Remotes = {
 		"BuyEgg", -- C->S (eggKey) buy and hatch an egg with wallet Cash
 		"EquipPet", -- C->S (kind, on)
 		"PetWelcome", -- C->S () open the welcome gift (the starter pet)
+		"SocialCheck", -- C->S () the CHECK button of the lobby's "like the game" station
+		"SocialResult", -- S->C (state: "Wait" | "NeedGroup" | "Claimed", seconds?)
 		"ClientReady", -- C->S () this player's game finished loading (a match server waits for it)
 		"InputMode", -- C->S (mode) "Touch" | "Gamepad" | "KeyboardMouse": how this player plays
 		"DevCommand", -- C->S (command, ...)

@@ -544,6 +544,27 @@ function ClutterBuilder.Build(config, origin: CFrame, folder: Instance, variant:
 			buildCarpet(pile, config, origin, folder, newId, out, variant)
 		end
 	end
+	-- Fill: how full of junk the room is (the room configs make the early rooms much emptier).
+	-- The piles are packed from far more candidates than fit, so asking for fewer changes little:
+	-- the finished mess is thinned instead, evenly, and what loses its support drops when the
+	-- room settles.
+	local fill = config.Fill or 1
+	if fill < 1 then
+		local rng = Random.new(hashString(config.Name .. "fill" .. tostring(variant or 1)))
+		local kept = {}
+		local keptPiled = 0
+		for i, root in ipairs(out) do
+			if rng:NextNumber() < fill then
+				table.insert(kept, root)
+				if i <= piled then
+					keptPiled += 1
+				end
+			else
+				root:Destroy()
+			end
+		end
+		out, piled = kept, keptPiled
+	end
 	local chunks, hidden, treasures = 0, 0, 0
 	for _, root in ipairs(out) do
 		if root:GetAttribute("IsChunk") then

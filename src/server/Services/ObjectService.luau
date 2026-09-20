@@ -39,6 +39,7 @@ local UpgradeConfig = require(Shared.Config.UpgradeConfig)
 local ClutterConfig = require(Shared.Config.ClutterConfig)
 local Remotes = require(Shared.Utility.Remotes)
 local RateLimiter = require(Shared.Utility.RateLimiter)
+local Heavy = require(Shared.Utility.Heavy)
 
 local Services = require(script.Parent)
 
@@ -381,6 +382,8 @@ local function release(player: Player, velocity: Vector3)
 	root:SetAttribute("HeldByUserId", 0)
 	if player.Parent then
 		player:SetAttribute("HeldObjectId", "")
+		player:SetAttribute("HeldWeight", 0)
+		Services.PlayerSessionService.ApplyWalkSpeed(player)
 	end
 	if not root.Parent then
 		return
@@ -511,11 +514,6 @@ function ObjectService.Grab(player: Player, root: any): (boolean, string?)
 		return false, "Dead"
 	end
 	local weight = root:GetAttribute("Weight") or 1
-	if weight > Services.PlayerSessionService.GetMaxWeight(player) then
-		Services.RetentionService.NoteTooHeavy(player, weight)
-		Remotes.Event("FXEvent"):FireClient(player, "TooHeavy", { Name = root:GetAttribute("DisplayName"), Weight = weight, RequiredLevel = Services.PlayerSessionService.StrengthLevelToLift(player, weight) or UpgradeConfig.StrengthLevelFor(weight) })
-		return false, "TooHeavy"
-	end
 	if closestPointDistance(root, hrp.Position) > GameConfig.GrabDistance + GameConfig.GrabLeniency then
 		return false, "TooFar"
 	end
@@ -523,6 +521,14 @@ function ObjectService.Grab(player: Player, root: any): (boolean, string?)
 		return false, "Blocked"
 	end
 	Services.RetentionService.Touch(player)
+	-- Nothing is too heavy to lift; heavier than your Strength handles is slow to carry and
+	-- short to throw (Shared/Utility/Heavy). A saved Lift It Now turns on for it.
+	if weight > Services.PlayerSessionService.GetMaxWeight(player) and not root:GetAttribute("IsChunk") then
+		Services.RetentionService.NoteTooHeavy(player, weight)
+		if weight > Services.PlayerSessionService.GetMaxWeight(player) then
+			Remotes.Event("FXEvent"):FireClient(player, "TooHeavy", { Name = root:GetAttribute("DisplayName"), Weight = weight, RequiredLevel = Services.PlayerSessionService.StrengthLevelToLift(player, weight) or UpgradeConfig.StrengthLevelFor(weight) })
+		end
+	end
 	-- Whatever rested on it falls instead of hanging in the air.
 	if root.Anchored then
 		wakeAbove(root)
@@ -571,6 +577,8 @@ function ObjectService.Grab(player: Player, root: any): (boolean, string?)
 	root:SetAttribute("LastHolderUserId", player.UserId)
 	setState(root, "Held")
 	player:SetAttribute("HeldObjectId", root:GetAttribute("ObjectId"))
+	player:SetAttribute("HeldWeight", weight)
+	Services.PlayerSessionService.ApplyWalkSpeed(player)
 	Services.AnalyticsService.Grabbed(player)
 	-- Lifting the last thing off the key reveals it right away.
 	Services.MatchService.OnObjectGrabbed(root)
@@ -580,6 +588,7 @@ end
 -- The launch velocity for a throw (the client predicts the same numbers for its arc preview).
 function ObjectService.ThrowVelocity(player: Player, weight: number, direction: Vector3): Vector3
 	local speed = Services.PlayerSessionService.GetThrowSpeed(player) * math.clamp(1.3 - weight * GameConfig.ThrowWeightFalloff, 0.55, 1.2)
+		* Heavy.ThrowFactor(weight, Services.PlayerSessionService.GetMaxWeight(player))
 	return (direction + Vector3.new(0, GameConfig.ThrowUpwardBias, 0)).Unit * speed
 end
 

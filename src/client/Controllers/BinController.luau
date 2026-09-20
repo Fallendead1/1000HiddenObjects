@@ -10,6 +10,7 @@
 ]]
 
 local CollectionService = game:GetService("CollectionService")
+local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -125,7 +126,7 @@ local function outlineFor(mouth: BasePart, board: BasePart, def): Highlight?
 	local props = room and room:FindFirstChild("Props")
 	local best, bestDistance = nil, 6
 	for _, prop in ipairs(props and props:GetChildren() or {}) do
-		if prop.Name == def.PropKey and prop:IsA("Model") then
+		if prop.Name == (mouth:GetAttribute("PropKey") or def.PropKey) and prop:IsA("Model") then
 			local d = ((prop:GetPivot().Position - mouth.Position) * Vector3.new(1, 0, 1)).Magnitude
 			if d < bestDistance then
 				best, bestDistance = prop, d
@@ -147,6 +148,10 @@ local function outlineFor(mouth: BasePart, board: BasePart, def): Highlight?
 end
 
 local holding = false
+local binArrow: Frame
+local binArrowGlyph: TextLabel
+local binArrowLabel: TextLabel
+local binArrowStroke: UIStroke
 local guides: { [Instance]: BillboardGui } = {}
 local guideHeights: { [Instance]: number } = {}
 
@@ -176,7 +181,7 @@ end
 local function styleGuide(gui: BillboardGui, best: boolean)
 	local color = best and UI.Colors.Gold or UI.Colors.Green
 	local tag = gui:FindFirstChild("Tag") :: TextLabel
-	tag.Text = best and "x2" or "x1"
+	tag.Text = if not best then "x1" elseif heldMatch == "Any" then "HERE!" else "x2"
 	tag.TextSize = best and 30 or 24
 	local old = tag:FindFirstChildOfClass("UIGradient")
 	if old then
@@ -347,7 +352,54 @@ local function updateTreasures()
 	end
 end
 
+-- While you hold something, an arrow at the bottom of the screen points to the nearest bin that
+-- pays double for it, with its name and how far it is. It rests when you look right at it.
+local function stepArrow()
+	local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	local camera = workspace.CurrentCamera
+	if not holding or not heldMatch or not root or not camera or player:GetAttribute("InMatch") ~= true then
+		binArrow.Visible = false
+		return
+	end
+	local best: BasePart? = nil
+	local bestDistance = math.huge
+	for mouth, bin in pairs(bins) do
+		if bin.Type == heldMatch and mouth.Parent then
+			local d = ((mouth :: BasePart).Position - root.Position).Magnitude
+			if d < bestDistance then
+				best, bestDistance = mouth :: BasePart, d
+			end
+		end
+	end
+	local def = DepositConfig.Types[heldMatch]
+	if not best or not def then
+		binArrow.Visible = false
+		return
+	end
+	local look = Vector3.new(camera.CFrame.LookVector.X, 0, camera.CFrame.LookVector.Z)
+	local dir = Vector3.new(best.Position.X - camera.CFrame.Position.X, 0, best.Position.Z - camera.CFrame.Position.Z)
+	if look.Magnitude < 0.01 or dir.Magnitude < 0.01 then
+		return
+	end
+	look, dir = look.Unit, dir.Unit
+	local angle = math.deg(math.atan2(look.Z * dir.X - look.X * dir.Z, look:Dot(dir)))
+	binArrow.Visible = true
+	binArrowGlyph.Rotation = -angle
+	binArrowGlyph.TextColor3 = def.Color
+	binArrowStroke.Color = def.Color
+	local ahead = math.abs(angle) < 14
+	binArrowLabel.Text = string.format(ahead and "%s  ·  STRAIGHT AHEAD  ·  %d studs" or "%s  ·  %d studs", def.Short, math.floor(bestDistance + 0.5))
+end
+
 function BinController.Init()
+	binArrow = UI.Panel({ Name = "BinArrow", Size = UDim2.fromOffset(300, 44), AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -24), BackgroundTransparency = 0.12, Visible = false }, UI.Layers.HUD)
+	binArrowStroke = UI.Stroke(binArrow, UI.Colors.Gold, 2.5)
+	local disc = UI.Frame({ BackgroundColor3 = Color3.fromRGB(20, 22, 34), Size = UDim2.fromOffset(36, 36), Position = UDim2.fromOffset(4, 4) }, binArrow)
+	UI.Corner(disc, 18)
+	binArrowGlyph = UI.Label({ Text = "▲", TextSize = 24, Size = UDim2.fromScale(1, 1) }, disc)
+	binArrowLabel = UI.Label({ Text = "", FitText = 17, TextWrapped = false, Size = UDim2.new(1, -52, 1, 0), Position = UDim2.fromOffset(46, 0), TextXAlignment = Enum.TextXAlignment.Left }, binArrow)
+	RunService.RenderStepped:Connect(stepArrow)
+
 	for _, mouth in ipairs(CollectionService:GetTagged("DepositBin")) do
 		addBin(mouth)
 	end

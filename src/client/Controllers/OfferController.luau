@@ -417,7 +417,7 @@ function OfferController.Init()
 		if name == "TooHeavy" then
 			local weight = payload.Weight or 0
 			if inSearching() and weight <= GameConfig.MaxWeightCap and attr("LiftExpires", 0) <= now() and cooledDown("LiftItNow") and available("LiftItNow") then
-				showChip("LiftItNow", string.format("TOO HEAVY? LIFT IT NOW (%d)", weight), UI.Colors.Orange)
+				showChip("LiftItNow", "HEAVY AND SLOW? LIFT IT NOW: FULL SPEED", UI.Colors.Orange)
 			end
 		elseif name == "Deposit" and payload.Mine and payload.Pet then
 			if inSearching() and attr("PetSnackExpires", 0) <= now() and cooledDown("PetSnack") and available("PetSnack") then

@@ -184,7 +184,13 @@ function RoomValidator.Validate(runtime, config): (boolean, string)
 	for _, socket in ipairs(runtime.SocketList) do
 		local group = socket.Part:GetAttribute("BlockerGroup") or ""
 		if group == "" or #socket.Blockers == 0 then
-			err("TargetSocket has no blocker group (key would be visible at start): " .. socket.Id)
+			-- A thinned room (config.Fill < 1) leaves a few spots bare; the key never uses those
+			-- (MatchService.selectTarget only takes covered spots), so there it is only a note.
+			if (config.Fill or 1) < 1 then
+				warnMsg("TargetSocket is uncovered in this thinned room (never used for the key): " .. socket.Id)
+			else
+				err("TargetSocket has no blocker group (key would be visible at start): " .. socket.Id)
+			end
 		else
 			local ok = true
 			for blockerId in string.gmatch(group, "[^,]+") do

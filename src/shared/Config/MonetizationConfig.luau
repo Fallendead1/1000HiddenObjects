@@ -110,7 +110,7 @@ local MonetizationConfig = {
 -- runtime, so their IDs work even if created by hand.
 local GamepassDefs: { ProductDef } = {
 	{ Key = "DoubleCash", Id = 0, StoreName = "2x Cash", Name = "2X CASH", Description = "Double Cash from every object you clean into a bin. Forever.", SuggestedPrice = 149, Tab = "Permanent", Icon = "$$" },
-	{ Key = "StrongerHands", Id = 0, StoreName = "Stronger Hands", Name = "STRONGER HANDS", Description = "Lift one weight class heavier than your Strength. Forever.", SuggestedPrice = 149, Tab = "Permanent", Icon = "SH" },
+	{ Key = "StrongerHands", Id = 0, StoreName = "Stronger Hands", Name = "STRONGER HANDS", Description = "Handle junk one weight class heavier at full speed. Forever.", SuggestedPrice = 149, Tab = "Permanent", Icon = "SH" },
 	{ Key = "FastHands", Id = 0, StoreName = "Fast Hands", Name = "FAST HANDS", Description = "Heavy objects feel lighter and snappier to handle. Forever.", SuggestedPrice = 99, Tab = "Permanent", Icon = "FH" },
 	{ Key = "ThrowBoost", Id = 0, StoreName = "Throw Boost", Name = "THROW BOOST", Description = "+15% throw power. Forever.", SuggestedPrice = 99, Tab = "Permanent", Icon = "TB" },
 	{ Key = "VIP", Id = 0, StoreName = "VIP Searcher", Name = "VIP SEARCHER", Description = "Gold VIP tag, +10% speed in rooms and a free Super Hint every room.", SuggestedPrice = 299, Tab = "Permanent", Icon = "VIP", Ribbon = "BEST VALUE" },
@@ -123,7 +123,7 @@ local GamepassDefs: { ProductDef } = {
 }
 
 local ProductDefs: { ProductDef } = {
-	{ Key = "Strength10Min", Id = 0, StoreName = "2x Strength (10 min)", Name = "2X STRENGTH", Description = "Lift twice the weight for 10 minutes.", SuggestedPrice = 49, Tab = "Boosts", MatchOnly = true, Icon = "2X" },
+	{ Key = "Strength10Min", Id = 0, StoreName = "2x Strength (10 min)", Name = "2X STRENGTH", Description = "Carry and throw twice the weight at full speed for 10 minutes.", SuggestedPrice = 49, Tab = "Boosts", MatchOnly = true, Icon = "2X" },
 	{ Key = "Cash10Min", Id = 0, StoreName = "2x Cash (10 min)", Name = "2X CASH BOOST", Description = "Double Cash from bin deposits for 10 minutes. Carries over between rooms.", SuggestedPrice = 29, Tab = "Boosts", MatchOnly = true, Icon = "$2" },
 	{ Key = "TeamMuscleBoost", Id = 0, StoreName = "Team Muscle Boost", Name = "TEAM MUSCLE BOOST", Description = "Everyone in your room gets +50% Strength and +25% throw power for 10 minutes.", SuggestedPrice = 129, Tab = "Boosts", MatchOnly = true, Icon = "TM" },
 	{ Key = "SpeedBoost10Min", Id = 0, StoreName = "2x Speed (10 min)", Name = "2X SPEED", Description = "Run up to twice as fast for 10 minutes. Carries over between rooms.", SuggestedPrice = 3, Tab = "Boosts", MatchOnly = true, Icon = ">>" },
@@ -131,7 +131,7 @@ local ProductDefs: { ProductDef } = {
 	{ Key = "PetSnack", Id = 0, StoreName = "Pet Snack", Name = "PET SNACK", Description = "Your pets work twice as fast for 5 minutes.", SuggestedPrice = 5, Tab = "Pets", MatchOnly = true, Icon = "PS", Ribbon = "5 MIN BOOST" },
 	{ Key = "QuickHint", Id = 0, StoreName = "Quick Hint", Name = "QUICK HINT", Description = "Instantly receive the next clue.", SuggestedPrice = 19, Tab = "Help", MatchOnly = true, Icon = "?" },
 	{ Key = "SuperHint", Id = 0, StoreName = "Super Hint", Name = "SUPER HINT", Description = "Highlight the correct search region for 15 seconds.", SuggestedPrice = 39, Tab = "Help", MatchOnly = true, Icon = "??" },
-	{ Key = "LiftItNow", Id = 0, StoreName = "Lift It Now", Name = "LIFT IT NOW", Description = "Lift that too-heavy object, and anything as heavy, for 60 seconds.", SuggestedPrice = 5, Tab = "Help", MatchOnly = true, Icon = "UP", Ribbon = "60 SECONDS" },
+	{ Key = "LiftItNow", Id = 0, StoreName = "Lift It Now", Name = "LIFT IT NOW", Description = "Carry and throw that heavy object, and anything as heavy, at full speed for 60 seconds.", SuggestedPrice = 5, Tab = "Help", MatchOnly = true, Icon = "UP", Ribbon = "60 SECONDS" },
 	{ Key = "JunkBlaster", Id = 0, StoreName = "Junk Blaster", Name = "JUNK BLASTER", Description = "Bursts open the packed junk around you. Never the junk hiding the object.", SuggestedPrice = 5, Tab = "Help", MatchOnly = true, Icon = "!!" },
 	{ Key = "TreasureRadar", Id = 0, StoreName = "Treasure Radar", Name = "TREASURE RADAR", Description = "Every treasure in this room sparkles through the junk.", SuggestedPrice = 9, Tab = "Help", MatchOnly = true, Icon = "TR", Ribbon = "THIS ROOM" },
 	{ Key = "StarterPack", Id = 0, StoreName = "Starter Pack", Name = "STARTER PACK", Description = "30 min 2X Cash and 2 Quick Hints for your next rooms, plus a Mop Pup helper pet. Once per player.", SuggestedPrice = 49, Tab = "Permanent", Icon = "SP", Ribbon = "ONE TIME", OneTime = true },

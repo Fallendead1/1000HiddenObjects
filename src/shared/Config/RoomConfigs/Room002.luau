@@ -32,10 +32,13 @@ local Room = {
 
 	-- Kitchen things are small: fewer per heap and a lighter carpet keep it near 1,800 bodies.
 	CountMultiplier = 1.6,
+	-- How full of junk the room is (1 = the full mess). The first rooms are much emptier so a new
+	-- player finishes them in one sitting: 35%, 50%, 65%, 80%, then everything. Hard Mode is always full.
+	Fill = 0.5,
 	ChunkFraction = 0.28,
 	ChunkContents = { 5, 8 },
 	FloorHeapHeightBonus = 4,
-	HardMode = { ChunkFraction = 0.5, ChunkContents = { 12, 16 } },
+	HardMode = { Fill = 1, ChunkFraction = 0.5, ChunkContents = { 12, 16 } },
 	TreasureKeys = { "Treasure_SilverSpoon", "Treasure_Coin", "Treasure_Watch", "Treasure_Phone" },
 
 	Size = V(90, 26, 70),

@@ -83,6 +83,8 @@ local Template = {
 	NotifyAsked = false,
 	-- Helper pets (PetService): owned per kind, the equipped list, the welcome pet, the index reward.
 	Pets = { Owned = {}, Equipped = {}, Welcomed = false, IndexRewarded = false },
+	-- The lobby's "like the game" station (SocialService): its free pet, once per player.
+	Social = { RewardClaimed = false },
 	-- Lasting progression (not a currency): Cleaner XP, room mastery stars, daily challenges.
 	CleanerXP = 0,
 	Stars = {}, -- [tostring(roomId)] = bitmask: 1 object found, 2 cleaned 25%, 4 ten treasures

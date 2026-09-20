@@ -52,6 +52,7 @@ local order = {
 	"GiftController",
 	"PetController",
 	"PetShopController",
+	"SocialController",
 	"SpinController",
 	"OfferController",
 	"LobbyController",

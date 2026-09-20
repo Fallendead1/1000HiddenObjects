@@ -14,6 +14,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage.Shared
 local GameConfig = require(Shared.Config.GameConfig)
 local UpgradeConfig = require(Shared.Config.UpgradeConfig)
+local Heavy = require(Shared.Utility.Heavy)
 local MonetizationConfig = require(Shared.Config.MonetizationConfig)
 
 local Services = require(script.Parent)
@@ -35,6 +36,7 @@ local SessionDefaults = {
 	ThrowPowerLevel = 1,
 	MoveSpeedLevel = 1,
 	ArmfulLevel = 1,
+	HeldWeight = 0, -- the weight in the player's hands (0: nothing); heavy things slow them down
 	ObjectsCleaned = 0, -- objects this player got into a bin this room
 	Streak = 0,
 	StreakExpires = 0,
@@ -241,6 +243,11 @@ function PlayerSessionService.GetWalkSpeed(player: Player): number
 	-- 2x Speed, capped so grabbing and throwing on the run stay under control.
 	if player:GetAttribute("InMatch") and (player:GetAttribute("SpeedBoostExpires") or 0) > now() then
 		speed = math.max(speed, math.min(speed * Effects.SpeedBoostMultiplier, Effects.MaxBoostedWalkSpeed))
+	end
+	-- Carrying something heavier than your Strength handles slows you down.
+	local held = player:GetAttribute("HeldWeight") or 0
+	if held > 0 then
+		speed *= Heavy.CarryFactor(held, PlayerSessionService.GetMaxWeight(player))
 	end
 	return speed
 end

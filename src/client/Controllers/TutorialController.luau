@@ -57,7 +57,7 @@ local Steps = {
 		Title = "THE RIGHT BIN PAYS x2",
 		Scene = "Bins",
 		Text = function()
-			return "Every bin cleans junk for Cash, but the RIGHT one pays DOUBLE. Follow the gold x2 arrow while you hold something."
+			return "Every bin cleans junk for Cash. From room two the bins are sorted and the RIGHT one pays DOUBLE: follow the arrow while you hold something."
 		end,
 	},
 	{
@@ -267,12 +267,12 @@ Scenes.Upgrade = function(stage: Frame, alive)
 	UI.New("UIStroke", { Color = BLACK, Thickness = 2 }, button)
 	UI.Label({ Text = "UPGRADE", TextScaled = true, TextWrapped = false, Size = UDim2.fromScale(0.86, 0.66), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5) }, button)
 	local box = block(stage, Color3.fromRGB(150, 105, 70), UDim2.fromScale(0.22, 0.26), UDim2.fromScale(0.76, 0.73), "5")
-	local tag = UI.Label({ Text = "TOO HEAVY", TextScaled = true, TextWrapped = false, Size = UDim2.fromScale(0.38, 0.12), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.76, 0.48) }, stage)
+	local tag = UI.Label({ Text = "HEAVY = SLOW", TextScaled = true, TextWrapped = false, Size = UDim2.fromScale(0.38, 0.12), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.76, 0.48) }, stage)
 	local hand = cursor(stage)
 	while alive() do
 		cash.Text = "$60"
-		tag.Text = "TOO HEAVY"
-		UI.TextGradient(tag, UI.Colors.Red)
+		tag.Text = "HEAVY = SLOW"
+		UI.TextGradient(tag, UI.Colors.Orange)
 		box.Position = UDim2.fromScale(0.76, 0.73)
 		hand.Position = UDim2.fromScale(0.9, 0.12)
 		if not sleep(0.6, alive) then
@@ -288,7 +288,7 @@ Scenes.Upgrade = function(stage: Frame, alive)
 		if not sleep(0.6, alive) then
 			return
 		end
-		tag.Text = "CAN LIFT!"
+		tag.Text = "EASY NOW!"
 		UI.TextGradient(tag, UI.Colors.Green)
 		UI.Tween(box, { Position = UDim2.fromScale(0.76, 0.6) }, 0.4, Enum.EasingStyle.Back)
 		if not sleep(1.6, alive) then
@@ -615,7 +615,7 @@ local function roomView(): View?
 				return { Text = platformText("Close the menu to keep going.", "Close the menu to keep going.", "Press B to close the menu."), Tag = "3/4", Gui = menuClose("Upgrades") }
 			end
 			local buyFree = platformText("Tap UPGRADE on STRENGTH - your first one is FREE!", "Tap UPGRADE on STRENGTH - your first one is FREE!", "Press A to upgrade STRENGTH - your first one is FREE!")
-			return { Text = free and buyFree or "Buy STRENGTH when you have enough Cash - it lifts heavier junk.", Tag = "3/4", Gui = Controllers.UpgradeController.GetButton("Strength") }
+			return { Text = free and buyFree or "Buy STRENGTH when you have enough Cash - heavy junk gets quick to carry and throw.", Tag = "3/4", Gui = Controllers.UpgradeController.GetButton("Strength") }
 		elseif open then
 			return nil
 		end
@@ -631,7 +631,7 @@ local function roomView(): View?
 		local object = grabTarget()
 		return { Text = Steps[1].Text(), Tag = "1/4", Gui = action, Part = object, Lift = object and math.max(object.Size.X, object.Size.Y, object.Size.Z) / 2 + 1.5 }
 	elseif roomStep == 2 then
-		return { Text = platformText("Aim at the bin with the gold x2 and RELEASE to throw!", "Slide to aim at the bin with the gold x2 and LET GO!", "Aim at the bin with the gold x2 and RELEASE R2!"), Tag = "2/4", Gui = action }
+		return { Text = platformText("Follow the arrow to a glowing bin, aim at it and RELEASE to throw!", "Follow the arrow to a glowing bin, slide to aim at it and LET GO!", "Follow the arrow to a glowing bin, aim at it and RELEASE R2!"), Tag = "2/4", Gui = action }
 	elseif roomStep == 4 then
 		local target = matchState:GetAttribute("TargetName") or "Golden Key"
 		if matchState:GetAttribute("Easy") then

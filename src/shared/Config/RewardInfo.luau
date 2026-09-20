@@ -15,7 +15,7 @@ local KINDS: { [string]: Info } = {
 	QuickHint = { Icon = "Icon_Prod_QuickHint", Glyph = "?", Color = "Purple", Explain = "Quick Hint: gives you the next clue to the hidden object in a room." },
 	SuperHint = { Icon = "Icon_Prod_SuperHint", Glyph = "?!", Color = "Red", Explain = "Super Hint: lights up the area where the hidden object is." },
 	CashBoost = { Icon = "Icon_Prod_Cash10Min", Glyph = "2X", Color = "Green", Explain = "2X Cash: every object you clean into a bin pays double." },
-	StrengthBoost = { Icon = "Icon_Prod_Strength10Min", Glyph = "2X", Color = "Orange", Explain = "2X Strength: lift heavier junk than your upgrades allow." },
+	StrengthBoost = { Icon = "Icon_Prod_Strength10Min", Glyph = "2X", Color = "Orange", Explain = "2X Strength: carry and throw heavier junk at full speed." },
 	Egg = { Icon = "Gift_Box", Glyph = "EGG", Color = "Pink", Explain = "Hatch it for a helper pet that cleans rooms with you!" },
 }
 
