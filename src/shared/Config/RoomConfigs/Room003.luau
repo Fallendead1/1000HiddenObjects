@@ -30,7 +30,7 @@ local Room = {
 
 	CountMultiplier = 2.4,
 	-- How full of junk the room is (1 = the full mess). The first rooms are much emptier so a new
-	-- player finishes them in one sitting: 35%, 50%, 65%, 80%, then everything. Hard Mode is always full.
+	-- player finishes them in one sitting: 20%, 50%, 65%, 80%, then everything. Hard Mode is always full.
 	Fill = 0.65,
 	ChunkFraction = 0.3,
 	ChunkContents = { 5, 8 },

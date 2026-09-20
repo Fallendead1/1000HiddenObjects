@@ -23,6 +23,7 @@ local CameraController = {}
 
 local firstPerson = false
 local altHeld = false
+local hintSince: number? = nil
 local shiftFree = false -- SHIFT toggles the mouse free / locked in first person
 local modal: TextButton
 local crosshair: Frame
@@ -84,7 +85,16 @@ local function apply()
 	local cursorFree = fp and (altHeld or shiftFree or UI.GetOpenMenu() ~= nil or prompt)
 	modal.Visible = cursorFree
 	crosshair.Visible = fp and not cursorFree
-	hint.Visible = fp and not UI.IsTouch() and (not cursorFree or shiftFree)
+	-- The key reminders stay for the first minute of a room, then leave the view (they come back
+	-- while the mouse is free, to say how to lock it again).
+	if fp and not hintSince then
+		hintSince = os.clock()
+		task.delay(61, apply)
+	elseif not fp then
+		hintSince = nil
+	end
+	local fresh = hintSince ~= nil and os.clock() - hintSince < 60
+	hint.Visible = fp and not UI.IsTouch() and ((not cursorFree and fresh) or shiftFree)
 	hint.Text = if UI.IsGamepad()
 		then "[R2] grab / throw   [B] drop   [Y] shop   D-pad left: upgrades   right: hints"
 		elseif shiftFree then "MOUSE FREE - press [SHIFT] to aim again"

@@ -22,7 +22,8 @@ return {
 	-- so players look over the mess and down into the bins.
 	RoomCameraLift = 1.5, -- studs over the normal eye height
 	RoomFieldOfView = 80, -- degrees (the lobby keeps Roblox's 70)
-	ShowPlayNow = false, -- the lobby's one-tap PLAY NOW button (off: rooms start from the circles)
+	ShowPlayNow = false,
+	ShowQueuePlates = false, -- the little "ROOM #001 / record holder" plaque on each queue circle -- the lobby's one-tap PLAY NOW button (off: rooms start from the circles)
 
 	-- Queue / matchmaking
 	MaxPartySize = 4,

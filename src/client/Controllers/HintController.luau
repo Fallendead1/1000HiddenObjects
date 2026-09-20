@@ -19,6 +19,7 @@ local bannerLabel: TextLabel
 local bannerGlow: Instance
 local bannerToken = 0
 local activeRegionParts: { BasePart } = {}
+local bannerTag: TextLabel? = nil
 local outlineBoxes: { SelectionBox } = {}
 local outlineThread: thread? = nil
 
@@ -171,7 +172,7 @@ function HintController.Init()
 	UI.Stroke(banner, UI.Colors.Cyan, 2.5)
 	bannerGlow = UI.Glow(banner, UI.Colors.Cyan, 20, 0.6)
 	local tag = UI.Surface3D({ Size = UDim2.fromOffset(74, 42), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 9, 0.5, 0) }, banner, UI.Colors.Cyan, 10, 0.12)
-	UI.Label({ Text = "CLUE", TextSize = 16, TextWrapped = false, Size = UDim2.new(1, 0, 0.88, 0) }, tag)
+	bannerTag = UI.Label({ Text = "CLUE", FitText = 16, TextWrapped = false, Size = UDim2.new(1, -4, 0.88, 0), Position = UDim2.fromOffset(2, 0) }, tag)
 	bannerLabel = UI.Label({ Text = "", TextSize = 18, Size = UDim2.new(1, -104, 1, 0), Position = UDim2.fromOffset(94, 0), TextXAlignment = Enum.TextXAlignment.Left }, banner)
 	UI.TextGradient(bannerLabel, UI.Colors.Cyan)
 
@@ -181,8 +182,9 @@ function HintController.Init()
 			if payload.Side then
 				pulseSideSign(payload.Side)
 			end
-			if payload.Stage and payload.Stage > 0 then
-				Controllers.NotificationController.Show("Info", string.format("Clue %d of 5!", payload.Stage))
+			-- (The banner's own pill says which clue it is: no second pop-up for it.)
+			if bannerTag then
+				bannerTag.Text = (payload.Stage and payload.Stage > 0) and string.format("CLUE %d/5", payload.Stage) or "CLUE"
 			end
 		elseif eventName == "RegionHighlight" then
 			HintController.HighlightRegion(payload.RegionId, payload.Duration or 8, payload.Super)

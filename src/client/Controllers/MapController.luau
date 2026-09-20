@@ -430,7 +430,10 @@ local function step()
 			end
 		end
 	end
-	pileBar.Visible = onPile ~= nil and matchState:GetAttribute("State") == "Searching"
+	-- Only once the pile is really on its way, and never while holding something (the bin arrow
+	-- has the bottom of the screen then).
+	local holding = Controllers.GrabController.GetHeld() ~= nil
+	pileBar.Visible = onPile ~= nil and onPile >= 0.15 and not holding and matchState:GetAttribute("State") == "Searching"
 	if onPile then
 		pileFill.Size = UDim2.fromScale(math.max(0.02, onPile), 1)
 		pileLabel.Text = string.format("THIS PILE: %d%% CLEARED", math.floor(onPile * 100 + 0.5))
@@ -456,7 +459,10 @@ local function step()
 			compassArrow.TextColor3 = Zones.ColorOf(zone)
 		end
 	end
-	compass.Visible = target ~= nil and matchState:GetAttribute("State") == "Searching"
+	compass.Visible = target ~= nil and not holding and matchState:GetAttribute("State") == "Searching"
+	if compass.Visible then
+		pileBar.Visible = false
+	end
 	if target then
 		if spot then
 			compassArrow.TextColor3 = GOLD
@@ -505,7 +511,7 @@ function MapController.Init()
 	compassLabel = UI.Label({ Text = "", FitText = 17, TextWrapped = false, Size = UDim2.new(1, -46, 1, 0), Position = UDim2.fromOffset(42, 0), TextXAlignment = Enum.TextXAlignment.Left }, compass)
 
 	-- "THIS PILE: 60% CLEARED" while you stand on a heap (PileService).
-	pileBar = UI.Panel({ Name = "PileBar", Size = UDim2.fromOffset(230, 24), AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -168), BackgroundTransparency = 0.15, Visible = false }, UI.Layers.HUD)
+	pileBar = UI.Panel({ Name = "PileBar", Size = UDim2.fromOffset(230, 24), AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -122), BackgroundTransparency = 0.15, Visible = false }, UI.Layers.HUD)
 	local track = UI.Frame({ BackgroundColor3 = Color3.fromRGB(24, 26, 38), Size = UDim2.new(1, -8, 1, -8), Position = UDim2.fromOffset(4, 4) }, pileBar)
 	UI.Corner(track, 6)
 	pileFill = UI.Frame({ BackgroundColor3 = UI.Colors.Green, Size = UDim2.fromScale(0, 1) }, track)

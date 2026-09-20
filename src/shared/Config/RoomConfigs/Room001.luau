@@ -40,8 +40,8 @@ local Room = {
 	-- packed junk chunks (below) rather than thousands more bodies.
 	CountMultiplier = 2.4, -- more candidate objects per heap
 	-- How full of junk the room is (1 = the full mess). The first rooms are much emptier so a new
-	-- player finishes them in one sitting: 35%, 50%, 65%, 80%, then everything. Hard Mode is always full.
-	Fill = 0.35,
+	-- player finishes them in one sitting: 20%, 50%, 65%, 80%, then everything. Hard Mode is always full.
+	Fill = 0.2, -- the first room is a quick tutorial: four fifths of the mess is already gone
 	-- Every bin here takes anything (DepositConfig.Types.Any): sorting starts in room two.
 	AnyBin = true,
 	-- Share of every floor heap built from packed junk chunks (bottom layers). Each chunk bursts

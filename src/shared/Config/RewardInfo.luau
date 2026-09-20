@@ -4,7 +4,7 @@
 	glyph until the art exists) and a one-line explanation shown after it's claimed.
 
 	A reward is any table with the fields RetentionService.Grant and the daily rewards use:
-	Cash, XP, Hint ("QuickHint" / "SuperHint"), Boost ("CashBoost" / "StrengthBoost"), Egg.
+	Cash, XP, Hint ("QuickHint" / "SuperHint"), Boost ("CashBoost" / "StrengthBoost"), Egg, Pet.
 ]]
 
 export type Info = { Icon: string, Glyph: string, Color: string, Explain: string }
@@ -31,6 +31,10 @@ end
 function RewardInfo.Of(reward: { [string]: any }?): Info
 	local r = reward or {}
 	local main: Info? = nil
+	if r.Pet then
+		-- A helper pet as the prize (the daily spin): its own picture (UIImages PetIcon_<Kind>).
+		return { Icon = "PetIcon_" .. tostring(r.Pet), Glyph = "PET", Color = "Gold", Explain = "A helper pet that cleans rooms with you! Find it in PETS." }
+	end
 	if r.Hint then
 		main = KINDS[r.Hint]
 	elseif r.Boost then

@@ -61,6 +61,8 @@ local cardName: TextLabel
 local cardStats: TextLabel
 local cardAction: TextLabel
 local tooHeavyUntil = 0
+local grabsDone = 0 -- after a few grabs the card stops repeating how to grab
+local KNOWS_GRABBING = 6
 
 -- Throw preview
 local ARC_DOTS = 22
@@ -362,6 +364,7 @@ local function onGrabResult(replyId: number, ok: boolean, objectId: string?, rea
 		return
 	end
 	state = "Holding"
+	grabsDone += 1
 	heldId = objectId
 	local folder = roomClutter()
 	heldRoot = folder and folder:FindFirstChild(objectId) :: BasePart?
@@ -588,7 +591,7 @@ local function fitCard()
 	for _, label in ipairs({ cardName, cardStats, cardAction }) do
 		width = math.max(width, TextService:GetTextSize(label.Text, label.TextSize, label.Font, Vector2.new(2000, 100)).X + 30)
 	end
-	card.Size = UDim2.fromOffset(math.min(width, 560), 86)
+	card.Size = UDim2.fromOffset(math.min(width, 560), cardAction.Text == "" and 60 or 86)
 end
 
 local function updateVisuals()
@@ -620,7 +623,7 @@ local function updateVisuals()
 			cardAction.Text = actionText(chunk) .. (level and string.format("   •   HEAVY: slow to carry (easy at Strength Lv. %d)", level) or "   •   HEAVY: slow to carry")
 			cardAction.TextColor3 = UI.Colors.Orange
 		else
-			cardAction.Text = actionText(chunk)
+			cardAction.Text = (grabsDone >= KNOWS_GRABBING and not chunk) and "" or actionText(chunk)
 			cardAction.TextColor3 = UI.Colors.Gold
 		end
 	else

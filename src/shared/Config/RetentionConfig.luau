@@ -52,15 +52,20 @@ return {
 	},
 
 	-- The free daily spin (free spins only, never sold). Weights are shown to players as odds.
+	-- The order is the order of the slices on the wheel's face (UIImages Spin_Wheel, drawn by
+	-- art/make_ui_images.ps1: first slice at the top, clockwise), so keep the two in step.
+	-- Short = the few characters on the slice; Pet = a helper pet as the prize.
 	Spin = {
-		{ Text = "$50", Reward = { Cash = 50 }, Weight = 25, Color = "Cash" },
-		{ Text = "+200 XP", Reward = { XP = 200 }, Weight = 15, Color = "Cyan" },
-		{ Text = "$100", Reward = { Cash = 100 }, Weight = 20, Color = "Green" },
-		{ Text = "Quick Hint", Reward = { Hint = "QuickHint" }, Weight = 12, Color = "Purple" },
-		{ Text = "$250", Reward = { Cash = 250 }, Weight = 8, Color = "Orange" },
-		{ Text = "10 min 2X Cash", Reward = { Boost = "CashBoost", Seconds = 600 }, Weight = 10, Color = "Pink" },
-		{ Text = "Super Hint", Reward = { Hint = "SuperHint" }, Weight = 8, Color = "Red" },
-		{ Text = "$1,000", Reward = { Cash = 1000 }, Weight = 2, Color = "Gold" },
+		{ Text = "$50", Short = "$50", Reward = { Cash = 50 }, Weight = 24, Color = "Cash" },
+		{ Text = "+200 XP", Short = "+200", Reward = { XP = 200 }, Weight = 15, Color = "Cyan" },
+		{ Text = "$100", Short = "$100", Reward = { Cash = 100 }, Weight = 19, Color = "Green" },
+		{ Text = "Quick Hint", Short = "HINT", Reward = { Hint = "QuickHint" }, Weight = 12, Color = "Purple" },
+		{ Text = "Mop Pup (pet)", Short = "PET", Reward = { Pet = "MopPup" }, Weight = 3, Color = "Gold" },
+		{ Text = "$250", Short = "$250", Reward = { Cash = 250 }, Weight = 8, Color = "Orange" },
+		{ Text = "10 min 2X Cash", Short = "2X", Reward = { Boost = "CashBoost", Seconds = 600 }, Weight = 9, Color = "Pink" },
+		{ Text = "Super Hint", Short = "SUPER", Reward = { Hint = "SuperHint" }, Weight = 7, Color = "Red" },
+		{ Text = "$1,000", Short = "$1,000", Reward = { Cash = 1000 }, Weight = 2, Color = "Gold" },
+		{ Text = "Golden Broom Dragon (pet)", Short = "DRAGON", Reward = { Pet = "GoldenBroomDragon" }, Weight = 1, Color = "Gold" },
 	},
 
 	-- One missed day a week keeps the daily login streak (used automatically).

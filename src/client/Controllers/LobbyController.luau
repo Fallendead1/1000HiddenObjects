@@ -182,6 +182,11 @@ end
 -- A small plaque at the circle's front edge (facing the plaza): the room and its fastest
 -- record. Returns its refresh function.
 local function buildPlate(zone: BasePart, groundY: number): () -> ()
+	-- Off: the circles read cleaner without a room number and a stranger's name on them (the
+	-- records are on the FASTEST board). GameConfig.ShowQueuePlates brings them back.
+	if not GameConfig.ShowQueuePlates then
+		return function() end
+	end
 	local lobby = workspace:FindFirstChild("Lobby")
 	local keyDeco = lobby and lobby:FindFirstChild("LobbyKeyDeco")
 	local center = keyDeco and (keyDeco :: any):GetPivot().Position or Vector3.zero

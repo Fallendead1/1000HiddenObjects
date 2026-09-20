@@ -276,7 +276,12 @@ function HintService.GrantQuickHint(player: Player): boolean
 	end
 	setStage(match, nextStage)
 	deliverStage(match, nextStage, match.Players, true)
-	Services.NotificationService.SendMany(match.Players, "Premium", string.format("%s used a Quick Hint!", player.Name))
+	-- Teammates hear who brought the clue; the player who did already sees the clue itself.
+	for _, p in ipairs(match.Players) do
+		if p ~= player then
+			Services.NotificationService.Send(p, "Premium", string.format("%s used a Quick Hint!", player.Name))
+		end
+	end
 	Services.AnalyticsService.Clue({ player }, nextStage, "quick", match.Progress)
 	return true
 end

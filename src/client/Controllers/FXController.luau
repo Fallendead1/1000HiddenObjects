@@ -496,12 +496,6 @@ function celebrateDeposit(payload)
 	-- A trick shot gets its name in big letters too.
 	if multiName then
 		FXController.FloatingText(multiName, UI.Colors.Purple, UDim2.new(0.5, 0, 0.36, 0), 40 + math.min(payload.Multi, 5) * 3)
-	elseif payload.Bank then
-		FXController.FloatingText("BANK SHOT!", UI.Colors.Cyan, UDim2.new(0.5, 0, 0.36, 0), 40)
-	elseif payload.Long then
-		FXController.FloatingText("LONG SHOT!", UI.Colors.Orange, UDim2.new(0.5, 0, 0.36, 0), 40)
-	elseif payload.Swish then
-		FXController.FloatingText("SWISH!", UI.Colors.Gold, UDim2.new(0.5, 0, 0.36, 0), 40)
 	end
 end
 

@@ -413,13 +413,23 @@ end
 local TAPS_TO_HATCH = 5
 local AUTO_TAP_SECONDS = 3.5 -- nobody gets stuck: the egg gets a tap by itself after this long
 
--- A burst of light rays behind the pet, in its rarity's colour (every colour for the rarest).
-local function sunburst(parent: Instance, color: Color3, rainbow: boolean): Frame
-	local holder = UI.Frame({ Name = "Sunburst", BackgroundTransparency = 1, Size = UDim2.fromOffset(760, 760), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), ZIndex = 101 }, parent)
-	local count = 20
-	for i = 1, count do
-		local ray = UI.Frame({ BackgroundColor3 = rainbow and Color3.fromHSV((i - 1) / count, 0.75, 1) or color, Size = UDim2.new(0, 30, 0.5, 0), AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.fromScale(0.5, 0.5), Rotation = (i - 1) * 360 / count, ZIndex = 101 }, holder)
-		UI.New("UIGradient", { Rotation = 90, Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.75, 0.55), NumberSequenceKeypoint.new(1, 0.2) }) }, ray)
+-- The light behind the new pet: a soft round glow in its rarity's colour with faint rays turning
+-- slowly through it (UIImages Glow_Soft / Rays_Soft; the rarest get a second, golden set of rays).
+local function sunburst(parent: Instance, color: Color3, grand: boolean): Frame
+	local holder = UI.Frame({ Name = "Sunburst", BackgroundTransparency = 1, Size = UDim2.fromOffset(720, 720), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), ZIndex = 101 }, parent)
+	local glow = UI.Asset("Glow_Soft")
+	if glow then
+		-- The glow doesn't turn with the rays: it sits in its own frame over the same spot.
+		local still = UI.Frame({ Name = "Glow", BackgroundTransparency = 1, Size = UDim2.fromOffset(640, 640), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), ZIndex = 100 }, parent)
+		UI.Image({ Image = glow, ImageColor3 = color, ImageTransparency = 0.2, Size = UDim2.fromScale(1, 1), ZIndex = 100 }, still)
+		UI.Image({ Image = glow, ImageColor3 = Color3.new(1, 1, 1), ImageTransparency = 0.45, Size = UDim2.fromScale(0.5, 0.5), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), ZIndex = 100 }, still)
+	end
+	local rays = UI.Asset("Rays_Soft")
+	if rays then
+		UI.Image({ Image = rays, ImageColor3 = color:Lerp(Color3.new(1, 1, 1), 0.55), ImageTransparency = 0.35, Size = UDim2.fromScale(1, 1), ZIndex = 101 }, holder)
+		if grand then
+			UI.Image({ Image = rays, ImageColor3 = Color3.fromRGB(255, 220, 110), ImageTransparency = 0.5, Size = UDim2.fromScale(0.82, 0.82), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Rotation = 10, ZIndex = 101 }, holder)
+		end
 	end
 	return holder
 end
@@ -559,7 +569,7 @@ local function playHatch(payload)
 	Controllers.AudioController.Play(rarity.Order >= 4 and "LevelUp" or "CashAward")
 	vp:Destroy()
 	pips:Destroy()
-	UI.Tween(wash, { BackgroundTransparency = 0.35 }, 0.4)
+	UI.Tween(wash, { BackgroundTransparency = 0.6 }, 0.4)
 	local rays = sunburst(stage, rarity.Color, rarity.Order >= 4)
 	local petModel = PetModels.Build(def.Key)
 	PetModels.Viewport(stage, petModel, { ZIndex = 102 }, true)
@@ -582,7 +592,7 @@ local function playHatch(payload)
 	local close = opened + 6
 	local spin = 0
 	while os.clock() < close and not skip do
-		spin += RunService.RenderStepped:Wait() * (rarity.Order >= 4 and 45 or 28)
+		spin += RunService.RenderStepped:Wait() * (rarity.Order >= 4 and 16 or 10)
 		rays.Rotation = spin
 		-- A tap closes it, once the pet has had its moment.
 		if tapped and os.clock() - opened > 0.8 then

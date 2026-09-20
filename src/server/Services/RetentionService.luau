@@ -106,6 +106,9 @@ function RetentionService.Grant(player: Player, reward, source: string, sku: str
 	if reward.Egg then
 		Services.PetService.GrantEgg(player, reward.Egg, sku)
 	end
+	if reward.Pet then
+		Services.PetService.GivePet(player, reward.Pet, sku)
+	end
 end
 
 -- ===== Attributes =====
@@ -283,7 +286,16 @@ local function spin(player: Player)
 	Services.DataService.Update(player, function(d)
 		d.Spin.Day = day
 	end)
-	RetentionService.Grant(player, segment.Reward, "TimedReward", "DailySpin", true)
+	if segment.Reward.Pet then
+		-- The pet's gift opens once the wheel has stopped on it.
+		task.delay(4, function()
+			if player.Parent then
+				RetentionService.Grant(player, segment.Reward, "TimedReward", "DailySpin", true)
+			end
+		end)
+	else
+		RetentionService.Grant(player, segment.Reward, "TimedReward", "DailySpin", true)
+	end
 	Remotes.Event("FXEvent"):FireClient(player, "SpinResult", { Index = index, Text = segment.Text })
 	Services.AnalyticsService.Event(player, "daily_spin", index, segment.Text)
 	RetentionService.Publish(player)

@@ -222,6 +222,7 @@ local function challengeRow(parent: Instance, c, order: number)
 	UI.Label({ Text = string.format("%d / %d   ·   +100 XP", c.Progress or 0, c.Goal or 0), TextSize = 13, TextWrapped = false, Size = UDim2.fromScale(1, 1), ZIndex = 3 }, bar.Frame)
 end
 
+local trackerToken = 0
 local function refreshChallenges()
 	local list = challenges()
 	if menu and menu.IsOpen() then
@@ -240,7 +241,20 @@ local function refreshChallenges()
 			UI.Label({ Text = (done and "✓ " or "") .. (c.Text or ""), TextSize = 13, Font = UI.FontBody, TextColor3 = done and UI.Colors.Green or UI.Colors.Text, Size = UDim2.new(1, -52, 1, 0), TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd }, row)
 			UI.Label({ Text = done and "DONE" or string.format("%d/%d", c.Progress or 0, c.Goal or 0), TextSize = 13, Font = UI.FontBody, TextColor3 = done and UI.Colors.Green or UI.Colors.Cyan, Size = UDim2.new(0, 50, 1, 0), Position = UDim2.new(1, -50, 0, 0), TextXAlignment = Enum.TextXAlignment.Right }, row)
 		end
-		tracker.Visible = #list > 0
+		-- Out of the way in rooms: it slides in for a few seconds when a challenge moves on (and
+		-- when the room starts), then leaves the view clear again. Tap CHALLENGES for the list.
+		if #list > 0 then
+			trackerToken += 1
+			local token = trackerToken
+			tracker.Visible = true
+			task.delay(6, function()
+				if trackerToken == token then
+					tracker.Visible = false
+				end
+			end)
+		else
+			tracker.Visible = false
+		end
 	end
 end
 

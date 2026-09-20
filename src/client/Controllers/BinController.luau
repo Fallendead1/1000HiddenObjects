@@ -201,10 +201,12 @@ end
 local function refreshGuides()
 	for mouth, bin in pairs(bins) do
 		local gui = guides[mouth]
-		if holding and mouth.Parent then
+		-- Only the bin that pays double gets a guide (the others' signs are enough), and a room
+		-- of "anything goes" bins needs none at all.
+		if holding and mouth.Parent and heldMatch == bin.Type and heldMatch ~= "Any" then
 			gui = gui or makeGuide(mouth :: BasePart)
 			guides[mouth] = gui
-			local best = heldMatch == bin.Type
+			local best = true
 			styleGuide(gui, best)
 			-- Just above the sign (the right one has grown).
 			guideHeights[mouth] = (mouth :: BasePart).Size.Y / 2 + SIGN_LIFT + SIGN_SIZE.Y * (best and SIGN_GROW or 1) / 2 + 1.7
@@ -388,6 +390,11 @@ local function stepArrow()
 	binArrowGlyph.TextColor3 = def.Color
 	binArrowStroke.Color = def.Color
 	local ahead = math.abs(angle) < 14
+	-- Close and facing it: the bin itself is all you need to see.
+	if bestDistance < 18 and math.abs(angle) < 35 then
+		binArrow.Visible = false
+		return
+	end
 	binArrowLabel.Text = string.format(ahead and "%s  ·  STRAIGHT AHEAD  ·  %d studs" or "%s  ·  %d studs", def.Short, math.floor(bestDistance + 0.5))
 end
 
